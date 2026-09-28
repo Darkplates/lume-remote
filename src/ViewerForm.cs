@@ -191,7 +191,7 @@ namespace LumeRemote
                 catch (Exception error) { ShowNotice(error.Message); }
             }; menu.Items.Add(draw);
             menu.Items.Add("Switch display", null, async delegate { await ChooseMonitor(); });
-            menu.Items.Add("Chat", null, delegate { try { ShowChat(); } catch (Exception error) { ShowNotice(error.Message); } });
+            menu.Items.Add("Chat", null, delegate { try { ShowChat(true); } catch (Exception error) { ShowNotice(error.Message); } });
             menu.Items.Add("Release keys", null, delegate { release.PerformClick(); });
             ToolStripMenuItem diagnostics = new ToolStripMenuItem("Connection details") { CheckOnClick = true };
             diagnostics.CheckedChanged += delegate { showDetails = diagnostics.Checked; bottom.Height = showDetails ? 70 : 30; lastReport = 0; Tick(); }; menu.Items.Add(diagnostics);
@@ -261,7 +261,7 @@ namespace LumeRemote
                 {
                     TaskCompletionSource<bool> delivered = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                     if (closed) { delivered.TrySetCanceled(); return delivered.Task; }
-                    OnUi(delegate { try { if (connection != current || closed) throw new OperationCanceledException(); ShowChat(); chatWindow.Add(DisplayName ?? current.RemoteName, text); delivered.TrySetResult(true); } catch (Exception error) { delivered.TrySetException(error); } });
+                    OnUi(delegate { try { if (connection != current || closed) throw new OperationCanceledException(); ShowChat(false); chatWindow.Add(DisplayName ?? current.RemoteName, text); delivered.TrySetResult(true); } catch (Exception error) { delivered.TrySetException(error); } });
                     return delivered.Task;
                 };
                 Exception failure = null;
@@ -376,11 +376,15 @@ namespace LumeRemote
             if (stroke.Count >= 128) for (int i = stroke.Count - 2; i > 0; i -= 2) stroke.RemoveAt(i);
             stroke.Add(point); canvas.Stroke = stroke.ToArray(); canvas.Invalidate();
         }
-        void ShowChat()
+        void ShowChat(bool activate)
         {
             ViewerConnection current = connection; if (current == null) throw new InvalidOperationException("Connect before opening chat."); current.Require(SessionCapabilities.Chat);
-            if (chatWindow == null || chatWindow.IsDisposed) { chatWindow = new SessionChatForm(DisplayName ?? current.RemoteName, current.SendChat); chatWindow.Show(this); }
-            else chatWindow.Activate();
+            if (chatWindow == null || chatWindow.IsDisposed)
+            {
+                chatWindow = new SessionChatForm(DisplayName ?? current.RemoteName, current.SendChat);
+                if (activate) chatWindow.Show(this); else chatWindow.ShowPassive(this);
+            }
+            else if (activate) chatWindow.Activate();
         }
         async Task ChooseMonitor()
         {

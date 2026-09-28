@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Drawing;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -13,6 +14,17 @@ namespace LumeRemote
         readonly Queue<string> lines = new Queue<string>();
         readonly Func<string, Task> send;
         readonly Label status = Theme.Label("Messages stay in this session.", 9, Theme.Muted);
+        bool passive;
+        // Incoming messages must not take keyboard focus from the remote desktop or a password field.
+        protected override bool ShowWithoutActivation { get { return passive; } }
+        [DllImport("user32.dll")] static extern bool FlashWindowEx(ref FlashInfo info);
+        [StructLayout(LayoutKind.Sequential)] struct FlashInfo { public uint Size; public IntPtr Window; public uint Flags, Count, Timeout; }
+        public void ShowPassive(IWin32Window owner)
+        {
+            passive = true;
+            try { if (owner != null) Show(owner); else Show(); }
+            finally { passive = false; }
+        }
         public SessionChatForm(string peer, Func<string, Task> send)
         {
             this.send = send; Text = "Lume - Chat - " + peer; Icon = Brand.Icon;
@@ -38,6 +50,7 @@ namespace LumeRemote
             lines.Enqueue(sender + ": " + value); while (lines.Count > 100) lines.Dequeue();
             history.Text = String.Join(Environment.NewLine + Environment.NewLine, lines.ToArray());
             history.SelectionStart = history.TextLength; history.ScrollToCaret();
+            if (IsHandleCreated && !ContainsFocus) { var flash = new FlashInfo { Window = Handle, Flags = 3 | 12, Count = 0, Timeout = 0 }; flash.Size = (uint)Marshal.SizeOf(flash); FlashWindowEx(ref flash); }
         }
     }
 
@@ -82,7 +95,7 @@ namespace LumeRemote
                 try
                 {
                     if (disposed) throw new OperationCanceledException();
-                    if (form == null || form.IsDisposed) { form = new SessionChatForm(peer, send); form.Show(); }
+                    if (form == null || form.IsDisposed) { form = new SessionChatForm(peer, send); form.ShowPassive(null); }
                     form.Add(peer, text); shown.TrySetResult(true);
                 }
                 catch (Exception error) { shown.TrySetException(error); }
