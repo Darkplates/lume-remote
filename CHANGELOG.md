@@ -2,6 +2,14 @@
 
 ## 0.12.0 development
 
+- Fix consecutive Windows file transfers by ordering the completion receipt before
+  waking the next request, and releasing the sender slot when its terminal receipt
+  arrives. Add a controlled receipt-ordering regression and a 32-file folder case.
+- Fix public CI's complete Windows SDK selection and Linux GBM link dependency.
+- Add an offline interface walkthrough, a physical demo script, a Windows process
+  resource collector and a tested connection/resource report generator. No physical
+  WAN or competitor benchmark is inferred from synthetic checks.
+
 - Add paired portable single-file resume with authenticated checkpoints, prefix
   verification, exclusive file locks and cancellation cleanup.
 - Add portable viewer drawing/clear controls for the Windows host annotation tool,

@@ -31,6 +31,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Notice provenance verification failed.' }
       - name: Build pinned native dependencies and the application
         run: .\scripts\build-all.ps1 -Tests
+      - name: Verify opt-in benchmark tooling
+        run: |
+          python scripts/test-benchmark-report.py
+          if ($LASTEXITCODE -ne 0) { throw 'Benchmark aggregation tests failed.' }
+          .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
       - name: Idle regression beyond the transport timeout
@@ -38,6 +43,9 @@ jobs:
           & .\tests\LumeTests.exe --idle-soak 45
           if ($LASTEXITCODE -ne 0) { throw 'Idle session regression failed.' }
       - name: Verify portable core and Windows interoperability
+        # Windows PowerShell 5.1 turns redirected native stderr (including Cargo
+        # progress messages) into NativeCommandError under Stop. Keep exit-code checks.
+        shell: pwsh
         run: |
           rustup toolchain install 1.98.1 --profile minimal
           if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain installation failed.' }
@@ -56,6 +64,7 @@ jobs:
       - name: Package Windows development checkpoint
         run: .\scripts\package.ps1 -OutputPath "$env:RUNNER_TEMP\LumeRemote-0.12.0-dev-win64.zip"
       - name: Build Android development and isolated-test APKs
+        shell: pwsh
         run: |
           $env:RUSTUP_TOOLCHAIN = '1.98.1'
           $env:JAVA_HOME = $env:JAVA_HOME_17_X64

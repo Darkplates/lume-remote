@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Lume Remote — interface preview</title>
+<style>
+  :root{color-scheme:dark;--bg:#101419;--panel:#191f27;--ink:#eef6f4;--muted:#a5b8be;--mint:#68dbc1;--line:#303d45}
+  *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,Segoe UI,sans-serif}
+  a{color:var(--mint);text-underline-offset:4px}button,a{touch-action:manipulation}button{font:inherit}
+  a:focus-visible,button:focus-visible{outline:3px solid var(--mint);outline-offset:5px}
+  .shell{max-width:1440px;padding:28px 48px 20px;margin:auto}header{display:flex;justify-content:space-between;align-items:center;gap:24px;border-bottom:1px solid var(--line);padding-bottom:23px}
+  .brand{display:flex;align-items:center;gap:12px;font-size:23px;font-weight:650;letter-spacing:-.6px}
+  .mark{width:29px;height:29px;color:var(--mint)}.tag{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+  .layout{display:grid;grid-template-columns:300px minmax(0,1fr);gap:44px;margin-top:38px}
+  h1{font-size:clamp(36px,4vw,56px);line-height:1.07;letter-spacing:-2px;font-weight:620;margin:14px 0 20px}h1 span{color:var(--mint)}
+  .intro{color:var(--muted);max-width:30ch;margin:0 0 26px}.steps{display:grid;gap:8px;margin:30px 0}
+  .steps button{border:1px solid transparent;background:transparent;text-align:left;color:var(--muted);padding:12px 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center;gap:13px}
+  .steps button:hover{background:var(--panel)}.steps button[aria-current=true]{color:var(--ink);border-color:var(--line);background:var(--panel)}.n{color:var(--mint);font-size:12px;font-variant-numeric:tabular-nums}
+  .scope{font-size:12px;color:var(--muted);border-top:1px solid var(--line);padding-top:16px}.scope strong{color:var(--ink)}
+  .stage{min-width:0}.viewport{background:#0b0f13;border:1px solid var(--line);border-radius:12px;overflow:hidden;box-shadow:0 18px 60px #0005}
+  .viewport-top{display:flex;justify-content:space-between;gap:12px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--line);font-size:12px;color:var(--muted)}.live-label{color:var(--mint)}
+  .frame{height:clamp(320px,58vh,650px);display:flex;align-items:center;justify-content:center;padding:18px;background:radial-gradient(ellipse at top,#22313766,transparent 75%)}
+  .frame img{display:block;max-width:100%;max-height:100%;width:auto;height:auto;object-fit:contain}
+  .caption{padding:22px 6px 0;min-height:125px}.caption h2{font-size:23px;font-weight:600;letter-spacing:-.5px;margin:0 0 7px}.caption p{margin:0;color:var(--muted);max-width:73ch;font-size:15px}
+  .controls{display:flex;justify-content:space-between;align-items:center;border-top:1px solid var(--line);padding-top:16px;margin-top:18px;gap:15px}
+  .count{color:var(--muted);font-size:12px;letter-spacing:.05em}.arrows{display:flex;gap:10px}.arrows button{cursor:pointer;border:1px solid var(--line);border-radius:7px;padding:9px 17px;background:var(--panel);color:var(--ink)}.arrows button:disabled{opacity:.35;cursor:default}
+  footer{display:flex;justify-content:space-between;gap:22px;border-top:1px solid var(--line);margin-top:35px;padding-top:18px;font-size:12px;color:var(--muted)}footer nav{display:flex;gap:22px;flex-wrap:wrap}
+  [hidden]{display:none!important}
+  @media(max-width:920px){.shell{padding:22px}.layout{grid-template-columns:1fr;gap:22px;margin-top:24px}h1{font-size:42px;max-width:500px}h1 br{display:none}.intro{max-width:60ch;margin-bottom:10px}.steps{grid-template-columns:repeat(5,1fr);gap:4px;margin:16px 0}.steps button{padding:9px 6px;gap:7px;font-size:13px}.scope{padding-top:12px}.frame{height:52vh;min-height:280px}footer{margin-top:25px}.caption{min-height:115px}}
+  @media(max-width:520px){.shell{padding:17px}.tag{font-size:10px}.steps{grid-template-columns:repeat(3,1fr)}.frame{height:350px;padding:8px}.viewport-top{font-size:11px;padding:10px}.caption p{font-size:14px}.caption{min-height:145px}footer{flex-direction:column;gap:10px}.count{max-width:20ch}}
+</style>
+<div class="shell">
+  <header>
+    <div class="brand"><svg class="mark" aria-hidden="true" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="3"><rect x="2" y="2" width="16" height="16" rx="2"/><rect x="14" y="14" width="16" height="16" rx="2"/></svg>Lume</div>
+    <div class="tag">Development preview · Windows</div>
+  </header>
+  <main class="layout">
+    <aside>
+      <div class="tag">Remote access, made personal</div>
+      <h1>Your PCs.<br> <span>Your control.</span></h1>
+      <p class="intro">Pair once. Open a saved computer. Choose how you want to see it.</p>
+      <nav class="steps" aria-label="Preview steps">
+        <button type="button" aria-current="true" data-step="0"><span class="n">01</span> Computers</button>
+        <button type="button" aria-current="false" data-step="1"><span class="n">02</span> Session</button>
+        <button type="button" aria-current="false" data-step="2"><span class="n">03</span> Quality</button>
+        <button type="button" aria-current="false" data-step="3"><span class="n">04</span> Custom</button>
+        <button type="button" aria-current="false" data-step="4"><span class="n">05</span> Files</button>
+      </nav>
+      <p class="scope"><strong>Real interface. Synthetic test data.</strong><br>This walkthrough uses rendered Windows forms. It is not a live connection, WAN recording or performance benchmark.</p>
+    </aside>
+    <div class="stage">
+      <div class="viewport">
+        <div class="viewport-top"><span class="live-label">Interface walkthrough</span><span>0.12 development · fixture images</span></div>
+        <div class="frame"><img id="preview" src="images/computers.png" alt="Lume dashboard with two synthetic saved computers, Home office and Studio PC" width="960" height="760"></div>
+      </div>
+      <div class="caption" aria-live="polite" aria-atomic="true">
+        <h2 id="caption-title">One place for your computers.</h2>
+        <p id="caption-text">Enable access on the PC you own, pair the other PC with a one-time code, then connect from your saved list. Guest access keeps local approval.</p>
+      </div>
+      <div class="controls"><span class="count" id="count">01 / 05 · Use the arrow buttons</span><div class="arrows"><button id="previous" type="button" disabled aria-label="Previous preview step">← Back</button><button id="next" type="button" aria-label="Next preview step">Next →</button></div></div>
+    </div>
+  </main>
+  <footer><span>No account · No subscription · No application session timer</span><nav><a href="https://github.com/Darkplates/lume-remote">Source &amp; downloads</a><a href="https://github.com/Darkplates/lume-remote/blob/main/docs/BENCHMARKS.md">Measurement protocol</a><a href="https://github.com/Darkplates/lume-remote/blob/main/docs/FEATURES.md">Platform status</a></nav></footer>
+</div>
+<script>
+  'use strict';
+  const slides = [
+    ['computers.png','Lume dashboard with two synthetic saved computers, Home office and Studio PC','One place for your computers.','Enable access on the PC you own, pair the other PC with a one-time code, then connect from your saved list. Guest access keeps local approval.'],
+    ['session.png','Lume session window displaying a synthetic desktop fixture','Keep the session. Close the dashboard.','Each remote PC opens in its own window. Closing the dashboard keeps it in the notification area; Disconnect ends only the selected session. Numbers in this fixture are not physical performance results.'],
+    ['quality.png','Lume quality dialog with Source, Smooth video and Save data presets','Quality is your choice.','Source requests original resolution and exact pixels. Smooth video targets up to 1080p at 60 FPS. Save data targets 360p at 10 FPS. Actual throughput depends on both PCs and the network.'],
+    ['quality-custom.png','Lume custom quality controls for resolution, frame rate and encoding','Pick the settings that fit.','Adjust resolution, FPS and compression independently, including a source-refresh target. A selected target is not a measured delivered frame rate.'],
+    ['files.png','Lume file browser showing only synthetic sample files','Move files over the same connection.','Browse folders, send or receive files and verify transfers with SHA-256. Paired single-file retries can reuse a verified partial copy. Folder retries create a new destination.']
+  ];
+  let current = 0;
+  const buttons = Array.from(document.querySelectorAll('[data-step]'));
+  function show(index) {
+    current = Math.max(0, Math.min(slides.length-1, index));
+    const slide = slides[current];
+    document.getElementById('preview').src = 'images/' + slide[0];
+    document.getElementById('preview').alt = slide[1];
+    document.getElementById('caption-title').textContent = slide[2];
+    document.getElementById('caption-text').textContent = slide[3];
+    document.getElementById('count').textContent = '0' + (current+1) + ' / 05 · Use the arrow buttons';
+    buttons.forEach((button, i) => button.setAttribute('aria-current', String(i === current)));
+    document.getElementById('previous').disabled = current === 0;
+    document.getElementById('next').disabled = current === slides.length-1;
+  }
+  buttons.forEach(button => button.addEventListener('click', () => show(Number(button.dataset.step))));
+  document.getElementById('previous').addEventListener('click', () => show(current-1));
+  document.getElementById('next').addEventListener('click', () => show(current+1));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+      event.preventDefault(); show(current + (event.key === 'ArrowRight' ? 1 : -1));
+    }
+  });
+</script>
+</html>

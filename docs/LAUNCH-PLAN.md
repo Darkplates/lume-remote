@@ -1,5 +1,77 @@
 # Public development launch
 
+## Position and first audience
+
+Start with Windows users connecting to their own home PCs: developers, creators and
+people supporting their own machines. The first promise is a simple saved-computer
+workflow with transparent source and no application session timer. Do not try to
+replace enterprise support, device management and every mobile role in one launch.
+
+Open source alone is not a unique advantage: RustDesk already exists. TeamViewer and
+AnyDesk also offer personal-use options, so "the only free alternative" is false.
+Win a specific workflow with lower friction and measured reliability. Publish useful
+comparisons rather than insults, unverified speed claims or promises of unlimited
+hosted bandwidth.
+
+Reference points checked on 2026-09-28:
+- [TeamViewer personal-use scope](https://www.teamviewer.com/en/global/support/knowledge-base/teamviewer-classic/licensing/personal-use/for-personal-use/)
+- [AnyDesk personal/professional scope](https://anydesk.com/en/pricing)
+- [RustDesk open-source project](https://github.com/rustdesk/rustdesk)
+
+## Concrete launch assets
+
+- [Interface preview and physical demo script](DEMO.md); open `demo.html` locally.
+- [Measurement protocol and runnable collection/report tools](BENCHMARKS.md).
+- [Prepared public post, introduction and private-message draft](LAUNCH-COPY.txt).
+- [Platform acceptance](FEATURES.md), [security reporting](../SECURITY.md), and
+  [machine-readable stable release gates](release-gates.json).
+
+The interface preview is available now. A physical WAN demo and a controlled
+competitor benchmark still require the actual endpoint pair. There are no fabricated
+results standing in for them. The source/Windows prerelease is for contributors and
+careful testing, not a declaration that all production gates have passed.
+
+## Small beta, then a wider launch
+
+1. Keep the default branch reproducibly buildable. Provide a complete ZIP, hashes,
+   producing commit, setup steps, known limitations and a clear way to report issues.
+2. Ask for ten opt-in Windows testers with different network combinations. Each
+   should try pairing, reconnecting, 60 minutes idle/minimized, recovery, clipboard,
+   a verified file transfer and revocation. Count failed attempts, not just successes.
+3. Fix recurring failures before adding more features. Priorities are host/service
+   lifecycle, NAT/relay reachability, truthful failure messages, consecutive file
+   transfers, resource use on both endpoints and reliable recovery.
+4. Record the physical one-minute demo and repeated comparison. Publish raw evidence
+   with exact configurations. Let independent testers reproduce the results.
+5. Share a short demonstration and a specific contributor request. Ask for Mac build
+   help, real Android validation, security review and distribution/signing help.
+   Review each community's posting rules before posting there.
+
+These are proposed acceptance targets, not measured outcomes: ten testers complete
+the scenario; every disconnection has an actionable report; no unresolved
+authorization or data-loss bug; a fresh install can connect without developer help.
+Track voluntary issue reports and follow-up feedback. Do not add telemetry to count
+users. If the small beta cannot complete the workflow, delay broad promotion.
+
+## Where a durable advantage could come from
+
+| Priority | Deliverable | Evidence needed |
+| --- | --- | --- |
+| Trust | Signed distribution, explicit permissions, revocation, clear security reporting | Independent review and actual installed-host tests |
+| Reliability | Predictable cross-network connection and recovery | Multiple physical NAT cases, idle/long sessions and relay failure tests |
+| Simplicity | Pair once, saved PCs, quiet dashboard, easy update/rollback | First-time users complete the flow unaided |
+| Efficiency | Good motion/text at a small host and viewer resource budget | Matched-quality, repeated measurements on real hardware |
+| Ownership | Documented self-hosting and transparent running costs | Reproducible setup on an independent deployment |
+
+A managed fallback relay has bandwidth and operational costs. Keeping the client
+free does not make those costs disappear. Choose a sustainable, optional funding
+model only with an explicit decision; do not silently add quotas, commercial-use
+detection or subscription checks. Lume currently relies on public signaling/STUN and
+does not ship a managed TURN fleet or an automatic signed updater.
+
+macOS and iOS stay labelled uncompiled/untested because no Apple devices are
+available. Contributions may close those gates; preparing source does not close them.
+
 Publish a useful, reproducible project before claiming product parity. The first
 public checkpoint is a development release, with platform roles and acceptance
 boundaries visible in the README. No claim of outperforming competing products has

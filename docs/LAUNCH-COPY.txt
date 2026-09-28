@@ -1,0 +1,42 @@
+LUME REMOTE - DEVELOPMENT LAUNCH DRAFTS
+Prepared copy only. These messages have not been sent.
+
+SHORT PUBLIC POST
+I'm building Lume Remote: native remote access to your own PCs, with open source, no account and no session timer. The Windows development preview is ready for careful testing. Looking for early testers and contributors: https://github.com/Darkplates/lume-remote
+
+LONGER PROJECT INTRODUCTION
+Lume Remote started because I wanted a simpler way to connect to my own computers.
+Pair once, reconnect from a saved PC, choose the quality, and transfer files without
+an account or an application session timer. The application source is MIT licensed;
+dependencies retain their own licenses and notices.
+
+This is an unsigned development preview. It is not a claim of feature parity or
+measured superiority. Linux and mobile have separate implementation limits; macOS
+and iOS have not been compiled or tested because I do not have Apple hardware.
+Public signaling is an external dependency, and hosted TURN bandwidth is not included.
+
+I'm looking for a small first group of Windows testers, reproducible bug reports,
+an independent security review, and help validating the portable projects. The repo
+contains a demo walkthrough, benchmark collection tools and the remaining release
+gates. If you try it, please share the exact versions on both PCs and the reproduction
+steps, without pairing codes or private desktop content.
+
+https://github.com/Darkplates/lume-remote
+
+PRIVATE MESSAGE DRAFT FOR @ELSHAYIB
+Hey bro! I've been building Lume, an open-source remote desktop app, and this is my
+first public repo. Could you give me a quick steer on launching it properly and
+finding the first testers/contributors? Even a few pointers would help a lot.
+https://github.com/Darkplates/lume-remote
+
+EARLY TESTER REQUEST
+Would you try the Windows development preview on two PCs you own? The most useful
+checks are pairing, reconnecting, a 60-minute idle session, clipboard text and a
+file transfer with matching SHA-256. Please note the versions on both PCs, connection
+route and any failed attempts. Do not post pairing codes or private screen content.
+
+PUBLIC CLAIMS TO KEEP OUT UNTIL MEASURED
+- Faster than TeamViewer, AnyDesk or RustDesk.
+- A guaranteed two-second connection or guaranteed source refresh rate.
+- Full cross-platform parity, audited security or production readiness.
+- Free hosted relay bandwidth or Internet wake without suitable remote equipment.

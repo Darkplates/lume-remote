@@ -4,6 +4,11 @@ A small, native remote desktop app for Windows. Pair your PCs once, then connect
 
 **0.12.0 development - public source preview** · Windows 10/11 x64 · .NET Framework 4.8 · MIT application source
 
+[Windows CI](https://github.com/Darkplates/lume-remote/actions/workflows/windows.yml) ·
+[Linux CI](https://github.com/Darkplates/lume-remote/actions/workflows/portable.yml) ·
+[Development downloads](https://github.com/Darkplates/lume-remote/releases) ·
+[Demo walkthrough](docs/DEMO.md) · [Benchmark protocol](docs/BENCHMARKS.md)
+
 The source also includes separate Linux/macOS native desktop and Android/iOS viewer
 projects. These are partial platform implementations, not feature-equivalent
 replacements for the Windows build. Read [portable roles and build instructions](ports/README.md)
@@ -18,7 +23,7 @@ and must remain visible in releases until real Apple verification is performed.
 
 ## Get connected
 
-1. Build from source using the instructions below, or obtain a complete development ZIP from the repository's Actions artifacts. Extract the **whole ZIP** on both PCs and open `START.bat`. Check the producing commit and workflow result.
+1. Obtain the complete Windows development ZIP from [Releases](https://github.com/Darkplates/lume-remote/releases), or build from source using the instructions below. Extract the **whole ZIP** on both PCs and open `START.bat`. Check the producing commit, SHA-256 and workflow result. Releases are unsigned previews for testing.
 2. On the PC you want to control, choose **Enable access** and approve Windows setup.
 3. Choose **Pair another PC**. On your other PC, choose **Add a computer** and paste that one-time code.
 4. Double-click the saved PC to connect.
@@ -28,6 +33,11 @@ A guest can use **Guest access** without enabling permanent access. Guest sharin
 Closing the main window hides it in the Windows notification area. Remote windows stay open. Double-click the tray icon to bring the dashboard back. You can control several different PCs at once, each in its own window. **Disconnect** closes only that session. **Exit Lume and disconnect viewers**, in the tray menu, closes all viewers; an enabled host service continues running.
 
 ## What changed
+
+The first public launch preparation also fixes complete Windows SDK selection,
+the Linux GBM build prerequisite, and a race between consecutive file-transfer
+completion receipts. It includes an offline interface walkthrough and opt-in local
+benchmark tools. No controlled competitor performance results are published yet.
 
 0.12 adds authenticated single-file resume to paired portable connections, drawing
 controls in portable viewers for Windows hosts, and explicit local PDF printing

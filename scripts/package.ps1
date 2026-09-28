@@ -6,9 +6,9 @@ if (-not $OutputPath) {
     $OutputPath = Join-Path (Split-Path -Parent $projectRoot) $name
 }
 if (Test-Path -LiteralPath $OutputPath) { throw 'Archive exists. Choose a new output path to preserve it.' }
-$rootFiles = @('AGENTS.md','.gitignore','.gitattributes','BUILD-P2P.bat','BUILD.bat','CHANGELOG.md','CHECK-WAKE.bat','CONTRIBUTING.md','LICENSE.txt','LumeRemote.exe.config','README.md','SECURITY.md','START-HERE.txt','START.bat','THIRD-PARTY-NOTICES.txt','UPDATE-HOST.bat','VERIFY.bat','app.manifest')
+$rootFiles = @('AGENTS.md','.gitignore','.gitattributes','BENCHMARK.bat','BUILD-P2P.bat','BUILD.bat','CHANGELOG.md','CHECK-WAKE.bat','CONTRIBUTING.md','LICENSE.txt','LumeRemote.exe.config','README.md','SECURITY.md','START-HERE.txt','START.bat','THIRD-PARTY-NOTICES.txt','UPDATE-HOST.bat','VERIFY.bat','app.manifest')
 if (-not $SourceOnly) { $rootFiles += @('LumeRemote.exe','LumeCapture.dll','LumeVideo.dll','datachannel.dll') }
-$rootFiles += 'ports/README.md'
+$rootFiles += @('ports/README.md','benchmarks/trials-template.csv','docs/demo.html','docs/LAUNCH-COPY.txt')
 if ($SourceOnly) { $rootFiles += 'BUILD-APPLE.command' }
 $files = @()
 foreach ($relative in $rootFiles) {
