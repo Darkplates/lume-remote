@@ -18,6 +18,9 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Buffered plaintext allowed before the invitation secret is verified.
+const PRE_AUTH_RECEIVE_LIMIT: usize = 128 * 1024;
+
 pub enum Stream {
     Tcp(TcpStream),
     Peer(crate::peer::Peer),
@@ -168,6 +171,9 @@ impl Network {
     }
     fn pending(&self) -> bool {
         self.tls.wants_write()
+    }
+    fn set_receive_limit(&mut self, limit: usize) {
+        self.framer.set_limit(limit);
     }
 }
 impl Drop for Network {
@@ -1340,6 +1346,8 @@ fn host_session(
         socket,
         stop,
     )?;
+    // The authentication packet is tiny; do not buffer large packets for an unauthenticated peer.
+    net.set_receive_limit(PRE_AUTH_RECEIVE_LIMIT);
     let start = Instant::now();
     let (version, name) = loop {
         ensure!(!stop.load(Ordering::Acquire), "Sharing stopped");
@@ -1368,6 +1376,7 @@ fn host_session(
         }
         thread::sleep(Duration::from_millis(5));
     };
+    net.set_receive_limit(wire::FRAMER_LIMIT);
     let (tx, rx) = mpsc::sync_channel(1);
     requests
         .try_send(HostRequest {

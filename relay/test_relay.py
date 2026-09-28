@@ -43,6 +43,19 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(await asyncio.wait_for(host.read(1), 2), b"")
         self.assertEqual(len(self.relay.waiting), 0)
 
+    async def test_per_address_cap(self):
+        self.relay.max_per_address = 2
+        first, _ = await self.client("H", "b" * 32)
+        second, _ = await self.client("H", "c" * 32)
+        self.assertEqual(await first.readexactly(1), b"\x01")
+        self.assertEqual(await second.readexactly(1), b"\x01")
+        third, tw = await self.client("H", "d" * 32)
+        self.assertEqual(await third.readexactly(1), b"\x03")
+        self.assertEqual(self.relay.per_address.get("127.0.0.1"), 2)
+        # The relay closes a refused socket with its header unread, so the peer may reset.
+        self.clients.remove(tw)
+        tw.close()
+
     async def test_missing_host(self):
         reader, _ = await self.client("V")
         self.assertEqual(await reader.readexactly(1), b"\x02")

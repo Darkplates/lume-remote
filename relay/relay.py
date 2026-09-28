@@ -14,21 +14,27 @@ HEADER = re.compile(rb"LUME1 ([HV]) ([a-fA-F0-9]{32})\n")
 
 
 class Relay:
-    def __init__(self, max_connections=512):
+    def __init__(self, max_connections=512, max_per_address=64):
         self.waiting = {}
         self.connections = 0
         self.max_connections = max_connections
+        # One source address must not be able to occupy every slot.
+        self.max_per_address = max_per_address
+        self.per_address = {}
         self.tasks = set()
         self.writers = set()
 
     async def handle(self, reader, writer):
-        if self.connections >= self.max_connections:
+        peer = writer.get_extra_info("peername")
+        address = peer[0] if isinstance(peer, tuple) and peer else None
+        if self.connections >= self.max_connections or self.per_address.get(address, 0) >= self.max_per_address:
             writer.write(b"\x03")
             with contextlib.suppress(Exception):
                 await writer.drain()
             writer.close()
             return
         self.connections += 1
+        self.per_address[address] = self.per_address.get(address, 0) + 1
         self.writers.add(writer)
         task = asyncio.current_task()
         self.tasks.add(task)
@@ -99,12 +105,17 @@ class Relay:
                 released = asyncio.get_running_loop().create_future()
                 waiting[2].set_result((reader, writer, released))
                 await released
-        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, TimeoutError, ConnectionError, OSError):
+        except (asyncio.IncompleteReadError, asyncio.LimitOverrunError, asyncio.TimeoutError, TimeoutError, ConnectionError, OSError):
             pass
         finally:
             if room is not None and entry is not None and self.waiting.get(room) is entry:
                 self.waiting.pop(room, None)
             self.connections -= 1
+            remaining = self.per_address.get(address, 1) - 1
+            if remaining > 0:
+                self.per_address[address] = remaining
+            else:
+                self.per_address.pop(address, None)
             self.writers.discard(writer)
             self.tasks.discard(task)
             writer.close()
@@ -126,7 +137,7 @@ class Relay:
 
 
 async def serve(args):
-    relay = Relay(args.max_connections)
+    relay = Relay(args.max_connections, args.max_per_address)
     server = await asyncio.start_server(relay.handle, args.bind, args.port, limit=128)
     print(f"Lume relay listening on {args.bind}:{args.port}. End-to-end TLS stays inside the paired stream.", flush=True)
     try:
@@ -141,8 +152,9 @@ def main():
     parser.add_argument("--bind", default="127.0.0.1", help="Default is local-only. Use 0.0.0.0 explicitly for a reachable server.")
     parser.add_argument("--port", type=int, default=24817)
     parser.add_argument("--max-connections", type=int, default=512, help="Operational resource guard, not a licence limit.")
+    parser.add_argument("--max-per-address", type=int, default=64, help="Connections allowed from one source address at a time.")
     args = parser.parse_args()
-    if not 1 <= args.port <= 65535 or args.max_connections < 2:
+    if not 1 <= args.port <= 65535 or args.max_connections < 2 or args.max_per_address < 2:
         parser.error("Invalid port or connection capacity")
     try:
         asyncio.run(serve(args))
