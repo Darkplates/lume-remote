@@ -375,8 +375,10 @@ namespace LumeRemote
                             item = receiving;
                         }
                         string saved = item.Incoming.Complete(digest); item.Incoming.Dispose();
-                        lock (gate) { item.Done.TrySetResult(saved); receiving = null; }
                         SendResult(id, true, saved);
+                        // Publish the receipt before waking a folder/batch continuation.
+                        // Otherwise its next Get can overtake this transfer's Result.
+                        lock (gate) { receiving = null; item.Done.TrySetResult(saved); }
                     }); break;
                 case FileOp.Ack:
                     long received = packet.Reader.ReadInt64(); packet.End();
@@ -402,6 +404,9 @@ namespace LumeRemote
                         {
                             if (success && sending.Ack != sending.Length) throw new InvalidDataException("Premature file completion.");
                             if (success) sending.Done.TrySetResult(message); else sending.Done.TrySetException(new IOException(message));
+                            // The next request can arrive before SendFile's async finally.
+                            // This transfer has its terminal receipt and can release the slot now.
+                            sending = null;
                             Monitor.PulseAll(gate);
                         }
                         TaskCompletionSource<string> operation; if (operations.TryGetValue(id, out operation)) { if (success) operation.TrySetResult(message); else operation.TrySetException(new IOException(message)); }

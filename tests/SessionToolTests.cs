@@ -109,10 +109,12 @@ static partial class Tests
             string local = Path.Combine(fixture.Root, "local"), remote = Path.Combine(fixture.Root, "remote"), tree = Path.Combine(local, "folder fixture");
             Directory.CreateDirectory(Path.Combine(tree, "empty")); Directory.CreateDirectory(Path.Combine(tree, "nested"));
             File.WriteAllText(Path.Combine(tree, "nested", "unicode.txt"), "File content \u00e1\u03bb"); File.WriteAllBytes(Path.Combine(tree, "zero"), new byte[0]);
+            for (int i = 0; i < 32; i++) File.WriteAllText(Path.Combine(tree, "small-" + i + ".txt"), "Batch receipt fixture " + i);
             string uploaded = Await(fixture.Viewer.Files.UploadFolder(tree, remote, CancellationToken.None));
             Check(Directory.Exists(Path.Combine(uploaded, "empty")) && SameFile(Path.Combine(tree, "nested", "unicode.txt"), Path.Combine(uploaded, "nested", "unicode.txt")), "Nested or empty folder missing.");
             string download = Await(fixture.Viewer.Files.DownloadFolder(uploaded, local, CancellationToken.None));
             Check(download != tree && Directory.Exists(Path.Combine(download, "empty")) && SameFile(Path.Combine(tree, "nested", "unicode.txt"), Path.Combine(download, "nested", "unicode.txt")), "Folder overwrite or round-trip failure.");
+            for (int i = 0; i < 32; i++) Check(SameFile(Path.Combine(tree, "small-" + i + ".txt"), Path.Combine(download, "small-" + i + ".txt")), "A consecutive file changed during the folder round trip.");
             using (var cancel = new CancellationTokenSource()) { cancel.Cancel(); Reject(delegate { Await(fixture.Viewer.Files.UploadFolder(tree, remote, cancel.Token)); }); }
             Check(Directory.GetDirectories(remote).Length == 1 && fixture.Host.HasSession, "Cancelled folder created data or killed desktop.");
         }

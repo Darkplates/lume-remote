@@ -19,6 +19,7 @@ static partial class Tests
         Run("File paths reject traversal, device names, streams, links and wrong owners", FilePathSecurity);
         Run("File hashes, chunk offsets and size are verified before final publication", FileIntegrity);
         Run("Authenticated file upload and download preserve bytes and existing files", FileRoundTrip);
+        Run("File completion receipts precede batch continuation and release the sender slot", FileCompletionOrdering);
         Run("File cancellation cleans partial copies and leaves the desktop connected", FileCancellation);
         Run("View-only and legacy sessions do not acquire file access", FilePermission);
         Run("File browser loads remote folders and closes without ending the session", FileBrowserUi);
