@@ -9,6 +9,8 @@ case "$profile" in debug|release) ;; *) echo 'LUME_BUILD_PROFILE must be debug o
 for command in cargo rustc git cmake ninja pkg-config; do
   command -v "$command" >/dev/null || { printf 'Missing build tool: %s\n' "$command" >&2; exit 1; }
 done
+# Fail before the expensive Rust/native build when the GBM link library is absent.
+pkg-config --exists gbm || { echo 'Missing GBM development library (Ubuntu/Debian: libgbm-dev).' >&2; exit 1; }
 # libdatachannel and the native windowing backends use dlopen. A fully static
 # musl executable cannot load those libraries, even when they are present.
 case "$(rustc -vV | sed -n 's/^host: //p')" in

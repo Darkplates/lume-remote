@@ -24,7 +24,7 @@ jobs:
       - name: Install native build and isolated display dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake ninja-build clang libclang-dev pkg-config libx11-dev libxrandr-dev libxtst-dev libxcursor-dev libxi-dev libxinerama-dev libxcb1-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev xvfb xauth
+          sudo apt-get install -y cmake ninja-build clang libclang-dev pkg-config libx11-dev libxrandr-dev libxtst-dev libxcursor-dev libxi-dev libxinerama-dev libxcb1-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev libgbm-dev xvfb xauth
           rustup toolchain install 1.98.1 --profile minimal
       - name: Build native Linux app and verify core, C ABI and P2P
         run: sh scripts/build-linux.sh

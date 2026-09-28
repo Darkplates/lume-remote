@@ -6,7 +6,20 @@ $installation = & $vswhere -latest -products '*' -requires Microsoft.VisualStudi
 if (-not $installation) { throw 'The Visual Studio C++ compiler is missing. The prebuilt DXGI DLL can still be used.' }
 $msvcRoot = Get-ChildItem -LiteralPath (Join-Path $installation 'VC\Tools\MSVC') -Directory | Sort-Object Name -Descending | Select-Object -First 1
 $sdkRoot = Join-Path ${env:ProgramFiles(x86)} 'Windows Kits\10'
-$sdkVersion = Get-ChildItem -LiteralPath (Join-Path $sdkRoot 'Include') -Directory | Sort-Object Name -Descending | Select-Object -First 1
+# Include can also contain non-version folders or an incomplete SDK installed by
+# another tool. Select a complete x64 SDK, not the lexicographically last folder.
+$sdkVersion = Get-ChildItem -LiteralPath (Join-Path $sdkRoot 'Include') -Directory | Where-Object {
+    $candidate = $_
+    $candidate.Name -match '^10\.0\.\d+\.\d+$' -and
+        (Test-Path -LiteralPath (Join-Path $candidate.FullName 'um\windows.h')) -and
+        (Test-Path -LiteralPath (Join-Path $candidate.FullName 'um\mfapi.h')) -and
+        (Test-Path -LiteralPath (Join-Path $candidate.FullName 'ucrt\corecrt.h')) -and
+        (Test-Path -LiteralPath (Join-Path $candidate.FullName 'winrt\wrl\client.h')) -and
+        (Test-Path -LiteralPath (Join-Path $sdkRoot ('Lib\' + $candidate.Name + '\um\x64\kernel32.lib'))) -and
+        (Test-Path -LiteralPath (Join-Path $sdkRoot ('Lib\' + $candidate.Name + '\ucrt\x64\ucrt.lib')))
+} | Sort-Object { [version]$_.Name } -Descending | Select-Object -First 1
+if (-not $sdkVersion) { throw 'A complete Windows 10/11 SDK with x64 desktop headers and libraries is required. Install it through Visual Studio Installer.' }
+Write-Output ('Using Windows SDK ' + $sdkVersion.Name)
 $compiler = Join-Path $msvcRoot.FullName 'bin\Hostx64\x64\cl.exe'
 $nativeWork = Join-Path $projectRoot 'build\native'
 New-Item -ItemType Directory -Path $nativeWork -Force | Out-Null

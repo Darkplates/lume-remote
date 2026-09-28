@@ -804,7 +804,7 @@ fn render_remote(ctx: &egui::Context, remote: &mut Remote) {
                             .collect();
                         ui.painter().add(egui::Shape::line(
                             points,
-                            egui::Stroke::new(3.0, Color32::from_rgb(80, 245, 181)),
+                            egui::Stroke::new(3.0_f32, Color32::from_rgb(80, 245, 181)),
                         ));
                     }
                     if response.drag_stopped() {

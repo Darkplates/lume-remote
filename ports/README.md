@@ -166,3 +166,5 @@ memory and is a resource limit, not a paid tier.
 See `../docs/FEATURES.md` and `../docs/release-gates.json` for current evidence and
 remaining release gates. The 0.11 AGY static review and correction re-review are recorded in
 `../docs/AGY-11-REVIEW.md`; broader security acceptance and the historical Opus review remain open.
+
+Linux build prerequisite: GBM development headers/link library (`libgbm-dev` on Ubuntu/Debian, `mesa-dev` on Alpine), in addition to the windowing/PipeWire dependencies. The build preflight checks `pkg-config --exists gbm`.
