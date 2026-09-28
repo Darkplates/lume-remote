@@ -1,0 +1,270 @@
+test_bad_header (test_relay.RelayTests.test_bad_header) ... Executing <Task pending name='Task-1' coro=<RelayTests.asyncSetUp() running at <PROJECT>\relay\test_relay.py:10> wait_for=<_GatheringFuture pending cb=[Task.task_wakeup()] created at [local verification directory]
+
+Executing <Handle BaseProactorEventLoop._loop_self_reading() created at [local verification directory]
+
+Executing <Task finished name='Task-2' coro=<BaseEventLoop._create_server_getaddrinfo() done, defined at [local verification directory]
+
+Executing <Task pending name='Task-6' coro=<Relay.handle() running at <PROJECT>\relay\relay.py:112> wait_for=<Future pending cb=[Task.task_wakeup()] created at [local verification directory]
+
+ok
+
+test_duplicate_host_is_rejected (test_relay.RelayTests.test_duplicate_host_is_rejected) ... ok
+
+test_full_duplex_and_cleanup (test_relay.RelayTests.test_full_duplex_and_cleanup) ... ok
+
+test_host_disconnect_removes_room (test_relay.RelayTests.test_host_disconnect_removes_room) ... ok
+
+test_long_header_is_closed (test_relay.RelayTests.test_long_header_is_closed) ... ok
+
+test_missing_host (test_relay.RelayTests.test_missing_host) ... ok
+
+test_rooms_are_isolated (test_relay.RelayTests.test_rooms_are_isolated) ... ok
+
+
+
+----------------------------------------------------------------------
+
+Ran 7 tests in 2.961s
+
+
+
+OK
+
+PASS Resume journals authenticate metadata and isolate paired computers
+
+PASS Interrupted upload reconnects and sends only the verified suffix
+
+PASS Downloads reuse verified prefixes and preserve existing final files
+
+PASS Corrupted prefixes are discarded without closing the desktop
+
+PASS Explicit cancellation discards resumable state and allows another transfer
+
+SMB: path policy and negotiated root listing only; no physical SMB share was contacted.
+
+PASS Only owner-configured network roots are advertised and authorized
+
+PASS Interrupted downloads preserve state when their disconnected UI cancels
+
+PASS Portable PNG validates dimensions and preserves source pixels
+
+PASS Portable image negotiation preserves legacy wire fields
+
+PDF_RENDER: 625 x 625; correct red/blue orientation.
+
+PASS Windows PDF rendering preserves page geometry and colours
+
+PASS Printing rejects non-PDF input and honours cancellation
+
+PASS Remote PDF download is verified before local rendering
+
+PASS Clipboard read uses STA, enforces size and survives failure
+
+PASS Clipboard requests preserve frames while waiting for permission
+
+PASS Unadvertised clipboard requests are denied without stopping video
+
+PASS Live monitor selection tags frames and preserves dimensions
+
+PASS Protocol 3 viewers keep their exact handshake and frame layout
+
+PASS Nested and empty folders transfer both ways without overwriting
+
+PASS Malformed session replies and request envelopes are bounded
+
+AUDIO: exact 48 kHz stereo PCM16 round trip; hardware capture/playback not invoked.
+
+PASS Lossless audio preserves stereo samples and rejects decompression bombs
+
+RECORDING_FIXTURE: <PROJECT>\verification\recording-fixture.mp4
+
+PASS Recording produces an H.264 MP4 with a finalized movie index
+
+PASS Recording keeps existing files and rejects unsupported dimensions
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Dashboard exit finalizes an active recording before closing viewers
+
+PASS Audio timeline preserves stereo alignment and bounded silence gaps
+
+AUDIO_RECORDING_FIXTURE: <PROJECT>\verification\recording-audio-fixture.mp4
+
+PASS MP4 recording contains H.264 video and AAC system audio
+
+VOICE: native microphones were not opened; consent, denial, cancellation and protocol checks only.
+
+PASS Voice consent denial and cancellation leave video running and microphones off
+
+HIGH_RATE_RECORDING: <PROJECT>\verification\high-rate-recording\rate-180-ac0f6aa429a248ea9b5127b16ee7c863.mp4; synthetic offline timestamps, not measured capture/network FPS.
+
+PASS Native MP4 preserves all 180 submitted images in its sample table
+
+PASS Clipboard sync copies changes, avoids echoes and pauses conflicts
+
+POWER: injected callbacks only. Windows lock, restart and shutdown were not executed.
+
+PASS Session actions use permissions, receipts and safe power callbacks
+
+PASS Stale monitor input cannot move the pointer on a new display
+
+PASS Annotation coordinates and stroke sizes are bounded
+
+PASS Session loops leave a constrained thread pool available for file actions
+
+PASS Versioned quality preserves legacy image settings and video bitrate
+
+PASS Video dimensions and malformed sequence headers are bounded
+
+PASS Windows H.264 software round trip preserves geometry and approximate colors
+
+CODEC: Intel® Quick Sync Video H.264 Encoder MFT; hardware=True
+
+PASS Automatic H.264 and image mode transitions decode every acknowledged frame
+
+PASS Latest-image queue replaces stale presentation without losing delta decoding
+
+PASS Timing packets reject invalid numbers and overlong backend names
+
+PASS Pinned certificate negotiates protocol 4 and still identifies legacy hosts
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Authenticated P2P video changes codec live and reports host timings
+
+PASS Protocol 2 clients still receive the exact legacy quality layout
+
+PASS New viewer negotiates and decodes a legacy protocol 2 host
+
+PASS Unsupported video dimensions fall back to full lossless frames
+
+PASS Clipboard uses STA and reports a busy clipboard without crashing
+
+PASS Rapid clipboard actions and busy callbacks preserve the desktop session
+
+PASS File paths reject traversal, device names, streams, links and wrong owners
+
+PASS File hashes, chunk offsets and size are verified before final publication
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Authenticated file upload and download preserve bytes and existing files
+
+PASS File cancellation cleans partial copies and leaves the desktop connected
+
+PASS View-only and legacy sessions do not acquire file access
+
+PASS File browser loads remote folders and closes without ending the session
+
+PASS Heartbeat runs without a UI pump and stops after disposal
+
+PASS Reconnect backs off, cancels and refuses authentication/protocol failures
+
+PASS Connection logs retain errors without credentials or exception text
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Paired viewer recovers a lost P2P session in the same window
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Two viewers survive closing the dashboard and disconnect independently
+
+PASS Simple quality presets retain custom source and frame rate controls
+
+PASS Source dimensions, 360p, source refresh and 180 FPS selection
+
+PASS Frame pipeline is bounded and acknowledgements are ordered
+
+PASS Source lossless stream preserves pixels and 360p dimensions
+
+PASS Live viewer switches 360p 10 FPS to source 180 without reconnecting
+
+PASS Source frame above the old 12 MB limit decodes without rescaling
+
+PASS Invitation round trip and secret size
+
+PASS Invalid invitation and parser fuzz rejected
+
+PASS TCP failure never advances to host approval
+
+PASS Secure approval stages preserve the capture gate
+
+HOST: Connection ended: The connection was closed.
+
+PASS Network diagnostics verify TLS without approval or capture
+
+PASS Diagnostic reports exclude all invitation secrets
+
+PASS Viewer displays connection failure instead of waiting for approval
+
+PASS Exact read handles fragmented streams
+
+PASS Oversized, truncated and empty packets rejected
+
+PASS Packet text and trailing data validation
+
+PASS Session certificates have independent pins and private keys
+
+PASS First frame, unchanged frame and exact dirty tiles
+
+PASS JPEG header dimensions validated before decode
+
+PASS Lossless Windows codec round trip and malformed blocks
+
+PASS Native input layout, mapping and stuck-key release
+
+PASS Malformed input rejected before injection
+
+PASS Wrong certificate pin is rejected before approval
+
+PASS Wrong session secret is rejected before capture
+
+PASS Local decline prevents screen capture
+
+PASS Authenticated direct stream decodes and acknowledges frames
+
+PASS View-only session refuses input and clipboard
+
+PASS Repeated authentication failures trigger cooldown
+
+PASS Stopping host promptly closes active sockets
+
+PASS Disconnect allows a new locally approved session
+
+SKIP Physical desktop/input fixtures (--safe). No global input was injected.
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS Native WebRTC layout and ordered binary stream
+
+PASS P2P offer, signed reply and malformed-code limits
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS P2P pinned TLS delivers acknowledged desktop frames
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS P2P local rejection prevents capture
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS P2P wrong certificate pin cannot reach approval
+
+PEER_ROUTE: Direct P2P / host candidates
+
+PASS P2P wrong invitation secret cannot reach approval
+
+PASS End-to-end TLS and screen frames through local relay
+
+RESULT: 93 passed, 0 failed.
+
+Reports: <PROJECT>\verification\v10-windows
+
+These checks do not prove second-PC, public-Internet or competitor performance acceptance.
+

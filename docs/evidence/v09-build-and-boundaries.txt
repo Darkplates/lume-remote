@@ -1,0 +1,56 @@
+LUME REMOTE 0.9 - BUILD AND DISTRIBUTION EVIDENCE
+Date: 2026-09-28. Development builds only.
+
+WINDOWS
+Managed app and separate safe-test executable compiled with the .NET Framework
+compiler and Windows SDK references. Product/file version: 0.9.0.0.
+The safe suite passed 92 checks. Native Windows dependencies retain the prior
+verified implementations; this checkpoint primarily changes portable platforms.
+
+ANDROID
+Pinned NDK 28.2.13676358; ARM64 and x86-64 Rust/C ABI/JNI/WebRTC builds completed.
+The final core includes protocol/codec-versus-transport recovery classification.
+Temporary native toolchain variables were restored after compilation.
+Java/application and separate instrumentation APK builds succeeded with Gradle
+9.3.1, offline, two workers. Final full build: 73 tasks, 5 executed and 68 cached.
+Lint: 0 errors, 11 warnings. Warnings concern localization, backup configuration
+metadata and a newer Gradle version; no successful device execution is implied.
+Package: com.lume.remote; versionCode 9; versionName 0.9.0-dev.
+Container checks passed: CRC, unique entries, exact eight-library ABI set, ELF64
+architecture, 16 KiB LOAD alignment, notice hashes and application DEX separation.
+APK signature verification passed with scheme v2. zipalign -c -P 16 -v 4 passed.
+The app excludes its separate instrumentation and the Kotlin runtime.
+Notice hashes: 869 crate files and 13 Rust distribution files matched.
+
+Build provenance was checked through the native merge and strip stages: original
+compiler outputs matched merged inputs; stripped outputs matched packaged bytes;
+all allocated ELF code/data sections matched their compiled originals. Comparing
+whole ELF bytes before/after Android's strip step is not a valid identity test
+because the tool rewrites non-runtime metadata.
+
+A sequential cross-build attempt initially restored absent Cargo environment
+variables as empty strings. Cargo rejected an empty profile setting before
+compiling Android. Environment restoration was corrected; both Android targets
+then rebuilt successfully in a fresh shell. This was a build-environment failure,
+not a passing Android test or evidence of application execution.
+
+APPLE
+macOS 13+ desktop/audio helper and iOS viewer build recipes/source are included.
+build-apple.sh passed shell syntax checking only. No Apple SDK compilation,
+Swift/Rust linking, signing/notarization, simulator or physical-device run occurred.
+
+PACKAGING / ACCEPTANCE
+Final package identities, sizes, hashes and fresh-extraction results are listed
+in the outer LumeRemote-0.9.0-dev-verification.txt and per-artifact SHA-256 sidecars.
+ZIP/tar allowlists exclude private host credentials, saved computers and logs.
+All four immutable 0.8 archive hashes were checked and remain unchanged.
+The source notice inventory remains 491 of 496 collected entries; five need
+upstream review. Collected notices are not an independent license/security audit.
+All PowerShell/Python scripts and release-gate JSON parsed successfully.
+The release-gate checker returned its expected exit code 2 with 10 required gates
+open. No gate was relaxed, publication performed or installed Windows host changed.
+
+No Android emulator/device, Apple platform, physical audio hardware, physical
+desktop/power action or different-network pair of PCs was tested in this checkpoint.
+The owned Linux VM was shut down normally and all owned synthetic session fixtures
+joined; their private laboratory files are retained outside the public packages.

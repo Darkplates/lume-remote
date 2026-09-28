@@ -1,0 +1,39 @@
+LUME REMOTE 0.9 - SHARED CORE AND PRODUCT INTEROPERABILITY
+Date: 2026-09-28. Synthetic content and isolated credentials/files only.
+
+WINDOWS
+scripts/verify.ps1 -Safe: 92 passed, 0 failed.
+Rust lume-core: 34 passed, 0 failed, 0 ignored.
+Rust lume-bridge: 2 passed, 0 failed, 0 ignored.
+Native P2P was included through the matching datachannel library.
+
+ALPINE 3.24.2 X86-64 / MUSL, OWNED QEMU TCG VM
+Final core-tests --include-ignored --test-threads=1:
+  35 passed, 0 failed, 0 ignored, 143.57 seconds.
+Final bridge-tests --include-ignored --test-threads=1:
+  2 passed, 0 failed, 0 ignored, 1.81 seconds.
+The additional Unix core test covers symlink/path exclusion.
+Core/C ABI executables include the final protocol-versus-transport EOF fix.
+
+RECOVERY
+Fresh authenticated session/TLS identity after host loss; Source preserved.
+Input requires a present frame of the current generation.
+Disconnect cancels backoff; bad pins and malformed image decoding are terminal.
+The original Linux recovery assertion race was reproduced, corrected and followed
+by a successful full run. No earlier failed run is counted as a pass.
+
+PERMANENT HOST / PRODUCT INTEROPERABILITY
+Portable host: authenticated one-time pairing and encrypted persistence passed.
+Pairing caused no capture. Restart recovered the same viewer automatically.
+Live revocation stopped capture; explicit disconnect joined recovery workers.
+Windows viewer / portable host: pair, two P2P connections, revoke and rejected
+credential reuse passed. Portable viewer / Windows host: same checks passed.
+These fixtures use actual public rendezvous, but same-machine endpoints and
+synthetic desktops. They do not establish different-network or physical acceptance.
+
+FILES
+Portable viewer / Windows host: paged browsing, download, empty file, SHA-256,
+collision preservation, two uploads, video continuity and worker cleanup passed.
+Independent Windows filesystem hashes matched both uploaded copies.
+The actual Linux-host / Windows-viewer file tests remain separately documented
+0.8 evidence; they are not relabelled as a new 0.9 execution.

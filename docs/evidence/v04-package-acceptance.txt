@@ -1,0 +1,11 @@
+Fresh archive extraction acceptance, 2026-09-28
+104 files plus SHA256SUMS.txt verified from the candidate ZIP.
+Separate extraction, .NET Framework test compilation from extracted sources.
+8 file/clipboard tests passed; 0 failed.
+Coverage: local native P2P with pinned TLS, upload/download byte equality,
+empty files, preserved collisions, cancellation cleanup, owner/path bounds,
+clipboard STA/repetition/busy handling, file browser UI and view-only denial.
+No second physical PC or installed SYSTEM-host acceptance is implied.
+Native DLL imports inspected: Windows system libraries only.
+Installed host update was cancelled by Windows before the installer started.
+Installed version remained 0.3.0.0; active user session preserved.

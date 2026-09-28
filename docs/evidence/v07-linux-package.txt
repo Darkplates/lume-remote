@@ -1,0 +1,10 @@
+Alpine/musl x86-64 optimized release-profile development artifact.
+Application SHA256 ce5d41b727dad9e76c97102411499f42e7c96845262774edadca083a9769d542
+Native P2P SHA256 3abdcfb34784e6d75fa854ba5b7230d731c6707393a5238afe7614368fa4fe29
+The application hash matches the binary executed in the isolated Linux VM.
+Rust 1.98.1, release profile, optimization 3, thin LTO, stripped symbols.
+
+PASS 857 release files and manifest; no runtime settings/logs included.
+SHA256 1bbc0bc4b0c0ee7c9b46e7c24db7be1511399404220f2c2500036df34d863909
+BYTES 7428861
+BOUNDARY Alpine/musl x86-64 development only; physical desktops/WAN unverified.

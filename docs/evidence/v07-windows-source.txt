@@ -1,0 +1,4 @@
+PASS 48 Windows production source files match the fresh extracted source that passed 92 safe checks.
+PASS Windows executable and all three native DLLs match the tested candidate archive.
+BOUNDARY The fresh managed source build reused verified native DLLs; it did not rebuild native dependencies from source.
+The later PortableTests.cs change adds fixture status output only.

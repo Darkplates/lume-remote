@@ -1,0 +1,28 @@
+v11-linux-post-review-x11.txt
+5129b25160bd13d0676adc6e437e5d284c6a98953ef3f880aab3db8e8f01000f  <owned-linux-lab>/lume-desktop
+
+running 2 tests
+test native_desktop_window_renders_on_owned_x11 ... PASS Native Linux desktop window, brand and both action sections rendered on consecutive captures. Owned Xvfb display only.
+ok
+test x11_owned_capture_input_release_and_clipboard ... PASS Native Linux X11 capture, owned keyboard/mouse events, held-input release and bidirectional Unicode clipboard. Isolated Xvfb only.
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 21.97s
+
+
+
+v11-linux-post-review-host-media.txt
+
+running 1 test
+test host_runtime::tests::protected_keyring_startup_daemon_and_disable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 3.44s
+
+
+running 1 test
+test audio::tests::null_sink_capture_playback_and_cleanup ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 0.48s
+
+PASS Isolated Linux keyring, sign-in configuration, real daemon, duplicate exclusion, disable, virtual PCM playback/capture and child cleanup.
+discover_other_daemon: 1

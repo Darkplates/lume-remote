@@ -1,0 +1,94 @@
+name: Windows build and verification
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-2022
+    timeout-minutes: 90
+    defaults:
+      run:
+        shell: powershell
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Enable the Windows Media Foundation feature if absent
+        run: |
+          $feature = Get-WindowsFeature Server-Media-Foundation
+          if (-not $feature.Installed) {
+            $result = Install-WindowsFeature Server-Media-Foundation
+            if (-not $result.Success -or $result.RestartNeeded -eq 'Yes') { throw 'Media Foundation needs runner preparation.' }
+          }
+      - name: Verify public source and committed dependency notice provenance
+        run: |
+          python scripts/check-public-source.py
+          if ($LASTEXITCODE -ne 0) { throw 'Public source inspection failed.' }
+          python scripts/verify-notices.py
+          if ($LASTEXITCODE -ne 0) { throw 'Notice provenance verification failed.' }
+      - name: Build pinned native dependencies and the application
+        run: .\scripts\build-all.ps1 -Tests
+      - name: Verify without global keyboard or mouse injection
+        run: .\scripts\verify.ps1 -Safe
+      - name: Idle regression beyond the transport timeout
+        run: |
+          & .\tests\LumeTests.exe --idle-soak 45
+          if ($LASTEXITCODE -ne 0) { throw 'Idle session regression failed.' }
+      - name: Verify portable core and Windows interoperability
+        run: |
+          rustup toolchain install 1.98.1 --profile minimal
+          if ($LASTEXITCODE -ne 0) { throw 'Rust toolchain installation failed.' }
+          $env:RUSTUP_TOOLCHAIN = '1.98.1'
+          $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'
+          cargo test --manifest-path ports/Cargo.toml -p lume-core -p lume-bridge --locked -j 2 -- --include-ignored *> verification/ci-portable-core.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-portable-core.txt; throw 'Portable core tests failed.' }
+          cargo build --manifest-path ports/Cargo.toml -p lume-core --examples --locked -j 2
+          if ($LASTEXITCODE -ne 0) { throw 'Portable fixtures failed to build.' }
+          .\scripts\test-portable.ps1 -SkipBuild -FixtureDirectory "$env:RUNNER_TEMP\lume-interop" *> verification/ci-portable-interop.txt
+          if ($LASTEXITCODE -ne 0) { throw 'Windows interoperability failed.' }
+          .\scripts\test-portable-access.ps1 -SkipBuild -Pairing -Scratch "$env:RUNNER_TEMP\lume-paired" *> verification/ci-paired.txt
+          .\scripts\test-portable-access.ps1 -SkipBuild -Scratch "$env:RUNNER_TEMP\lume-files" *> verification/ci-files.txt
+          .\scripts\test-portable-file-host.ps1 -Scratch "$env:RUNNER_TEMP\lume-file-host" *> verification/ci-file-host.txt
+          .\scripts\test-portable-permanent.ps1 -Scratch "$env:RUNNER_TEMP\lume-permanent" *> verification/ci-permanent.txt
+      - name: Package Windows development checkpoint
+        run: .\scripts\package.ps1 -OutputPath "$env:RUNNER_TEMP\LumeRemote-0.12.0-dev-win64.zip"
+      - name: Build Android development and isolated-test APKs
+        run: |
+          $env:RUSTUP_TOOLCHAIN = '1.98.1'
+          $env:JAVA_HOME = $env:JAVA_HOME_17_X64
+          if (-not $env:JAVA_HOME -or -not $env:ANDROID_HOME) { throw 'JDK 17 and the Android SDK are required.' }
+          rustup target add aarch64-linux-android x86_64-linux-android
+          if ($LASTEXITCODE -ne 0) { throw 'Android Rust targets are unavailable.' }
+          & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
+          if ($LASTEXITCODE -ne 0) { throw 'Android SDK components could not be installed.' }
+          $peer = Join-Path (Get-Location) 'build\peer-source'
+          $cmake = Join-Path $peer 'tools\cmake-4.4.3-windows-x86_64\bin\cmake.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs = & $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          $ninja = Join-Path $vs 'Common7\IDE\CommonExtensions\Microsoft\CMake\Ninja\ninja.exe'
+          .\scripts\build-android.ps1 -Sdk $env:ANDROID_HOME -CMake $cmake -Ninja $ninja -PeerSource $peer
+          if ($LASTEXITCODE -ne 0) { throw 'Android native build failed.' }
+          python scripts/collect-portable-notices.py
+          if ($LASTEXITCODE -ne 0) { throw 'Portable notice collection failed.' }
+          .\ports\android\gradlew.bat -p ports/android :app:assembleDebug :app:assembleDebugAndroidTest :app:lintDebug
+          if ($LASTEXITCODE -ne 0) { throw 'Android APK build or lint failed.' }
+          python scripts/verify-android.py ports/android/app/build/outputs/apk/debug/app-debug.apk
+          if ($LASTEXITCODE -ne 0) { throw 'Android package verification failed.' }
+          python scripts/verify-android-inputs.py ports/android/app/build/outputs/apk/debug/app-debug.apk
+          if ($LASTEXITCODE -ne 0) { throw 'Android native input identity verification failed.' }
+      - name: Verify archive contents and hashes
+        run: .\scripts\verify-package.ps1 -Archive "$env:RUNNER_TEMP\LumeRemote-0.12.0-dev-win64.zip" -ExtractDirectory "$env:RUNNER_TEMP\lume-extracted"
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: windows-development-and-test-reports
+          path: |
+            ${{ runner.temp }}/LumeRemote-0.12.0-dev-win64.zip
+            verification/*.txt
+            ports/android/app/build/outputs/apk/debug/*.apk
+            ports/android/app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14

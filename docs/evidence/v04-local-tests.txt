@@ -1,0 +1,75 @@
+PASS Versioned quality preserves legacy image settings and video bitrate
+PASS Video dimensions and malformed sequence headers are bounded
+PASS Windows H.264 software round trip preserves geometry and approximate colors
+CODEC: Intel® Quick Sync Video H.264 Encoder MFT; hardware=True
+PASS Automatic H.264 and image mode transitions decode every acknowledged frame
+PASS Latest-image queue replaces stale presentation without losing delta decoding
+PASS Timing packets reject invalid numbers and overlong backend names
+PASS Pinned certificate negotiates protocol 3 and still identifies legacy hosts
+PEER_ROUTE: Direct P2P / host candidates
+PASS Authenticated P2P video changes codec live and reports host timings
+PASS Protocol 2 clients still receive the exact legacy quality layout
+PASS New viewer negotiates and decodes a legacy protocol 2 host
+PASS Unsupported video dimensions fall back to full lossless frames
+PASS Clipboard uses STA and reports a busy clipboard without crashing
+PASS Rapid clipboard actions and busy callbacks preserve the desktop session
+PASS File paths reject traversal, device names, streams, links and wrong owners
+PASS File hashes, chunk offsets and size are verified before final publication
+PEER_ROUTE: Direct P2P / host candidates
+PASS Authenticated file upload and download preserve bytes and existing files
+PASS File cancellation cleans partial copies and leaves the desktop connected
+PASS View-only and legacy sessions do not acquire file access
+PASS File browser loads remote folders and closes without ending the session
+PASS Heartbeat runs without a UI pump and stops after disposal
+PASS Reconnect backs off, cancels and refuses authentication/protocol failures
+PASS Connection logs retain errors without credentials or exception text
+PEER_ROUTE: Direct P2P / host candidates
+PEER_ROUTE: Direct P2P / host candidates
+PASS Paired viewer recovers a lost P2P session in the same window
+PEER_ROUTE: Direct P2P / host candidates
+PEER_ROUTE: Direct P2P / host candidates
+PASS Two viewers survive closing the dashboard and disconnect independently
+PASS Simple quality presets retain custom source and frame rate controls
+PASS Source dimensions, 360p, source refresh and 180 FPS selection
+PASS Frame pipeline is bounded and acknowledgements are ordered
+PASS Source lossless stream preserves pixels and 360p dimensions
+PASS Live viewer switches 360p 10 FPS to source 180 without reconnecting
+PASS Source frame above the old 12 MB limit decodes without rescaling
+PASS Invitation round trip and secret size
+PASS Invalid invitation and parser fuzz rejected
+PASS TCP failure never advances to host approval
+PASS Secure approval stages preserve the capture gate
+PASS Network diagnostics verify TLS without approval or capture
+PASS Diagnostic reports exclude all invitation secrets
+PASS Viewer displays connection failure instead of waiting for approval
+PASS Exact read handles fragmented streams
+PASS Oversized, truncated and empty packets rejected
+PASS Packet text and trailing data validation
+PASS Session certificates have independent pins and private keys
+PASS First frame, unchanged frame and exact dirty tiles
+PASS JPEG header dimensions validated before decode
+PASS Lossless Windows codec round trip and malformed blocks
+PASS Native input layout, mapping and stuck-key release
+PASS Malformed input rejected before injection
+PASS Wrong certificate pin is rejected before approval
+PASS Wrong session secret is rejected before capture
+PASS Local decline prevents screen capture
+PASS Authenticated direct stream decodes and acknowledges frames
+PASS View-only session refuses input and clipboard
+PASS Repeated authentication failures trigger cooldown
+PASS Stopping host promptly closes active sockets
+PASS Disconnect allows a new locally approved session
+SKIP Physical desktop/input fixtures (--safe). No global input was injected.
+PEER_ROUTE: Direct P2P / host candidates
+PASS Native WebRTC layout and ordered binary stream
+PASS P2P offer, signed reply and malformed-code limits
+PEER_ROUTE: Direct P2P / host candidates
+PASS P2P pinned TLS delivers acknowledged desktop frames
+PEER_ROUTE: Direct P2P / host candidates
+PASS P2P local rejection prevents capture
+PEER_ROUTE: Direct P2P / host candidates
+PASS P2P wrong certificate pin cannot reach approval
+PEER_ROUTE: Direct P2P / host candidates
+PASS P2P wrong invitation secret cannot reach approval
+PASS End-to-end TLS and screen frames through local relay
+RESULT: 61 passed, 0 failed.

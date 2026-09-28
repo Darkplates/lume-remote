@@ -1,0 +1,6 @@
+PEER_ROUTE: Direct P2P / host candidates
+SOAK started: static synthetic desktop, local native P2P + pinned TLS, minimized viewer, NO UI message pump.
+SOAK alive at 30 s; heartbeat bytes sent: 117
+SOAK alive at 45 s; heartbeat bytes sent: 182
+SOAK completed: 45.1 seconds. This is a local test, not a two-network WAN test.
+PASS Idle P2P session survives a blocked and minimized UI

@@ -1,0 +1,9 @@
+Alpine 3.24.2 x86-64, isolated QEMU/Xvfb display. No physical desktop was captured or controlled.
+The final optimized archive was freshly extracted and all 857 SHA-256 manifest entries matched.
+The packaged START.sh launcher and actual native app were exercised by scripts/test-linux.sh.
+Software rendering only; not a physical GPU/FPS benchmark.
+
+PASS Native Linux desktop window, brand and both action sections rendered on consecutive captures. Owned Xvfb display only.
+PASS Native Linux X11 capture, owned keyboard/mouse events, held-input release and bidirectional Unicode clipboard. Isolated Xvfb only.
+RESULT: 2 passed, 0 failed.
+The complete native window screenshot was inspected for layout.

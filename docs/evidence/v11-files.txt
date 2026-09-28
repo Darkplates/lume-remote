@@ -1,0 +1,14 @@
+v11-files-interop.txt
+PASS Windows paged directory listing from the portable viewer.
+PASS Download, empty file, SHA-256 and non-overwrite collision handling.
+PASS Verified upload 1 while video remains connected.
+PASS Verified upload 2 while video remains connected.
+PASS Portable recursive upload/download with Windows: nested/empty folders, Unicode, root collisions and per-file SHA-256.
+PASS File worker joins and video continues after transfers.
+PASS Independent Windows filesystem hashes match both uploaded copies.
+PASS Portable access fixture completed. Synthetic hosts and isolated files only.
+
+
+v11-files-reverse.txt
+PASS Windows viewer / portable host: scoped root, traversal denial, SHA-256 upload/download, folders, collisions and video.
+PASS Independent host filesystem confirms uploaded bytes.

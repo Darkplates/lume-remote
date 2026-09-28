@@ -1,0 +1,63 @@
+name: Portable platform build checks
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      apple:
+        description: Build the unverified Apple development projects
+        type: boolean
+        default: false
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      RUSTUP_TOOLCHAIN: 1.98.1
+      LUME_BUILD_PROFILE: debug
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install native build and isolated display dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake ninja-build clang libclang-dev pkg-config libx11-dev libxrandr-dev libxtst-dev libxcursor-dev libxi-dev libxinerama-dev libxcb1-dev libxcb-randr0-dev libxcb-shm0-dev libxcb-xfixes0-dev libxkbcommon-dev libxkbcommon-x11-dev libwayland-dev libpipewire-0.3-dev libspa-0.2-dev libdbus-1-dev libegl1-mesa-dev libgl1-mesa-dev xvfb xauth
+          rustup toolchain install 1.98.1 --profile minimal
+      - name: Build native Linux app and verify core, C ABI and P2P
+        run: sh scripts/build-linux.sh
+      - name: Verify native UI, X11 capture, input release and Unicode clipboard
+        run: sh scripts/test-linux.sh
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: linux-ubuntu-development
+          path: build/linux/Lume-linux-development
+          if-no-files-found: error
+          retention-days: 14
+  apple:
+    if: github.event_name == 'workflow_dispatch' && inputs.apple
+    runs-on: macos-latest
+    timeout-minutes: 90
+    env:
+      RUSTUP_TOOLCHAIN: 1.98.1
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Install native build tools
+        run: |
+          brew install cmake ninja xcodegen
+          rustup toolchain install 1.98.1 --profile minimal
+      - name: Build macOS and iOS simulator development apps
+        run: bash scripts/build-apple.sh
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: apple-unsigned-development
+          path: |
+            build/apple/Lume.app
+            build/apple/DerivedData/Build/Products/Debug-iphonesimulator/Lume.app
+            verification/apple-*/
+          if-no-files-found: error
+          retention-days: 14

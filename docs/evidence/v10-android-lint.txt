@@ -1,0 +1,11 @@
+{
+  "severity": {
+    "Warning": 13
+  },
+  "issues": {
+    "AndroidGradlePluginVersion": 1,
+    "DataExtractionRules": 1,
+    "SetTextI18n": 11
+  },
+  "boundary": "Static lint only; Android device execution was not performed."
+}

@@ -1,0 +1,19 @@
+{
+  "audio_samples_per_channel": 78848,
+  "left_rms": 0.17212960668665175,
+  "right_rms": 0.11456369971230425,
+  "left_440_to_880_ratio": 50.1906622447566,
+  "right_880_to_440_ratio": 40.470349035841025,
+  "video_frames": 53,
+  "video_size": [
+    320,
+    180
+  ],
+  "duration_seconds": 1.64,
+  "high_rate_frames": 180,
+  "high_rate_distinct_colours": 180,
+  "high_rate_duration_seconds": 1.0,
+  "decoder": "independent FFmpeg, test-only",
+  "hardware_microphone_tested": false,
+  "capture_or_network_180_fps_proven": false
+}

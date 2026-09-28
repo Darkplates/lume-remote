@@ -1,0 +1,14 @@
+PASS 823 crate notice files and 13 Rust distribution notice files match their recorded hashes.
+PASS Packaged lib/arm64-v8a/libc++_shared.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/libdatachannel.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/liblume_bridge.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/liblume_jni.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/libc++_shared.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/libdatachannel.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/liblume_bridge.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/liblume_jni.so: matching architecture and 16 KiB LOAD alignment.
+PASS App DEX excludes the separate test instrumentation and Kotlin runtime.
+PASS APK entries, CRCs, ARM64/x86-64 libraries and bundled notice inventory.
+SHA256 f41b84c9e8e316ce08a4e22b41adca42e4cee620b410e6b44c8973cbaf0f0051
+BYTES 9328990
+BOUNDARY Container/ELF inspection only; no Android installation, execution, device or WAN test.

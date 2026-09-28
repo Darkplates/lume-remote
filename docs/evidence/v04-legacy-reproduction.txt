@@ -1,0 +1,2 @@
+Legacy 0.3.0 static session connected. Blocking only this fixture's UI for 40 seconds.
+LEGACY_REPRO: session_lost=True; no commercial duration limit was involved.

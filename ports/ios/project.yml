@@ -1,0 +1,45 @@
+name: Lume
+options:
+  bundleIdPrefix: com.lume
+  deploymentTarget:
+    iOS: '16.0'
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    ENABLE_USER_SCRIPT_SANDBOXING: YES
+targets:
+  Lume:
+    type: application
+    platform: iOS
+    sources:
+      - Lume
+      - path: ../../third-party
+        type: folder
+        buildPhase: resources
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.lume.remote
+        MARKETING_VERSION: 0.12.0
+        CURRENT_PROJECT_VERSION: 12
+        SWIFT_OBJC_BRIDGING_HEADER: Lume/Bridge.h
+        HEADER_SEARCH_PATHS: '$(SRCROOT)/../bridge/include'
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Lume
+        INFOPLIST_KEY_NSLocalNetworkUsageDescription: Connect to computers you own or have permission to use.
+        INFOPLIST_KEY_CADisableMinimumFrameDurationOnPhone: YES
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: Share your microphone only for a voice call that you choose to start.
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        TARGETED_DEVICE_FAMILY: '1,2'
+        LD_RUNPATH_SEARCH_PATHS: '$(inherited) @executable_path/Frameworks'
+    dependencies:
+      - framework: Frameworks/LumeCore.xcframework
+        embed: false
+      - framework: Frameworks/LumePeer.xcframework
+        embed: true
+        codeSign: true
+      - sdk: Security.framework
+      - sdk: SystemConfiguration.framework
+      - sdk: libc++.tbd
+    scheme:
+      testTargets: []

@@ -1,0 +1,27 @@
+LOG v12-paired-interop.txt
+PASS Portable pairing with Windows encrypted signaling and consumed one-time code.
+PASS Windows/Rust paired resume operations in both directions; annotation clear and stale generation denial.
+PASS Two automatic P2P connections; live revocation and rejected reuse.
+PASS Portable access fixture completed. Synthetic hosts and isolated files only.
+
+
+LOG v12-legacy-files.txt
+PASS Windows paged directory listing from the portable viewer.
+PASS Download, empty file, SHA-256 and non-overwrite collision handling.
+PASS Verified upload 1 while video remains connected.
+PASS Verified upload 2 while video remains connected.
+PASS Portable recursive upload/download with Windows: nested/empty folders, Unicode, root collisions and per-file SHA-256.
+PASS File worker joins and video continues after transfers.
+PASS Independent Windows filesystem hashes match both uploaded copies.
+PASS Portable access fixture completed. Synthetic hosts and isolated files only.
+
+
+LOG v12-rust-files.txt
+PASS Windows viewer / portable host: scoped root, traversal denial, SHA-256 upload/download, folders, collisions and video.
+PASS Independent host filesystem confirms uploaded bytes.
+
+
+LOG v12-rust-permanent.txt
+PASS Windows viewer: portable-host pairing, two P2P connections, live revocation and rejected key reuse.
+PASS Windows paired with portable host; durable one-time code, approved connections and revocation.
+PASS Bidirectional product interoperability; synthetic capture and isolated credentials only.

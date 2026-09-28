@@ -1,0 +1,32 @@
+Lume Remote 0.8.0 development - filtered assertions only.
+
+android-v08-container.txt
+PASS 869 crate notice files and 13 Rust distribution notice files match their recorded hashes.
+PASS Packaged lib/arm64-v8a/libc++_shared.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/libdatachannel.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/liblume_bridge.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/arm64-v8a/liblume_jni.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/libc++_shared.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/libdatachannel.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/liblume_bridge.so: matching architecture and 16 KiB LOAD alignment.
+PASS Packaged lib/x86_64/liblume_jni.so: matching architecture and 16 KiB LOAD alignment.
+PASS App DEX excludes the separate test instrumentation and Kotlin runtime.
+PASS APK entries, CRCs, ARM64/x86-64 libraries and bundled notice inventory.
+
+android-v08-alignment.txt
+PASS Final Android APK: ZIP and 16 KiB shared-library alignment.
+
+android-v08-signature.txt
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Number of signers: 1
+
+android-v08-final.txt
+BUILD SUCCESSFUL in 5m 7s
+
+Lint: 0 errors, 9 warnings.
+No instrumented test, physical-device or Android WAN execution has run.

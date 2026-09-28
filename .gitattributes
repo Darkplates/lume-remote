@@ -1,0 +1,14 @@
+* text=auto
+*.sh text eol=lf
+*.command text eol=lf
+gradlew text eol=lf
+*.rs text eol=lf
+*.java text eol=lf
+*.swift text eol=lf
+*.md text eol=lf
+*.yml text eol=lf
+# Upstream notices have byte-specific provenance hashes. Never normalize them.
+third-party/** -text
+*.png -text
+*.ico -text
+*.jar -text

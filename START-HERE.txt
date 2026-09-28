@@ -1,0 +1,72 @@
+LUME REMOTE 0.12.0 WINDOWS DEVELOPMENT CHECKPOINT
+Public source preview. Stable-release acceptance remains open.
+This package runs the native Windows implementation; portable source has separate limits.
+
+GET CONNECTED
+1. Extract the whole ZIP on both PCs. Open START.bat.
+2. On the target PC: Enable access, approve Windows setup, Pair another PC.
+3. On the controlling PC: Add a computer, paste that one-time code.
+4. Double-click your saved computer.
+
+THE WINDOWS
+Close the main window to hide it in the Windows notification area.
+Remote windows stay open. Double-click the tray icon to return.
+Open several different PCs at once; each has its own session window.
+Disconnect ends only that window. The tray menu can exit all viewers.
+
+QUALITY
+Source: original resolution, display-refresh target and exact pixels.
+Smooth video: up to 1080p/60 FPS target using H.264.
+Save data: up to 360p/10 FPS using JPEG.
+Custom settings: independent resolution, FPS, compression and bitrate.
+More > Connection details shows diagnostics.
+FPS targets are not guarantees. A still screen sends fewer updates.
+
+FILES AND CLIPBOARD
+In a session: Files > open a remote folder > Send files / Receive selected.
+Select multiple files or drag local files into the remote list.
+Progress and Cancel transfer apply only to files; the desktop stays connected.
+Existing files are preserved. Send folder copies nested and empty folders.
+Cancellation keeps completed items and removes the active partial. After a network
+interruption, retry the same paired file/destination to reuse its verified prefix.
+Folder/batch jobs do not automatically resume. Guests cannot resume.
+More > Send clipboard text copies text after the host confirms success.
+Paired access does not need another clipboard approval; guest access does.
+More > Get remote clipboard text reads the other PC's text.
+More > Sync clipboard text opts a paired session into new text changes.
+Sync stops at disconnect and pauses when both clipboards change.
+
+SESSION TOOLS
+More > Switch display changes the remote monitor without reconnecting.
+More > Chat opens session-only messages.
+More > Draw on remote screen temporarily replaces control with drawing.
+More > System audio enables remote application sound.
+More > Start voice call asks both users to allow their microphones.
+The host can stop its microphone from the visible call window.
+More > Start recording (MP4) offers FPS and optional system audio. REC stays visible.
+Files > Print PDF locally downloads, previews and submits a PDF to your printer.
+Settings > Network folders adds explicit owner-approved network roots.
+More > Remote PC offers confirmed lock, restart and shutdown for paired PCs.
+Hardware audio and native power actions have not yet been commissioned.
+Separate Linux/macOS/mobile projects are in the source ZIP. They are partial
+implementations; read ports/README.md for platform roles and build instructions.
+Physical microphone, SMB and printer acceptance is still pending.
+macOS and iOS have not been compiled or tested because no Apple device is available.
+The projects and build scripts are prepared with that explicit limitation.
+No Opus review has run yet.
+
+UPDATE
+Extract a new copy into a separate folder. Close the old viewer and use the
+new copy on the controlling PC. Saved PCs are remembered.
+On an installed target: run UPDATE-HOST.bat from the new copy, or use
+Settings > Update installed host. Both PCs need 0.6 for resume, network folders and voice.
+Approve Windows setup. It restarts the host and retains your pairings.
+If the old installed dashboard is hidden, exit it from its tray menu first.
+
+RECOVERY
+Saved sessions reconnect automatically after a network failure, until you
+disconnect or close that session window. Guest invitations still require
+fresh approval. No commercial duration cap is implemented.
+No app can retain a live connection while a PC or its network has no power.
+
+Read README.md for build instructions, network dependencies and preview scope.

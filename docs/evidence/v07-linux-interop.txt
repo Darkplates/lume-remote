@@ -1,0 +1,8 @@
+Windows .NET host to a real Linux ELF viewer in an isolated VM, using a synthetic view-only desktop.
+Both confirmation runs passed. An earlier run timed out during approval under the test workload; its root cause is unproven.
+The temporary invitation was kept private; TLS certificate pin and secret were preserved.
+
+PASS Rust viewer received exact Windows source pixels: 640x360, generation 1. Synthetic capture only.
+PASS Live JPEG quality switch delivered the requested 320x180 frame.
+PASS Restoring Source recovered original dimensions and exact pixels without reconnecting.
+PASS Windows host to Linux viewer through the isolated VM network. Synthetic pixels only; not a physical WAN test.

@@ -1,0 +1,18 @@
+
+name                                           status   required
+----                                           ------   --------
+Windows regression checks                      passed       True
+Two physical PCs on different networks         pending      True
+Verified interrupted-transfer resume           passed       True
+Owner-configured network-share roots           pending      True
+Microphone, two-way voice and MP4 audio tracks pending      True
+Remote printing                                pending      True
+Linux native implementation and tests          pending      True
+macOS native implementation/build              untested    False
+macOS execution tests                          untested    False
+Mobile platform roles and implementations      pending      True
+Owner ACLs, lock/login/reboot, audio and wake  pending      True
+Independent code/security review               pending      True
+Relay/updates/distribution trust               pending      True
+
+

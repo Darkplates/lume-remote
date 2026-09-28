@@ -1,0 +1,53 @@
+LUME REMOTE 0.9 - NATIVE LINUX AND MEDIA EVIDENCE
+Date: 2026-09-28. Owned Alpine 3.24.2 x86-64/musl QEMU TCG VM only.
+
+FINAL OPTIMIZED DESKTOP
+The tested app was the optimized, stripped release build, labelled 0.9.
+The executable/library SHA-256 values copied back from the VM were compared
+with the actual package inputs and matched before packaging.
+
+X11
+scripts/test-linux.sh, fresh isolated Xvfb display and new screenshot path:
+  native_desktop_window_renders_on_owned_x11: passed.
+  x11_owned_capture_input_release_and_clipboard: passed.
+  2 passed, 0 failed; 23.51 seconds.
+The unrelated audio test was filtered from this display-only suite and executed
+separately against the private PulseAudio null sink below.
+Screenshot: docs/images/linux-desktop-v09.png, visually inspected.
+An earlier repeat refused an existing screenshot path to preserve evidence;
+that run was not counted as a pass. The final run used a fresh path.
+
+PERMANENT HOST
+scripts/test-linux-host-media.sh, owned-laboratory opt-in, private XDG paths,
+private DBus session, private test keyring and actual final host executable:
+  protected_keyring_startup_daemon_and_disable: passed; 3.55 seconds.
+  Secret Service key persistence, encrypted settings, mode 0600, XDG autostart,
+  independent user daemon, duplicate exclusion and owner disable/exit checked.
+This is graphical-session behavior, not physical sign-in/reboot acceptance.
+
+AUDIO
+  null_sink_capture_playback_and_cleanup: passed; 0.38 seconds.
+Actual parec/pacat processes captured the generated nonzero signal, played it
+through an isolated virtual sink and joined their child workers.
+No physical microphone, speaker or user's sound-server settings were touched.
+
+SHARED MEDIA
+Synthetic TLS fixture checked local host voice consent, explicit playback,
+denied/stale microphone generations, rapid media toggles, recording and joined
+session cleanup. Independent FFmpeg decoded the generated MKV:
+  43 video frames; 32 distinct sampled colours; 320 x 180; duration 3.16 seconds.
+  50,880 samples per stereo channel at 48 kHz.
+  RMS left/right: 0.258958 / 0.258944.
+  Intended/unintended stereo tone ratios: 86.575 / 90.096.
+Physical audio devices tested: false.
+Windows/Rust audio packet cross-decoding matched all 19,200 PCM bytes in each
+direction, including generation and compressed framing checks.
+
+LIMITS
+No physical desktop/GPU, another distribution, Wayland control, hardware audio,
+separate-PC WAN, secure desktop, reboot or wake evidence is inferred from this VM.
+Portable recording is MJPEG/PCM MKV with at most 30 sampled images per second;
+microphones are excluded. It is not Windows MP4/source-FPS parity.
+TESTED LINUX INPUT SHA256
+d569157a03dfe6e031041aedf8179f8474c8ac2e1ab201161979e7fe0351dea1  lume-desktop
+3abdcfb34784e6d75fa854ba5b7230d731c6707393a5238afe7614368fa4fe29  libdatachannel.so

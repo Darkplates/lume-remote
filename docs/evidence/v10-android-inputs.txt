@@ -1,0 +1,9 @@
+PASS arm64-v8a/liblume_bridge.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS arm64-v8a/liblume_jni.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS arm64-v8a/libdatachannel.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS arm64-v8a/libc++_shared.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS x86_64/liblume_bridge.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS x86_64/liblume_jni.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS x86_64/libdatachannel.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS x86_64/libc++_shared.so: compiled input = merged; allocated sections = APK; stripped output = APK
+PASS eight native library identities. Execution on Android remains unverified.

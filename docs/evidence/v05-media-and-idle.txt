@@ -1,0 +1,9 @@
+Independent decoder: installed FFmpeg via imageio_ffmpeg (test only).
+Synthetic MP4: 640 x 360; 34 decoded frames; duration 1.13 seconds.
+Top RGB (254, 164, 0); bottom RGB (0, 0, 139); expected orientation confirmed.
+Native audio capture/playback: NOT TESTED.
+Native lock/restart/shutdown: NOT EXECUTED; harmless callback fixtures only.
+Idle soak: static synthetic desktop, local native P2P + pinned TLS.
+Viewer minimized; no UI message pump; alive at 30 seconds and 45 seconds.
+Final soak duration: 45.0 seconds; PASS.
+Two physical PCs/WAN, installed service changes, physical wake and macOS: NOT TESTED.

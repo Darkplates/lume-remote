@@ -1,0 +1,5 @@
+PASS All four immutable 0.9 artifacts match their release hashes.
+899239a0f3576d32ca94e2375ee812064a02bdbbb7d8bad376251736146b209f  LumeRemote-0.9.0-dev-win64.zip
+2a59423dde76d647fb2249844b45d0cf94a8c46307314fc419694f8869ea9138  LumeRemote-0.9.0-dev-source.zip
+4d415806dc78a6a36584c7f0f540167014170f93ab367cc8146c83721faa6ec8  LumeRemote-0.9.0-dev-linux-alpine-x64.tar.gz
+06e89a2a661a7214f750e9d0b5430e13662c2e2467f0e1d4711e4ea81f0fd62d  LumeRemote-0.9.0-dev-android.apk

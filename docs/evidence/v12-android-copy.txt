@@ -1,0 +1,4 @@
+PASS Streaming copy preserves all bytes across buffer boundaries.
+PASS Pre-cancelled copy performs no source read or destination write.
+PASS Mid-copy cancellation stops subsequent writes and preserves the completed prefix.
+BOUNDARY JVM stream behaviour only; Android activity, SAF and device execution are not tested.

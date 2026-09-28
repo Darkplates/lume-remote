@@ -1,0 +1,6 @@
+LOG v12-notices.txt
+PASS 496 locked packages and 874 notice/declaration hashes verified.
+{"collected": 493, "collected_later_upstream": 2, "upstream_review_required": 1}
+EXPLICIT EXCEPTION dispatch 0.2.0: upstream_review_required
+EXPLICIT EXCEPTION drm-fourcc 2.2.0: collected_later_upstream
+EXPLICIT EXCEPTION hexf-parse 0.2.1: collected_later_upstream

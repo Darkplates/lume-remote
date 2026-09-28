@@ -1,0 +1,4 @@
+PASS Protected settings and one-time pairing code
+PAIRED_FLOW: one-time enrollment, two automatically negotiated encrypted synthetic desktop sessions, live revocation. No real desktop captured.
+PASS Pair once, reconnect automatically, then revoke the live session
+RESULT: 2 passed, 0 failed.

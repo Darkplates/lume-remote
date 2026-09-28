@@ -1,0 +1,6 @@
+PASS bash syntax: build-apple.sh, apple-preflight.sh, BUILD-APPLE.command
+PASS Python syntax: verify-apple.py
+PASS Windows preflight exits 2 before creating Apple build output
+UNTESTED macOS and iOS: no Apple device or Xcode environment available
+Owner explicitly accepts source and build preparation with this visible limitation.
+No Apple artifact was compiled, executed or packaged.

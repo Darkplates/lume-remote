@@ -1,0 +1,103 @@
+{
+  "schema": 1,
+  "version": "0.12.0-dev",
+  "public_release_ready": false,
+  "gates": [
+    {
+      "id": "windows_automated",
+      "name": "Windows regression checks",
+      "status": "passed",
+      "required": true,
+      "evidence": "0.12: 93 safe Windows checks and 48 Rust core + 2 C ABI checks passed, including native P2P. Paired resume operations, annotation clear/stale-generation rejection, legacy recursive files and permanent access interoperated between Windows and Rust. These use synthetic capture and isolated credentials, not physical WAN acceptance."
+    },
+    {
+      "id": "windows_wan",
+      "name": "Two physical PCs on different networks",
+      "status": "pending",
+      "required": true,
+      "evidence": "Installed host remains 0.3; update/owner acceptance are separate."
+    },
+    {
+      "id": "files_resume",
+      "name": "Verified interrupted-transfer resume",
+      "status": "passed",
+      "required": true,
+      "evidence": "Windows native resume checks and portable interrupted upload/download tests passed. Portable tests verify that only the authenticated suffix is sent, with wrong-key isolation, locks, corrupt-prefix cancellation, digest binding and explicit-cancel cleanup. Paired single-file retry only; folder jobs do not resume."
+    },
+    {
+      "id": "network_shares",
+      "name": "Owner-configured network-share roots",
+      "status": "pending",
+      "required": true,
+      "evidence": "Implemented owner-configured roots and allowlist/discovery checks; actual SMB endpoint not tested."
+    },
+    {
+      "id": "voice_recording",
+      "name": "Microphone, two-way voice and MP4 audio tracks",
+      "status": "pending",
+      "required": true,
+      "evidence": "Windows MP4 and portable MKV are implemented. Portable synthetic TLS consent/decline/generation and rapid-toggle tests passed; independent FFmpeg video/stereo decode and actual Linux null-sink playback/capture passed. Physical microphones/speakers and mobile device execution remain unverified."
+    },
+    {
+      "id": "printing",
+      "name": "Remote printing",
+      "status": "pending",
+      "required": true,
+      "evidence": "Windows PDF forwarding/rendering and Microsoft Print to PDF spool have prior evidence. 0.12 adds bounded portable snapshots, Linux CUPS selection, Android PrintManager and Apple source adapters. Snapshot and printer-name tests passed; the new adapters have no physical printer/device acceptance."
+    },
+    {
+      "id": "linux",
+      "name": "Linux native implementation and tests",
+      "status": "pending",
+      "required": true,
+      "evidence": "0.12 Alpine X11 VM: 50 core + 2 C ABI, 1 printer-name parser, 2 native X11, 1 protected keyring/daemon lifecycle and 1 virtual PCM test passed. Optimized native app executed. Physical desktop, WAN, other distributions, CUPS/physical printer and Wayland control remain unverified/unavailable."
+    },
+    {
+      "id": "macos",
+      "name": "macOS native implementation/build",
+      "status": "untested",
+      "required": false,
+      "evidence": "Owner explicitly accepts Apple preparation without compilation or execution because no Apple device is available. macOS/iOS source, read-only preflight, universal build recipe and bundle checks are prepared. README states the unverified status. This is an exception, not a passed build."
+    },
+    {
+      "id": "macos_execution",
+      "name": "macOS execution tests",
+      "status": "untested",
+      "required": false,
+      "evidence": "Owner explicitly confirmed no Apple devices are available; macOS and iOS/iPadOS were not compiled or tested. Accepted preparation-only exception."
+    },
+    {
+      "id": "mobile",
+      "name": "Mobile platform roles and implementations",
+      "status": "pending",
+      "required": true,
+      "evidence": "0.12 Android ARM64/x86-64 native libraries, app and separate instrumentation APK compiled. Lint: zero errors, 13 warnings. PDF print and annotation adapters compiled. Signature, 16 KiB alignment and all eight native library identities passed. Device execution remains unverified. macOS/iOS remain uncompiled/untested because no Apple devices are available. Mobile hosting is not implemented."
+    },
+    {
+      "id": "host_commissioning",
+      "name": "Owner ACLs, lock/login/reboot, audio and wake",
+      "status": "pending",
+      "required": true,
+      "evidence": "Synthetic tests do not establish physical/installed-service behaviour."
+    },
+    {
+      "id": "review",
+      "name": "Independent code/security review",
+      "status": "pending",
+      "required": true,
+      "evidence": "AGY CLI Gemini 3.8 Flash High with effort high completed a static review of 0.11 changes and a focused re-review. Two confirmed P3 findings were fixed; no critical finding was identified within reviewed source. Broader security/device acceptance remains pending. This is not a security certification or an Opus audit. See docs/AGY-11-REVIEW.md."
+    },
+    {
+      "id": "infrastructure",
+      "name": "Relay/updates/distribution trust",
+      "status": "pending",
+      "required": true,
+      "evidence": "No managed TURN fleet, signed auto-update channel or publisher signing."
+    }
+  ],
+  "source_publication": {
+    "authorized": true,
+    "scope": "Public development source preview. Does not waive production acceptance gates.",
+    "requested_on": "2026-09-28"
+  }
+}

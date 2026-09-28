@@ -1,0 +1,2 @@
+PASS Rust viewer / Windows host: display list, negative origin, source pixels, epoch changes, missing-display recovery. Synthetic only.
+PASS Windows viewer / Rust host: display list, negative origin, source pixels, epoch changes, missing-display recovery. Synthetic only.

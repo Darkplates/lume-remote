@@ -1,0 +1,43 @@
+LOG v12-linux-native.txt
+5390ba2aab41444c87f822df8143c2110f5ae40716290f72cecf2a85cfca4bae  lume-desktop
+
+running 2 tests
+test native_desktop_window_renders_on_owned_x11 ... PASS Native Linux desktop window, brand and both action sections rendered on consecutive captures. Owned Xvfb display only.
+ok
+test x11_owned_capture_input_release_and_clipboard ... PASS Native Linux X11 capture, owned keyboard/mouse events, held-input release and bidirectional Unicode clipboard. Isolated Xvfb only.
+ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 1 filtered out; finished in 47.09s
+
+
+running 1 test
+test host_runtime::tests::protected_keyring_startup_daemon_and_disable ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 4.32s
+
+
+running 1 test
+test audio::tests::null_sink_capture_playback_and_cleanup ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 1.31s
+
+PASS Isolated Linux keyring, sign-in configuration, real daemon, duplicate exclusion, disable, virtual PCM playback/capture and child cleanup.
+discover_other_daemon: 1
+
+
+LOG v12-linux-final-ui.txt
+47d8f1b65e78c2e0c080e00fcff3eae9df46e868599f2cdfe9273c4b7328fe85  lume-desktop
+
+running 1 test
+test native_desktop_window_renders_on_owned_x11 ... PASS Native Linux desktop window, brand and both action sections rendered on consecutive captures. Owned Xvfb display only.
+ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 2 filtered out; finished in 26.39s
+
+
+
+LOG v12-linux-package.txt
+PASS 909 release files and manifest; no runtime settings/logs included.
+SHA256 610336578db54b74e801c36083921dd2d5cad3a3b57a908bef3ab8122b9f7ca1
+BYTES 8078671
+BOUNDARY Alpine/musl x86-64 development only; physical desktops/WAN unverified.

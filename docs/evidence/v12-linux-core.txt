@@ -1,0 +1,70 @@
+LOG v12-linux-core-execution.txt
+
+running 50 tests
+test annotations::tests::wire_roundtrip_and_bounds ... ok
+test files::jobs::tests::folder_commands_require_capability_and_keep_existing_destinations ... ok
+test files::jobs::tests::cancel_and_late_folder_reply_leave_followup_transfer_usable ... ok
+test files::jobs::tests::folder_upload_rejects_links_and_special_files ... ok
+test files::jobs::tests::forged_directory_receipts_never_redirect_uploads ... ok
+test files::resume::tests::cancel_removes_partial_and_legacy_ack_cannot_skip_prefix ... ok
+test files::resume::tests::checkpoint_identity_lock_and_digest_are_enforced ... ok
+test files::jobs::tests::recursive_folders_roundtrip_pages_empty_directories_and_collisions ... ok
+test files::resume::tests::corrupt_prefix_is_cancelled_and_retry_starts_clean ... ok
+test files::tests::cancel_worker_with_full_outbox_does_not_hang ... ok
+test files::tests::incoming_hash_collision_and_cleanup ... ok
+test files::tests::incoming_offset_and_premature_sender_completion_are_rejected ... ok
+test files::tests::names_and_explicit_destinations_reject_traversal ... ok
+test files::tests::scoped_host_denies_traversal_and_unsolicited_viewer_writes ... ok
+test files::tests::shared_symlink_cannot_escape_selected_root ... ok
+test frame::tests::exact_portable_source ... ok
+test frame::tests::jpeg_geometry ... ok
+test frame::tests::malformed_dimensions_and_payload ... ok
+test host_store::tests::protected_host_pairing_revocation_and_tampering ... ok
+test media::tests::pcm_round_trip_and_strict_expansion ... ok
+test media::tests::permission_generation_and_bounded_playback ... ok
+test monitors::tests::display_metadata_rejects_ambiguous_or_unbounded_layouts ... ok
+test monitors::tests::tls_display_switch_releases_keys_and_rejects_old_input ... ok
+test paired::tests::encrypted_signaling_rejects_tampering_routing_and_wrong_key ... ok
+test paired::tests::saved_codes_validate_before_any_network_access ... ok
+test peer::tests::cancelled_and_unopened_peers_retire_callback_contexts ... ok
+test peer::tests::native_peer_stream ... ok
+test permanent::tests::replay_window_is_bounded_and_identity_scoped ... ok
+test printing::tests::snapshot_is_private_independent_and_rejects_non_pdf ... ok
+test recording::tests::matroska_sizes_and_preservation ... ok
+test recording::tests::source_fps_recording_distinct_frames_epoch_stop_and_no_overwrite ... ok
+test recovery::tests::codec_eof_is_terminal_while_transport_eof_retries ... ok
+test session::tests::cancelling_a_partial_tls_handshake_joins_promptly ... ok
+test session::tests::clipboard_busy_retry_and_oversize_keep_video_connected ... ok
+test session::tests::input_bounds ... ok
+test session::tests::native_p2p_tls_images ... ok
+test session::tests::pin_failure_never_reaches_approval ... ok
+test session::tests::saved_recovery_cancel_and_bad_pin_are_terminal ... ok
+test session::tests::saved_recovery_uses_fresh_identity_and_frame_generation ... ok
+test session::tests::secret_failure_and_decline_never_capture ... ok
+test session::tests::stalled_presentation_does_not_block_frames_or_acknowledgements ... ok
+test session::tests::tls_consent_exact_frames_and_disconnect ... ok
+test signal::tests::signed_exchange ... ok
+test tls::tests::exact_pin ... ok
+test files::resume::tests::interrupted_upload_and_download_send_only_the_verified_suffix ... ok
+test wire::tests::fragmented_packets ... ok
+test wire::tests::invitations_and_secrets ... ok
+test wire::tests::malformed_and_bounded ... ok
+test wire::tests::quality_targets ... ok
+test vault::tests::vault_round_trip_wrong_password_tamper_and_remove has been running for over 60 seconds
+test vault::tests::vault_round_trip_wrong_password_tamper_and_remove ... ok
+
+test result: ok. 50 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 147.19s
+
+
+running 2 tests
+test tests::ffi_rejects_buffers_and_stale_handles ... ok
+test tests::ffi_real_tls_consent_frame_copy_and_close ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 1.84s
+
+
+running 1 test
+test printing::tests::printer_names_cannot_become_options_or_shell_commands ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 3 filtered out; finished in 0.07s
+

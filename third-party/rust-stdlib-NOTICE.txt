@@ -1,0 +1,32 @@
+RUST STANDARD LIBRARY - DISTRIBUTION NOTICES
+The portable binaries statically include Rust standard-library code. Cargo.lock
+crate notices alone do not describe that code. The accompanying copyright HTML
+is copied verbatim with a .txt suffix for the release allowlist. Its references
+to licenses/<name>.txt correspond to rust-license-<name>.txt in this directory.
+The full upstream declarations are retained, including target-only entries;
+collection is not an independent licensing audit or a claim that every entry is
+linked into every application.
+
+Compiler distribution used for this collection:
+rustc 1.98.1 (48a229cea 2026-09-01)
+binary: rustc
+commit-hash: 48a229ceaefd4985c50990b14116b6d856af0985
+commit-date: 2026-09-01
+host: x86_64-pc-windows-msvc
+release: 1.98.1
+LLVM version: 22.1.8
+
+SHA-256 of copied distribution files:
+68129500b616d5838629e68f55ff3aed5e096dacf60ce9eb41bbe599a563afa6  rust-stdlib-COPYRIGHT.html.txt  (Rust distribution: COPYRIGHT-library.html)
+074e6e32c86a4c0ef8b3ed25b721ca23aca83df277cd88106ef7177c354615ff  rust-license-Apache-2.0.txt  (Rust distribution: licenses/Apache-2.0.txt)
+f32fb3b417a194167cfad068223fc975ba96c5960513a10f66a3c28720aec1df  rust-license-BSD-2-Clause.txt  (Rust distribution: licenses/BSD-2-Clause.txt)
+23ee78c8bae49cf08ea2f0c84945c66b987ebe4520881fb51b3dad4fb43d07c2  rust-license-CC-BY-SA-4.0.txt  (Rust distribution: licenses/CC-BY-SA-4.0.txt)
+a3966c9410ef94a1efbfa9ec04e9c1994026a70623fbf0885ce36737bfba3b54  rust-license-GCC-exception-3.1.txt  (Rust distribution: licenses/GCC-exception-3.1.txt)
+54b212ba1f97f6948fa5486239ab505dd820b02e50cbfd296b4062c8609a70af  rust-license-GPL-2.0-only.txt  (Rust distribution: licenses/GPL-2.0-only.txt)
+05315fce6c35f79b8a35454828995fa26336f235895ac64557abc028f4ffcea2  rust-license-GPL-3.0-or-later.txt  (Rust distribution: licenses/GPL-3.0-or-later.txt)
+0ff61769b238634e042ab759dddfd104a8e69d091e3600ae3410e401a6164381  rust-license-ISC.txt  (Rust distribution: licenses/ISC.txt)
+e34c58338bd89d43e709e226610d8f32b3e3c47f4ad9a99a8dc1d4ac7842488e  rust-license-LLVM-exception.txt  (Rust distribution: licenses/LLVM-exception.txt)
+b85dcd3e453d05982552c52b5fc9e0bdd6d23c6f8e844b984a88af32570b0cc0  rust-license-MIT.txt  (Rust distribution: licenses/MIT.txt)
+39cb0234065c92b9e6cee3830cbb52b1aa289aa8fe9ba2e66730fec5cf05c630  rust-license-NCSA.txt  (Rust distribution: licenses/NCSA.txt)
+8eea8287e5876b539670cadb82e99f9a7afddec6f6730811be1daf25d2e9bcfd  rust-license-OFL-1.1.txt  (Rust distribution: licenses/OFL-1.1.txt)
+f5062c9a188d81dfe66b56db4182dcf9e4b17c0d9b0d311a8e20b3a1b075c443  rust-license-Unicode-3.0.txt  (Rust distribution: licenses/Unicode-3.0.txt)

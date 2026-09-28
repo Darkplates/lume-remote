@@ -1,0 +1,29 @@
+name: Bug report
+description: Report a reproducible problem without sharing private access details.
+body:
+  - type: markdown
+    attributes:
+      value: For suspected security vulnerabilities, follow SECURITY.md. Never include pairing codes, invitations, keys, SDP, private desktop screenshots, or unsanitized logs.
+  - type: input
+    id: versions
+    attributes:
+      label: Lume version or commit on both computers
+    validations:
+      required: true
+  - type: input
+    id: platforms
+    attributes:
+      label: Operating systems and hardware
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps, expected result, and actual result
+    validations:
+      required: true
+  - type: textarea
+    id: conditions
+    attributes:
+      label: Connection and quality settings
+      description: Same network or different networks? Guest or paired? Static screen or moving content? Include sanitized error text only.

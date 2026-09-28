@@ -1,0 +1,112 @@
+LUME REMOTE - THIRD-PARTY NOTICES
+
+Lume's original application source remains under LICENSE.txt (MIT).
+The bundled datachannel.dll contains the following third-party components.
+It was compiled from the pinned, unmodified source revisions below, using
+native/peer/CMakeLists.txt. Build configuration enables MBEDTLS_SSL_DTLS_SRTP,
+disables WebSockets/media/examples/tests, and statically links the C++ runtime
+and dependencies. No browser, Electron or separate runtime installation is used.
+
+libdatachannel v0.24.6 - Mozilla Public License 2.0
+Copyright Paul-Louis Ageneau and contributors.
+Source: https://github.com/paullouisageneau/libdatachannel
+Revision: 6b1e2e620f1e37f0eafeee702eaea0043cb305fd
+License: third-party/libdatachannel-MPL-2.0.txt
+
+libjuice - Mozilla Public License 2.0
+Copyright Paul-Louis Ageneau and contributors.
+Source: https://github.com/paullouisageneau/libjuice
+Revision: b89c792e3612faf2f12cf35bcc56857313a06be3
+License: third-party/libjuice-MPL-2.0.txt
+
+usrsctp - BSD license
+Copyright Randall Stewart, Michael Tuexen and contributors.
+Source: https://github.com/paullouisageneau/usrsctp
+Revision: fec583d54493f879d2ae44a743423bf8a04371ab
+License and copyright notice: third-party/usrsctp-BSD.txt
+
+plog - MIT license
+Copyright (c) 2022 Sergey Podobry.
+Source: https://github.com/SergiusTheBest/plog
+Revision: 94899e0b926ac1b0f4750bfbd495167b4a6ae9ef
+License and copyright notice: third-party/plog-MIT.txt
+
+Mbed TLS 3.6.7 - used under the Apache License 2.0 option
+Copyright The Mbed TLS Contributors.
+Source: https://github.com/Mbed-TLS/mbedtls
+Revision: 068ff080b369adfac81509f9b57b2afabaf82dc5
+License: third-party/mbedtls-LICENSE.txt (upstream dual-license text)
+Its included Everest and p256-m components use the Apache 2.0 option.
+Notices: third-party/everest-NOTICE.txt and third-party/p256-m-NOTICE.txt.
+
+SOURCE AVAILABILITY AND REBUILD
+The complete source for each component is available at the repository and
+exact revision above, including the pinned recursive submodules. Run
+BUILD-P2P.bat to retrieve and validate those revisions and rebuild the DLL.
+This developer-only rebuild requires Git, Python, Visual Studio C++ Build
+Tools and a Windows SDK. It downloads a SHA-256-verified portable CMake into
+the local build folder; it does not install a system runtime or service.
+
+PUBLIC STUN SERVICE
+The P2P mode uses stun:stun.cloudflare.com:3478 for address discovery.
+STUN carries connectivity metadata, not desktop frames or input. No TURN
+credentials or automatic relayed fallback are included. See:
+https://developers.cloudflare.com/realtime/turn/
+
+PUBLIC SIGNALING SERVICE (0.3)
+Saved access uses wss://0.peerjs.com/peerjs for authenticated encrypted
+coordination. Desktop data remains direct P2P. The provider sees random IDs,
+network addresses, timing and encrypted envelope sizes. Availability and
+provider policy are external dependencies, without a Lume service guarantee.
+No PeerJS browser library is bundled. The native protocol adapter is original
+Lume C# code. Documentation: https://peerjs.com/client/faq and
+https://peerjs.com/server/cloud
+
+WINDOWS MEDIA FOUNDATION
+LumeVideo.dll is an original bridge to Windows-provided Media Foundation APIs.
+Windows supplies the H.264 encoder/decoder implementations; Lume does not bundle
+an additional H.264 codec runtime. Encoder availability depends on Windows,
+hardware and drivers. File size or an FPS target does not establish performance.
+
+BRAND ASSETS
+assets/brand-source.png was generated for Lume with OpenAI image generation.
+assets/brand.png and assets/lume.ico are resized/container exports of that source.
+No competitor logo or UI screenshot is used in the brand. The project license
+covers the distributed project assets to the extent rights are held.
+
+PORTABLE PLATFORM SOURCE (0.8 DEVELOPMENT)
+ports/Cargo.lock pins the Rust workspace dependency versions/checksums. When
+portable binaries are packaged, third-party/portable/inventory.json records
+the upstream license declarations and copied notice files from the corresponding
+downloaded crates. Run scripts/collect-portable-notices.py after fetching the
+locked workspace. Its optional --fetch-upstream mode reads missing root notices
+from the exact GitHub commit recorded in the checksum-verified published crate.
+Font notices are retained separately. Every copied notice has a checksum and
+crate-relative path or exact upstream URL. Missing notices remain explicit gaps;
+the generated inventory is not an independent licence or security review.
+
+Android packages also contain the Android NDK libc++ shared runtime. Its upstream
+Apache 2.0 with LLVM exception notice must accompany a distributed APK. Android
+and Apple applications link platform APIs supplied by their operating systems.
+The Windows no-NuGet/no-extra-runtime requirement is unchanged by these separate
+native platform projects.
+
+RUST STANDARD LIBRARY
+Portable binaries also link the Rust standard library, which is outside
+Cargo.lock. third-party/rust-stdlib-NOTICE.txt records the exact compiler
+distribution and hashes of its verbatim standard-library copyright declarations
+and accompanying license texts. Refresh them with scripts/collect-rust-notices.py
+when changing the Rust compiler used for a distributed build.
+
+GRADLE WRAPPER
+The Android source project includes the Gradle 9.3.1 wrapper JAR and launchers.
+Upstream LICENSE and NOTICE are copied in third-party/Gradle-LICENSE.txt and
+third-party/Gradle-NOTICE.txt. The wrapper verifies the official distribution
+SHA-256 before use. Gradle itself is a build tool, not an application runtime.
+
+0.12 NOTICE PROVENANCE REVIEW
+493 locked packages have exact-package/commit notices; 2 have explicitly marked
+later-upstream license texts. One Apple-only dispatch 0.2.0 notice gap remains;
+the exact published MIT declaration is retained without an invented copyright.
+See docs/LICENSE-PROVENANCE.md. Verify recorded bytes with scripts/verify-notices.py.
+These counts describe provenance, not independent legal certification.

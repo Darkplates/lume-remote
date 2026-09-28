@@ -1,0 +1,173 @@
+{
+  "model": "gemini-3.8-flash-high",
+  "effort_requested": "high",
+  "mode_requested": "plan",
+  "permission_mode": "request-review",
+  "status": "SUCCESS",
+  "duration_seconds": 605.7734667,
+  "successful_files_read": [
+    {
+      "path": "AGENTS.md",
+      "sha256_at_collection": "6c6db0ab2c891683a3223c3cd3092d3847b72e3730823b872830dd0dd9e417fc"
+    },
+    {
+      "path": "README.md",
+      "sha256_at_collection": "1c4dcf272628194371c0f6b81a82fd219b003baf917b770675f9b60d3ed5215b"
+    },
+    {
+      "path": "docs/FEATURES.md",
+      "sha256_at_collection": "f0a042f1c7884a7148b48814850e103d430a0975d6012ee7725b493e692df3f6"
+    },
+    {
+      "path": "docs/PORTABLE-11-WORK.md",
+      "sha256_at_collection": "4376994a58d060b9b08346263a464a97d91441f5abef85d006826dc07a3bb6a7"
+    },
+    {
+      "path": "ports/Cargo.toml",
+      "sha256_at_collection": "4aefa8319f4a91f9ebb362dfae746ad0543c93d13f586a71bc6b7a51081169c7"
+    },
+    {
+      "path": "ports/README.md",
+      "sha256_at_collection": "387383fa57bcd77d892ac62b5b871634b1cd84b88b36bf18f41e1249f28f0b13"
+    },
+    {
+      "path": "ports/android/app/build.gradle",
+      "sha256_at_collection": "9149502c73b30c03a47dfb8306b4a1c45015fd22180f34839fb74f309273f2c4"
+    },
+    {
+      "path": "ports/android/app/src/androidTest/java/com/lume/remote/ContractInstrumentation.java",
+      "sha256_at_collection": "873858513452c4b6fd0d2ee1d6d05c7bf78023c879f6911f035f12a5b1f0e2ca"
+    },
+    {
+      "path": "ports/android/app/src/main/AndroidManifest.xml",
+      "sha256_at_collection": "6a2ba567294064ad21ad946468ab1e3775fe16339b9ccc60ef014836d993bdba"
+    },
+    {
+      "path": "ports/android/app/src/main/java/com/lume/remote/FilesDialog.java",
+      "sha256_at_collection": "68d348ffeea7b7da72f0a4b6e3951dccc279bab0fab49c984b6d956ada3a3e15"
+    },
+    {
+      "path": "ports/android/app/src/main/java/com/lume/remote/FolderDocuments.java",
+      "sha256_at_collection": "a4947155d19f66e4e524531298bf936972f7fbf71850ddd97ac608c718856354"
+    },
+    {
+      "path": "ports/android/app/src/main/java/com/lume/remote/MainActivity.java",
+      "sha256_at_collection": "dd7e2e7f04568ebf99bd7d117d61f5841883ba9e821273e2d964d744d683e93d"
+    },
+    {
+      "path": "ports/android/app/src/main/java/com/lume/remote/SessionService.java",
+      "sha256_at_collection": "b983e261bb92fd67f247a4e2f31c53e2821fae32fee2a6cdfb29d371c9d116a2"
+    },
+    {
+      "path": "ports/bridge/Cargo.toml",
+      "sha256_at_collection": "7b4b4ada7a964d8ae871b86f901694e9185a521f6a5d790f81bf84b06e0ce7a8"
+    },
+    {
+      "path": "ports/bridge/include/lume.h",
+      "sha256_at_collection": "58803011adfe7b593ae71581a4f9810f7a5934d2e3fe6218764cf4e5e10531fb"
+    },
+    {
+      "path": "ports/bridge/src/lib.rs",
+      "sha256_at_collection": "3ced774ac7ceaf8d029693e8fb4c0a3dbc328319fd34b33a17caeba523e097c4"
+    },
+    {
+      "path": "ports/core/Cargo.toml",
+      "sha256_at_collection": "9d360ae7d642f774994c8690bdb79bac0ccb1cb079a46f05bcbc4c3a5a3ccba5"
+    },
+    {
+      "path": "ports/core/src/file_jobs.rs",
+      "sha256_at_collection": "86648043dc623d96452f08a36181eadf607fec933535db24b78ac5554f67ed64"
+    },
+    {
+      "path": "ports/core/src/files.rs",
+      "sha256_at_collection": "36549c1348533aa9761ca5eb22a96a83af4de6592604a1717bfb472a1da6d0fa"
+    },
+    {
+      "path": "ports/core/src/recording.rs",
+      "sha256_at_collection": "b47d99c562f44da8352f60cfe07c326556263a64cac41921ed0cf622b6edf9be"
+    },
+    {
+      "path": "ports/core/src/session.rs",
+      "sha256_at_collection": "3cda1f0e32084852575d4789a00f7980ec0e49dccf14c5659cd2eecf01216933"
+    },
+    {
+      "path": "ports/desktop/Cargo.toml",
+      "sha256_at_collection": "57dee46d131396fb938cc3a986d83b50217e49fabd4f800c7b381a0b41717003"
+    },
+    {
+      "path": "ports/desktop/src/file_ui.rs",
+      "sha256_at_collection": "8d0dce8c113c86bf04215210214fba741a0615cfa3a4eb0cbfd0f964cf301b0a"
+    },
+    {
+      "path": "ports/desktop/src/main.rs",
+      "sha256_at_collection": "3157356df2bef3db6597b8f36c1926728de75774c4f69cc58288bd3cfac4d4ab"
+    },
+    {
+      "path": "ports/ios/Lume/Bridge.h",
+      "sha256_at_collection": "03fc415b40393dc66e39184bc3c5c424e361a37cfdb39817546e9608623bfaf1"
+    },
+    {
+      "path": "ports/ios/Lume/FilesView.swift",
+      "sha256_at_collection": "3726dd7be079bbb8509b91da721ec42b3021c485fd69dc25a61b7af808b87685"
+    },
+    {
+      "path": "ports/ios/Lume/FolderTransfer.swift",
+      "sha256_at_collection": "10cd49b356108964374048814d556417be8c82f18f6df8958ea847591b7072e1"
+    },
+    {
+      "path": "ports/ios/Lume/LumeApp.swift",
+      "sha256_at_collection": "049af49699362ddc7b32d8eae14cc3c623ef7fdc396f167045a6f62b3ae848fb"
+    },
+    {
+      "path": "ports/ios/Lume/NativeSession.swift",
+      "sha256_at_collection": "cab4d331ab874e8ac3182df1bfcab5e9b2417b0a5ab17d0e6ff385f0837ff6e3"
+    },
+    {
+      "path": "ports/ios/project.yml",
+      "sha256_at_collection": "edeb640e67de770c86c4abc83e170cf1229e1567933fd88b873fc028d74cdbfa"
+    },
+    {
+      "path": "scripts/build-apple.sh",
+      "sha256_at_collection": "3883bc869aa36d687dbf92ff016847eab2fef8ac6b0b30ef47691d1126dcd842"
+    },
+    {
+      "path": "scripts/package.ps1",
+      "sha256_at_collection": "1c8df945ddc1de5b5cc744e4ce745a54e20baacc6981c51b190267c611759d49"
+    },
+    {
+      "path": "scripts/verify-apple.py",
+      "sha256_at_collection": "bea4741bf0ad676a1126795549624f7fb0844cceff4f71a209f5de6e5489d89a"
+    },
+    {
+      "path": "scripts/verify-package.ps1",
+      "sha256_at_collection": "eb22ea59c6f1f8189992c474d7276bf2f887cf4b194fce90f1bb6163bd676a4d"
+    },
+    {
+      "path": "scripts/verify.ps1",
+      "sha256_at_collection": "bb3b04afc037eb10688fb2285c649f7afd9d602f032f01cd318034fb5151bb39"
+    },
+    {
+      "path": "src/Program.cs",
+      "sha256_at_collection": "6e6fc7209fa658ca99df4da7b2e222cdb7d6e9e7d185a3ef3edb155bdc998d0b"
+    },
+    {
+      "path": "tests/Tests.cs",
+      "sha256_at_collection": "03f7e5e46a52ff03de09c423bb740861cd714611c53dae6f1fc497ff0e7c3796"
+    },
+    {
+      "path": "baseline-0.10/ports/core/src/files.rs",
+      "sha256_at_collection": "6ae72ffb4b11290e1f0fcd59c7a668f2c757cad4525ed7f52442a19650038c8b"
+    },
+    {
+      "path": "baseline-0.10/src/Program.cs",
+      "sha256_at_collection": "2a80890253637a333f93b96f39fd85f0a55408eae4d0371147a5c2717b7113d1"
+    }
+  ],
+  "limitation": "Independent model static review; no device execution, security certification or full-repository coverage implied.",
+  "recoverable_file_lookup_errors": 9,
+  "followup": {
+    "status": "SUCCESS",
+    "duration_seconds": 84.8491655,
+    "prompt_sha256": "9e50380f02e600011531ae64941d12af5bd4e0c6209af5c24d99dea95c318e6b"
+  }
+}

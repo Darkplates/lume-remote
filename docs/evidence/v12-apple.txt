@@ -1,0 +1,2 @@
+Apple compilation requires a Mac with the full Xcode application. This host is not macOS.
+PASS Apple shell syntax and expected non-Mac rejection; no Apple compilation or execution.

@@ -1,0 +1,29 @@
+Linux x86-64 / Alpine 3.24.2 musl, owned QEMU guest.
+Cross-compiled Rust 1.98.1 executables were run in Linux; the pinned native P2P library was built inside Linux.
+Synthetic desktop/core tests; no physical desktop or WAN claim.
+
+running 18 tests
+test frame::tests::exact_portable_source ... ok
+test frame::tests::jpeg_geometry ... ok
+test frame::tests::malformed_dimensions_and_payload ... ok
+test peer::tests::cancelled_and_unopened_peers_retire_callback_contexts ... ok
+test peer::tests::native_peer_stream ... ok
+test session::tests::cancelling_a_partial_tls_handshake_joins_promptly ... ok
+test session::tests::clipboard_busy_retry_and_oversize_keep_video_connected ... ok
+test session::tests::input_bounds ... ok
+test session::tests::native_p2p_tls_images ... ok
+test session::tests::pin_failure_never_reaches_approval ... ok
+test session::tests::secret_failure_and_decline_never_capture ... ok
+test session::tests::tls_consent_exact_frames_and_disconnect ... ok
+test signal::tests::signed_exchange ... ok
+test tls::tests::exact_pin ... ok
+test wire::tests::fragmented_packets ... ok
+test wire::tests::invitations_and_secrets ... ok
+test wire::tests::malformed_and_bounded ... ok
+test wire::tests::quality_targets ... ok
+test result: ok. 18 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 14.28s
+
+running 2 tests
+test tests::ffi_real_tls_consent_frame_copy_and_close ... ok
+test tests::ffi_rejects_buffers_and_stale_handles ... ok
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.88s

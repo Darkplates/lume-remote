@@ -1,0 +1,12 @@
+test_bad_header (test_relay.RelayTests.test_bad_header) ... ok
+test_duplicate_host_is_rejected (test_relay.RelayTests.test_duplicate_host_is_rejected) ... ok
+test_full_duplex_and_cleanup (test_relay.RelayTests.test_full_duplex_and_cleanup) ... ok
+test_host_disconnect_removes_room (test_relay.RelayTests.test_host_disconnect_removes_room) ... ok
+test_long_header_is_closed (test_relay.RelayTests.test_long_header_is_closed) ... ok
+test_missing_host (test_relay.RelayTests.test_missing_host) ... ok
+test_rooms_are_isolated (test_relay.RelayTests.test_rooms_are_isolated) ... ok
+
+----------------------------------------------------------------------
+Ran 7 tests in 0.777s
+
+OK

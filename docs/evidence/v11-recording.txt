@@ -1,0 +1,44 @@
+v11-recording-decode-final.txt
+{
+  "file": "v11-source-fps.mkv",
+  "frames": 180,
+  "distinct_colours": 126,
+  "size": [
+    16,
+    16
+  ],
+  "first_pts": 0.0,
+  "last_pts": 2.905,
+  "strictly_increasing_timestamps": true,
+  "decoder": "Independent FFmpeg",
+  "fixture_target_fps": 180,
+  "real_desktop_or_network_fps_measured": false
+}
+
+
+v11-media-stereo-run.txt
+PASS TLS media: local host consent, explicit playback, denied/stale microphone, rapid toggles; MKV 54 frames / 58 stereo blocks.
+
+
+v11-media-stereo-decode.txt
+{
+  "file": "v11-media-stereo.mkv",
+  "video_frames": 54,
+  "distinct_colours": 37,
+  "size": [
+    320,
+    180
+  ],
+  "duration_seconds": 3.24,
+  "samples_per_channel": 55680,
+  "rms": [
+    0.2589564112522141,
+    0.2589436507626904
+  ],
+  "stereo_tone_ratios": [
+    87.31618809588238,
+    89.12221272984691
+  ],
+  "decoder": "Independent FFmpeg",
+  "physical_audio_devices_tested": false
+}
