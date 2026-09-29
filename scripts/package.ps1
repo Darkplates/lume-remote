@@ -2,7 +2,7 @@ param([string]$OutputPath = '', [switch]$SourceOnly)
 $ErrorActionPreference = 'Stop'
 $projectRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 if (-not $OutputPath) {
-    $name = if ($SourceOnly) { 'LumeRemote-0.12.0-dev-source.zip' } else { 'LumeRemote-0.12.0-dev-win64.zip' }
+    $name = if ($SourceOnly) { 'LumeRemote-0.12.1-dev-source.zip' } else { 'LumeRemote-0.12.1-dev-win64.zip' }
     $OutputPath = Join-Path (Split-Path -Parent $projectRoot) $name
 }
 if (Test-Path -LiteralPath $OutputPath) { throw 'Archive exists. Choose a new output path to preserve it.' }

@@ -14,8 +14,13 @@ HEADER = re.compile(rb"LUME1 ([HV]) ([a-fA-F0-9]{32})\n")
 
 
 class Relay:
-    def __init__(self, max_connections=512, max_per_address=64):
+    def __init__(self, max_connections=512, max_per_address=64, idle_timeout=600, host_wait_timeout=86400):
         self.waiting = {}
+        # Seconds without bytes in either direction before a paired stream is closed.
+        # Healthy sessions exchange heartbeats every few seconds. 0 disables it.
+        self.idle_timeout = idle_timeout
+        # Seconds an unpaired host may hold its room. The Windows host re-registers. 0 = unlimited.
+        self.host_wait_timeout = host_wait_timeout
         self.connections = 0
         self.max_connections = max_connections
         # One source address must not be able to occupy every slot.
@@ -66,8 +71,11 @@ class Relay:
                 # Waiting hosts send no TLS bytes until a viewer has paired.
                 disconnected = asyncio.create_task(reader.read(1))
                 try:
-                    done, _ = await asyncio.wait([pair, disconnected], return_when=asyncio.FIRST_COMPLETED)
-                    if disconnected in done:
+                    done, _ = await asyncio.wait(
+                        [pair, disconnected], timeout=self.host_wait_timeout or None, return_when=asyncio.FIRST_COMPLETED
+                    )
+                    # No await separates this check from the wait, so a viewer cannot pair in between.
+                    if disconnected in done or not pair.done():
                         return
                     disconnected.cancel()
                     with contextlib.suppress(asyncio.CancelledError):
@@ -77,10 +85,12 @@ class Relay:
                         writer.write(b"\x01")
                         peer_writer.write(b"\x01")
                         await asyncio.gather(writer.drain(), peer_writer.drain())
-                        forward = asyncio.create_task(self.pipe(reader, peer_writer))
-                        backward = asyncio.create_task(self.pipe(peer_reader, writer))
+                        loop = asyncio.get_running_loop()
+                        activity = [loop.time()]
+                        forward = asyncio.create_task(self.pipe(reader, peer_writer, activity))
+                        backward = asyncio.create_task(self.pipe(peer_reader, writer, activity))
                         try:
-                            await asyncio.wait([forward, backward], return_when=asyncio.FIRST_COMPLETED)
+                            await self.until_closed_or_idle(forward, backward, activity)
                         finally:
                             forward.cancel()
                             backward.cancel()
@@ -122,11 +132,29 @@ class Relay:
             with contextlib.suppress(Exception):
                 await writer.wait_closed()
 
+    async def until_closed_or_idle(self, forward, backward, activity):
+        """Returns when either direction ends or no bytes moved either way for idle_timeout."""
+        loop = asyncio.get_running_loop()
+        while True:
+            timeout = None
+            if self.idle_timeout:
+                timeout = activity[0] + self.idle_timeout - loop.time()
+                if timeout <= 0:
+                    return
+            done, _ = await asyncio.wait([forward, backward], timeout=timeout, return_when=asyncio.FIRST_COMPLETED)
+            if done:
+                return
+
     @staticmethod
-    async def pipe(reader, writer):
+    async def pipe(reader, writer, activity=None):
+        loop = asyncio.get_running_loop()
         while data := await reader.read(65536):
+            if activity is not None:
+                activity[0] = loop.time()
             writer.write(data)
             await writer.drain()
+            if activity is not None:
+                activity[0] = loop.time()
 
     async def close(self):
         for writer in list(self.writers):
@@ -137,7 +165,7 @@ class Relay:
 
 
 async def serve(args):
-    relay = Relay(args.max_connections, args.max_per_address)
+    relay = Relay(args.max_connections, args.max_per_address, args.idle_timeout, args.host_wait_timeout)
     server = await asyncio.start_server(relay.handle, args.bind, args.port, limit=128)
     print(f"Lume relay listening on {args.bind}:{args.port}. End-to-end TLS stays inside the paired stream.", flush=True)
     try:
@@ -153,9 +181,13 @@ def main():
     parser.add_argument("--port", type=int, default=24817)
     parser.add_argument("--max-connections", type=int, default=512, help="Operational resource guard, not a licence limit.")
     parser.add_argument("--max-per-address", type=int, default=64, help="Connections allowed from one source address at a time.")
+    parser.add_argument("--idle-timeout", type=float, default=600, help="Close a paired stream after this many seconds without bytes in either direction. 0 disables it.")
+    parser.add_argument("--host-wait-timeout", type=float, default=86400, help="Seconds an unpaired host may wait for a viewer before it must re-register. 0 means unlimited.")
     args = parser.parse_args()
     if not 1 <= args.port <= 65535 or args.max_connections < 2 or args.max_per_address < 2:
         parser.error("Invalid port or connection capacity")
+    if not (0 <= args.idle_timeout < float("inf") and 0 <= args.host_wait_timeout < float("inf")):
+        parser.error("Timeouts must be finite and zero or positive")
     try:
         asyncio.run(serve(args))
     except KeyboardInterrupt:

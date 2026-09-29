@@ -109,6 +109,8 @@ static partial class Tests
         Run("Authenticated direct stream decodes and acknowledges frames", DirectFrames);
         Run("View-only session refuses input and clipboard", ViewOnly);
         Run("Repeated authentication failures trigger cooldown", BruteForce);
+        Run("Authentication cooldown is tracked per remote address", PerAddressCooldown);
+        Run("Stalled pre-authentication connections close at the deadline", PreAuthDeadline);
         Run("Stopping host promptly closes active sockets", StopHost);
         Run("Disconnect allows a new locally approved session", Reconnect);
         if (!safe) { Run("Native owned-window keyboard and mouse integration", NativeInputFixture); Run("Real desktop capture reproduces an owned window pixel", NativeCaptureFixture); }
@@ -516,6 +518,31 @@ static partial class Tests
             for (int i = 0; i < 5; i++) using (ViewerConnection viewer = new ViewerConnection()) Reject(delegate { viewer.Connect(bad, "Bad key test"); });
             using (ViewerConnection viewer = new ViewerConnection()) Reject(delegate { viewer.Connect(host.Invite, "Cooldown test"); });
             Check(captured == 0 && approved == 0, "Cooldown failed.");
+        }
+    }
+    static void PerAddressCooldown()
+    {
+        AuthFailureTracker tracker = new AuthFailureTracker();
+        for (int i = 0; i < AuthFailureTracker.Limit; i++) tracker.Fail("192.0.2.1");
+        Check(tracker.Blocked("192.0.2.1"), "Repeated failures did not cool down the offending address.");
+        Check(!tracker.Blocked("192.0.2.2") && !tracker.Blocked("relay"), "Cooldown leaked to another address.");
+        for (int i = 0; i < AuthFailureTracker.Capacity * 2; i++) tracker.Fail("198.51.100." + i);
+        Check(tracker.Count <= AuthFailureTracker.Capacity, "Failure tracker is unbounded.");
+    }
+    static void PreAuthDeadline()
+    {
+        using (HostService host = NewHost(false, true))
+        {
+            host.PreAuthDeadlineMilliseconds = 700;
+            using (TcpClient idle = Transport.Connect(host.Invite.Host, host.Invite.Port, 3000))
+            {
+                idle.ReceiveTimeout = 5000; Stopwatch watch = Stopwatch.StartNew();
+                try { idle.GetStream().ReadByte(); } catch (IOException) { }
+                Check(watch.ElapsedMilliseconds < 4000, "A stalled handshake kept its slot past the deadline.");
+            }
+            Check(captured == 0 && approved == 0, "A stalled handshake reached approval.");
+            host.PreAuthDeadlineMilliseconds = 15000;
+            ReadFrames(host.Invite, 1); Check(approved == 1, "The host did not accept a new session after the deadline.");
         }
     }
     static void StopHost()

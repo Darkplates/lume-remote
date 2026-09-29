@@ -55,6 +55,9 @@ static partial class Tests
                 string id = TransferId(files, "sending");
                 using (var packet = FilePacket(FileOp.Ack, id, delegate(BinaryWriter w) { w.Write(0L); })) files.Handle(packet);
                 Check(stream.FinishSent.WaitOne(3000), "Sender did not finish the empty file.");
+                // A receiver completing a large file repeats its final Ack as a liveness heartbeat.
+                using (var packet = FilePacket(FileOp.Ack, id, delegate(BinaryWriter w) { w.Write(0L); })) files.Handle(packet);
+                Check(!first.IsCompleted, "A completion heartbeat ended the transfer.");
                 Task<string> next;
                 // Hold the sender worker at its gate so its async finally cannot hide the race.
                 lock (Field(files, "gate"))

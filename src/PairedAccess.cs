@@ -148,7 +148,9 @@ namespace LumeRemote
         ActiveSession active;
         FileSystemWatcher watcher;
         Task controlServer;
-        int messageCount; long messageWindow = DateTime.UtcNow.Ticks;
+        // Signaling rate limit per broker source id, so one sender that knows the HostId cannot starve paired computers.
+        readonly Dictionary<string, long[]> messageRates = new Dictionary<string, long[]>(StringComparer.Ordinal);
+        internal const int MessageRateSources = 256, MessagesPerSecond = 30;
         DateTime lastStatusWrite;
         public bool Ready { get; private set; }
         public string State { get; private set; }
@@ -268,12 +270,32 @@ namespace LumeRemote
                 recent[nonce] = now + TimeSpan.TicksPerMinute * 5; return true;
             }
         }
+        internal bool AllowMessage(string source)
+        {
+            lock (gate)
+            {
+                long now = DateTime.UtcNow.Ticks; long[] rate; // [window start, count]
+                if (!messageRates.TryGetValue(source, out rate))
+                {
+                    if (messageRates.Count >= MessageRateSources)
+                    {
+                        string oldest = null; long oldestStart = long.MaxValue;
+                        foreach (KeyValuePair<string, long[]> item in messageRates) if (item.Value[0] < oldestStart) { oldest = item.Key; oldestStart = item.Value[0]; }
+                        messageRates.Remove(oldest);
+                    }
+                    messageRates.Add(source, rate = new long[] { now, 0 });
+                }
+                if (now - rate[0] >= TimeSpan.TicksPerSecond) { rate[0] = now; rate[1] = 0; }
+                return ++rate[1] <= MessagesPerSecond;
+            }
+        }
+        internal int MessageRateCount { get { lock (gate) return messageRates.Count; } }
         void Receive(SignalBroker channel, BrokerPacket packet)
         {
             try
             {
                 if (stopped.IsCancellationRequested || packet == null || packet.payload == null || packet.src == null || !packet.src.StartsWith("lume-", StringComparison.Ordinal) || !Invitation.IsHex(packet.src.Substring(5), 32)) return;
-                lock (gate) { long now = DateTime.UtcNow.Ticks; if (now - messageWindow >= TimeSpan.TicksPerSecond) { messageWindow = now; messageCount = 0; } if (++messageCount > 30) return; }
+                if (!AllowMessage(packet.src)) return;
                 HostPreferences preferences = store.ReadHost(); if (!preferences.Enabled) return;
                 SignalEnvelope envelope = packet.payload;
                 if (envelope.stage == "pair")
@@ -329,6 +351,8 @@ namespace LumeRemote
                     delegate { HostPreferences current = store.ReadHost(); return !session.Disposed && current.Enabled && current.Controllers.Any(p => !p.WakeOnly && p.Id == session.Controller.Id && Security.Equal(p.Key, session.Controller.Key)); },
                     delegate { }, Status, delegate(string text) { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return ClipboardAccess.Write(text); }, delegate { return new RemoteFileAccess(preferences.OwnerSid, session.Controller.Key, delegate { return store.ReadHost().NetworkFolders.ToArray(); }); }, async delegate { var access = new RemoteFileAccess(preferences.OwnerSid); access.Run(delegate { }); string text = await ClipboardAccess.Read().ConfigureAwait(false); access.Run(delegate { }); return text; }, true, delegate { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return Task.FromResult(true); }, delegate(PowerAction action) { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return RemotePower.Request(action); }, true, async delegate(Action stop, CancellationToken cancellation) { var access = new RemoteFileAccess(preferences.OwnerSid); access.Run(delegate { }); IDisposable grant = await HostVoiceConsent.Request(stop, cancellation).ConfigureAwait(false); try { access.Run(delegate { }); return grant; } catch { if (grant != null) grant.Dispose(); throw; } });
                 if (!session.Attach(createdHost)) return;
+                createdHost.SessionStarted += delegate(string name, bool withControl) { session.AttachIndicator(SessionIndicator.Show(session.Controller.Name, withControl, session.Dispose)); };
+                createdHost.SessionEnded += delegate { session.ClearIndicator(); };
                 createdHost.SessionEnded += delegate(Exception error) { SessionLog.Write(store.DirectoryPath, "host", SessionLog.Reason(error), error); };
                 SessionLog.Write(store.DirectoryPath, "host", "paired_connection_requested");
                 session.Host.StartPeer(); if (!session.Attach(new PeerTransport())) return;
@@ -361,7 +385,10 @@ namespace LumeRemote
             public bool Disposed { get { return Volatile.Read(ref disposed) != 0; } }
             public bool Attach(HostService host) { lock (ownership) { if (Disposed) { host.Dispose(); return false; } Host = host; return true; } }
             public bool Attach(PeerTransport peer) { lock (ownership) { if (Disposed) { peer.Dispose(); return false; } Peer = peer; return true; } }
-            public void Dispose() { lock (ownership) { if (Interlocked.Exchange(ref disposed, 1) != 0) return; Answer.TrySetCanceled(); if (Host != null) Host.Dispose(); if (Peer != null) Peer.Dispose(); Stopped.TrySetResult(true); } }
+            IDisposable indicator;
+            public void ClearIndicator() { lock (ownership) { if (indicator != null) indicator.Dispose(); indicator = null; } }
+            public void AttachIndicator(IDisposable value) { lock (ownership) { if (Disposed) { value.Dispose(); return; } if (indicator != null) indicator.Dispose(); indicator = value; } }
+            public void Dispose() { lock (ownership) { if (Interlocked.Exchange(ref disposed, 1) != 0) return; Answer.TrySetCanceled(); if (indicator != null) indicator.Dispose(); if (Host != null) Host.Dispose(); if (Peer != null) Peer.Dispose(); Stopped.TrySetResult(true); } }
         }
     }
 }

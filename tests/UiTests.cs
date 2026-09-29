@@ -14,6 +14,21 @@ static partial class Tests
         Run("Simple quality presets retain custom source and frame rate controls", QualityPresetUi);
         Run("Layouts scale once with the system DPI and buttons fit their labels", DpiLayout);
         Run("Themed inputs, list headers and later controls follow the theme", ThemedControls);
+        Run("Guest audio and clipboard prompts decline by default and time out", TimedConsentDefaults);
+    }
+    static void TimedConsentDefaults()
+    {
+        using (TimedConsentForm form = new TimedConsentForm("Lume - Clipboard request", "Share your clipboard?", "The connected guest wants to read your clipboard text. Allow this once?", "Allow once"))
+        {
+            Button decline = (Button)form.CancelButton;
+            Check(decline != null && decline.DialogResult == DialogResult.No && form.AcceptButton == decline && form.ActiveControl == decline, "Enter, Esc or focus could approve the guest request.");
+            Check(form.Icon != null && form.ShowIcon, "The consent prompt lost the Lume icon.");
+        }
+        using (TimedConsentForm form = new TimedConsentForm("Lume - System audio", "Share this PC's sound?", "Countdown fixture.", "Allow sound", 1))
+        {
+            System.Diagnostics.Stopwatch watch = System.Diagnostics.Stopwatch.StartNew();
+            Check(form.ShowDialog() == DialogResult.No && watch.ElapsedMilliseconds < 5000, "An unanswered guest request was not declined automatically.");
+        }
     }
     // Valid at any Windows display scale: run at 100/125/150/200% to compare. Every issue is reported at once.
     static void DpiLayout()
@@ -26,12 +41,13 @@ static partial class Tests
             ComputersPanel home = (ComputersPanel)Field(dashboard, "home");
             ((System.Windows.Forms.Timer)Field(home, "refresh")).Stop();
             InspectLayout(dashboard, "Dashboard", issues);
-            Button update = (Button)Field(home, "update"); if (Math.Abs(update.Height - Theme.Px(42)) > 1) issues.Add("Computer settings column: button height " + update.Height + ", expected " + Theme.Px(42) + " (scaled zero or two times).");
-            if (((ListBox)Field(home, "computers")).ItemHeight != Theme.Px(64)) issues.Add("Saved computers row height was not scaled.");
+            Button update = (Button)Field(home, "update"); if (Math.Abs(update.Height - Theme.Px(Theme.ButtonHeight)) > 1) issues.Add("Computer settings column: button height " + update.Height + ", expected " + Theme.Px(Theme.ButtonHeight) + " (scaled zero or two times).");
+            if (((ListBox)Field(home, "computers")).ItemHeight != Theme.Px(Theme.RowHeight)) issues.Add("Saved computers row height was not scaled.");
             FindButton(dashboard, "Guest access").PerformClick(); Application.DoEvents(); InspectLayout(dashboard, "Guest access", issues);
             dashboard.ExitDashboard(); Application.DoEvents();
         }
         using (ConsentForm form = new ConsentForm(new PeerRequest { Name = "Test computer", Address = "127.0.0.1", Control = true, Files = true })) { form.Show(); Application.DoEvents(); InspectLayout(form, "Approval", issues); form.Close(); }
+        using (TimedConsentForm form = new TimedConsentForm("Lume - System audio", "Share this PC's sound?", "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Allow sound")) { form.Show(); Application.DoEvents(); InspectLayout(form, "Guest request", issues); form.Close(); }
         using (StreamQualityForm form = new StreamQualityForm(StreamQuality.Source, 2560, 1440, 180))
         { form.Show(); Application.DoEvents(); FindButton(form, "Custom settings").PerformClick(); Application.DoEvents(); InspectLayout(form, "Quality", issues); form.Close(); }
         using (RecordingOptionsForm form = new RecordingOptionsForm(60, true, true)) { form.Show(); Application.DoEvents(); InspectLayout(form, "Recording", issues); form.Close(); }
@@ -47,9 +63,9 @@ static partial class Tests
             Button button = control as Button;
             if (button != null && button.Visible)
             {
-                // Theme buttons are 42 px at 96 DPI; docked Fill/Left/Right buttons take their container's height.
-                if (button is ReadableButton && (button.Dock == DockStyle.None || button.Dock == DockStyle.Top || button.Dock == DockStyle.Bottom) && Math.Abs(button.Height - Theme.Px(42)) > 1)
-                    issues.Add(where + ": \"" + button.Text + "\" is " + button.Height + " px high, expected " + Theme.Px(42) + ".");
+                // Theme buttons are Theme.ButtonHeight px at 96 DPI; docked Fill/Left/Right buttons take their container's height.
+                if (button is ReadableButton && (button.Dock == DockStyle.None || button.Dock == DockStyle.Top || button.Dock == DockStyle.Bottom) && Math.Abs(button.Height - Theme.Px(Theme.ButtonHeight)) > 1)
+                    issues.Add(where + ": \"" + button.Text + "\" is " + button.Height + " px high, expected " + Theme.Px(Theme.ButtonHeight) + ".");
                 Size text = TextRenderer.MeasureText(button.Text, button.Font);
                 if (text.Width > button.Width || text.Height > button.Height) issues.Add(where + ": \"" + button.Text + "\" needs " + text.Width + " x " + text.Height + " px, button is " + button.Width + " x " + button.Height + ".");
             }

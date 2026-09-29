@@ -19,6 +19,19 @@ static partial class Tests
         Run("Disable survives a held settings lock", DisableSurvivesHeldLock);
         Run("Owner control-pipe framing is bounded and validated", ControlWireFraming);
         Run("Reparse-point guard passes normal paths", ReparseGuardAllowsNormalPaths);
+        Run("Permanent-host signaling rate limit is per source and bounded", SignalingRatePerSource);
+    }
+    static void SignalingRatePerSource()
+    {
+        using (PersistentHost host = new PersistentHost(null, delegate { return new Synthetic(); }, delegate { }))
+        {
+            string flooder = "lume-" + new string('a', 32), paired = "lume-" + new string('b', 32);
+            int allowed = 0; for (int i = 0; i < PersistentHost.MessagesPerSecond * 3; i++) if (host.AllowMessage(flooder)) allowed++;
+            Check(allowed <= PersistentHost.MessagesPerSecond, "A single source exceeded its signaling rate.");
+            Check(host.AllowMessage(paired), "A flooding source starved another sender.");
+            for (int i = 0; i < PersistentHost.MessageRateSources * 2; i++) host.AllowMessage("lume-" + i.ToString("x32"));
+            Check(host.MessageRateCount <= PersistentHost.MessageRateSources, "The signaling rate table is unbounded.");
+        }
     }
     static string HardeningDir() { return Path.Combine(Path.GetTempPath(), "Lume-hardening-" + Guid.NewGuid().ToString("N")); }
     static void CleanupDir(string directory) { try { if (Directory.Exists(directory)) Directory.Delete(directory, true); } catch { } }

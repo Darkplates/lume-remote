@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "version": "0.12.0-dev",
+  "version": "0.12.1-dev",
   "public_release_ready": false,
   "gates": [
     {

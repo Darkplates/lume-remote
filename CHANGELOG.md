@@ -1,10 +1,43 @@
 # Changelog
 
-## Unreleased (review fixes, not yet validated on Windows hardware)
+## 0.12.1 development preview
 
-These changes were compile-checked (C#) and unit-tested (Rust core/bridge, relay)
-on Linux only. Windows UI, native video and two-PC acceptance remain pending.
+Security and review fixes. Windows CI (build, native, `verify.ps1 -Safe`, portable
+interoperability) and Linux CI passed. The permanent-access fix was also checked on
+one physical Windows 11 PC (99 safe checks, install, pairing and disable). Two-PC
+WAN, second-Windows-user and 125-200 % display checks remain pending.
 
+- Security (GHSA-hp7w-v83m-qgx8): the permanent-access host directory is now
+  read-only for the owner; the SYSTEM service is its only writer. Owner setting
+  changes go through an authenticated named pipe whose owner and caller are
+  verified. The settings lock is a file inside the protected directory, and paired
+  unattended access runs only in the owner's console session or at a logon/lock
+  screen with no other user signed in. Existing installations must open the new
+  copy and choose Settings, then Update installed host.
+
+- New visual design: light and dark themes that follow the Windows app mode,
+  rounded buttons with hover/pressed/focus states and a distinct danger style,
+  a two-card dashboard (Your computers / This PC) with a status pill and an
+  empty-state guide, underline tabs, a capability list in connection requests,
+  pairing and first-time Enable access dialogs that list what a paired PC can
+  do, sectioned computer settings with a danger zone, chat bubbles, a quality
+  dialog that highlights the active preset, and a quieter session toolbar.
+- The host now shows a small always-on-top "... is connected" pill with a
+  Disconnect button during guest and paired sessions.
+- Portable (Rust) hosts authenticate direct guests off the accept thread with one
+  12-second deadline and at most four pending handshakes; a direct invitation is
+  single-use; signaling is rate-limited per sender; transfers fall back to an
+  exclusive copy where hard links are unsupported; crash leftovers no longer block
+  resume. The relay closes streams idle in both directions (default 10 minutes)
+  and bounds how long an unpaired host waits (default 24 hours).
+- Guest connections must authenticate within 15 seconds of connecting, and the
+  30-second cooldown after five rejected invitations applies only to the
+  offending address. Permanent-host signaling is rate-limited per sender.
+- Guest system-audio and clipboard-read prompts decline by default and after 60
+  seconds; a withdrawn or superseded voice request closes its prompt at once.
+- File browsing, downloads and cancellation no longer block the window while
+  sending, and a receiver completing a large file keeps the sender's transfer
+  alive, so a saved file is no longer reported as failed and duplicated on retry.
 - Local permission prompts (voice, system audio, clipboard) pause remote presses
   and pointer input so a guest with control cannot answer them. Voice consent
   focuses Decline; incoming chat no longer takes keyboard focus.
@@ -15,6 +48,12 @@ on Linux only. Windows UI, native video and two-PC acceptance remain pending.
 - The relay caps connections per source address and handles Python 3.10 timeouts.
 - JPEG/PNG regions are drawn 1:1 when host and viewer use different display
   scaling; H.264 decoding accepts macroblock-padded widths such as 1366.
+- A viewer-side H.264 decoder failure no longer ends the session: the last image
+  stays, frames are still acknowledged, the viewer switches to lossless images
+  with a notice and stops saving the failing video quality for that PC.
+- Host capture retries DXGI after it is lost (UAC, lock, mode change) instead of
+  staying on GDI, follows resolution changes of the selected display, and shows
+  the capture backend. Buffered H.264 output is flushed on unchanged screens.
 - Stalled paired transfers keep their resumable partial; finished recordings are
   never deleted on a name collision; a tool backlog answers busy instead of
   ending the session.

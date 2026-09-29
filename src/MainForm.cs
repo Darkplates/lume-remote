@@ -32,28 +32,29 @@ namespace LumeRemote
         public MainForm()
         {
             Theme.BeginLayout(this);
-            Text = "Lume Remote"; BackColor = Theme.Background; ForeColor = Theme.Text; Font = new Font("Segoe UI", 10);
+            Text = "Lume Remote"; BackColor = Theme.Background; ForeColor = Theme.Text; Font = new Font(Theme.FontName, 10);
             Size = new Size(960, 760); MinimumSize = new Size(840, 640); StartPosition = FormStartPosition.CenterScreen;
             Icon = Brand.Icon;
-            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(24, 16, 24, 12) };
-            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
+            TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(24, 16, 24, 8) };
+            root.RowStyles.Add(new RowStyle(SizeType.Absolute, 112)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
             FlowLayoutPanel header = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false };
-            FlowLayoutPanel brand = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Height = 48, Margin = new Padding(0) };
-            brand.Controls.Add(Brand.Mark(44)); brand.Controls.Add(Theme.Label("Lume", 25, Theme.Text)); header.Controls.Add(brand);
+            FlowLayoutPanel brand = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Height = 44, Margin = new Padding(0, 0, 0, 12) };
+            PictureBox mark = Brand.Mark(32); mark.Margin = new Padding(0, 4, 10, 0); mark.AccessibleRole = AccessibleRole.Graphic; mark.AccessibleName = "Lume logo";
+            Label title = Theme.Label("Lume", 20, Theme.Text); title.Margin = new Padding(0); brand.Controls.Add(mark); brand.Controls.Add(title); header.Controls.Add(brand);
             FlowLayoutPanel navigation = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
-            Button computersTab = Theme.Button("Computers", true), guestTab = Theme.Button("Guest access", false);
-            computersTab.Width = guestTab.Width = 158; navigation.Controls.Add(computersTab); navigation.Controls.Add(guestTab); header.Controls.Add(navigation);
+            TabButton computersTab = new TabButton { Text = "Computers", Width = 110, Selected = true }, guestTab = new TabButton { Text = "Guest access", Width = 130 };
+            navigation.Controls.Add(computersTab); navigation.Controls.Add(guestTab); header.Controls.Add(navigation);
             root.Controls.Add(header, 0, 0);
-            TableLayoutPanel columns = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoScroll = true };
+            TableLayoutPanel columns = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, AutoScroll = true, BackColor = Theme.Background };
             columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50)); columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
-            Panel leftScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(0, 0, 12, 0), BackColor = Theme.Card };
-            Panel rightScroll = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(12, 0, 0, 0), BackColor = Theme.Card };
+            Panel leftScroll = new CardPanel { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(0, 0, 8, 0), Padding = new Padding(4) };
+            Panel rightScroll = new CardPanel { Dock = DockStyle.Fill, AutoScroll = true, Margin = new Padding(8, 0, 0, 0), Padding = new Padding(4) };
             FlowLayoutPanel left = Theme.Column(), right = Theme.Column(); leftScroll.Controls.Add(left); rightScroll.Controls.Add(right);
             columns.Controls.Add(leftScroll, 0, 0); columns.Controls.Add(rightScroll, 1, 0);
             Panel pages = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) }; pages.Controls.Add(columns); pages.Controls.Add(home); columns.Visible = false; home.BringToFront(); root.Controls.Add(pages, 0, 1);
-            computersTab.Click += delegate { columns.Visible = false; home.Visible = true; home.BringToFront(); computersTab.BackColor = Theme.Accent; computersTab.ForeColor = Theme.AccentText; guestTab.BackColor = Theme.Field; guestTab.ForeColor = Theme.Text; };
-            guestTab.Click += delegate { home.Visible = false; columns.Visible = true; columns.BringToFront(); FitColumn(left, leftScroll); FitColumn(right, rightScroll); guestTab.BackColor = Theme.Accent; guestTab.ForeColor = Theme.AccentText; computersTab.BackColor = Theme.Field; computersTab.ForeColor = Theme.Text; };
-            left.Controls.Add(Theme.Label("Share this PC", 21, Theme.Text));
+            computersTab.Click += delegate { columns.Visible = false; home.Visible = true; home.BringToFront(); computersTab.Selected = true; guestTab.Selected = false; };
+            guestTab.Click += delegate { home.Visible = false; columns.Visible = true; columns.BringToFront(); FitColumn(left, leftScroll); FitColumn(right, rightScroll); guestTab.Selected = true; computersTab.Selected = false; };
+            left.Controls.Add(Theme.Label("Share this PC", 16, Theme.Text));
             left.Controls.Add(Theme.Label("Start, send the code, approve your guest.", 10, Theme.Muted));
             FlowLayoutPanel settings = Theme.Column(); settings.Name = "Settings"; settings.Padding = new Padding(0); settings.Visible = false;
             AddField(settings, "Connection route", mode); mode.Items.AddRange(new object[] { "P2P Internet - invitation and reply", "Direct - local network or VPN", "Internet - your own relay" }); mode.SelectedIndex = 0;
@@ -78,7 +79,7 @@ namespace LumeRemote
             mode.SelectedIndexChanged += summarize; profile.SelectedIndexChanged += summarize; control.CheckedChanged += summarize; summarize(null, EventArgs.Empty);
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) }; actions.Controls.Add(start); actions.Controls.Add(stop); left.Controls.Add(actions);
             stop.Enabled = false; start.Click += async delegate { await StartSharing(); }; stop.Click += delegate { StopSharing(); };
-            left.Controls.Add(Theme.Label("YOUR PRIVATE INVITATION", 9, Theme.Muted)); invitation.ReadOnly = true; invitation.ScrollBars = ScrollBars.Vertical; invitation.TabStop = false; left.Controls.Add(invitation);
+            left.Controls.Add(Theme.Label("Your private invitation", 9, Theme.Muted)); invitation.ReadOnly = true; invitation.ScrollBars = ScrollBars.Vertical; invitation.TabStop = false; left.Controls.Add(invitation);
             copy.Enabled = false;
             Button checkHost = Theme.Button("Check network", false);
             FlowLayoutPanel invitationActions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
@@ -86,11 +87,11 @@ namespace LumeRemote
             settings.Controls.Add(endpoint);
             checkHost.Click += delegate { if (peer != null) SetStatus("P2P uses ICE/STUN and an invitation/reply exchange. No inbound TCP listener is required."); else new ConnectionDiagnosticsForm(host == null ? null : host.Invite, true).Show(this); };
             copy.Click += delegate { try { if (invitation.Text.Length > 0) { Clipboard.SetText(invitation.Text); SetStatus("Invitation copied. Send it privately to the person you trust."); } } catch (Exception e) { SetStatus(e.Message); } };
-            left.Controls.Add(Theme.Label("Emergency stop: Ctrl + Alt + Shift + F12", 9, Theme.Accent));
+            left.Controls.Add(Theme.Label("Emergency stop: Ctrl + Alt + Shift + F12", 9, Theme.Muted));
             Button configure = Theme.Button("Connection and quality settings", false); configure.Width = 330;
             configure.Click += delegate { settings.Visible = !settings.Visible; configure.Text = settings.Visible ? "Hide settings" : "Connection and quality settings"; FitColumn(left, leftScroll); };
             left.Controls.Add(configure); left.Controls.Add(settings);
-            right.Controls.Add(Theme.Label("Connect as a guest", 21, Theme.Text));
+            right.Controls.Add(Theme.Label("Connect as a guest", 16, Theme.Text));
             right.Controls.Add(Theme.Label("Paste the code from the other PC.", 10, Theme.Muted));
             AddField(right, "Private invitation", remote); remote.Height = 132; remote.MaxLength = 65536; remote.ScrollBars = ScrollBars.Vertical;
             connect.Width = 240; right.Controls.Add(connect); connect.Click += delegate { ConnectRemote(); };
@@ -184,6 +185,8 @@ namespace LumeRemote
                     delegate(string value) { if (current == generation) SetStatus(value); }, delegate(string text) { return RequestClipboard(text, current); }, delegate { return new RemoteFileAccess(); }, delegate { return ReadClipboard(current); }, true, delegate { return AudioPermission(current); }, null, false, HostVoiceConsent.Request); });
                 if (closing || current != generation) { created.Dispose(); return; }
                 host = created;
+                created.SessionStarted += delegate(string name, bool withControl) { SetIndicator(SessionIndicator.Show(name, withControl, delegate { try { BeginInvoke((Action)delegate { if (current == generation) StopSharing(); }); } catch (InvalidOperationException) { } })); };
+                created.SessionEnded += delegate { SetIndicator(null); };
                 if (usePeer)
                 {
                     created.PeerEnded += delegate
@@ -215,12 +218,15 @@ namespace LumeRemote
             start.Enabled = !sharing; stop.Enabled = sharing; mode.Enabled = screen.Enabled = profile.Enabled = control.Enabled = !sharing;
             address.Enabled = port.Enabled = !sharing && mode.SelectedIndex == 1; relay.Enabled = !sharing && mode.SelectedIndex == 2;
         }
+        IDisposable indicator;
+        void SetIndicator(IDisposable next) { IDisposable previous = System.Threading.Interlocked.Exchange(ref indicator, next); if (previous != null) previous.Dispose(); }
         void StopSharing()
         {
+            SetIndicator(null);
             generation++; if (peer != null) { peer.Dispose(); peer = null; } if (host != null) { host.Dispose(); host = null; }
             invitation.Clear(); copy.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
-            foreach (Form owned in OwnedForms) if (owned is ConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
+            foreach (Form owned in OwnedForms) if (owned is ConsentForm || owned is TimedConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
         }
         bool Approve(PeerRequest request, int current)
         {
@@ -243,9 +249,11 @@ namespace LumeRemote
                     {
                         Theme.BeginLayout(dialog); dialog.Size = new Size(550, 390);
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
-                        Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 210; accept.Dock = DockStyle.Bottom; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
-                        Button ignore = Theme.Button("Don't copy", false); ignore.Dock = DockStyle.Bottom; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore;
-                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); Theme.EndLayout(dialog); using (LocalConsent.Begin()) dialog.ShowDialog(this);
+                        Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 200; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
+                        Button ignore = Theme.Button("Don't copy", false); ignore.Width = 130; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore; dialog.ActiveControl = ignore;
+                        Label heading = Theme.Label("The connected computer sent clipboard text.", 11, Theme.Text); heading.Dock = DockStyle.Top; heading.Margin = new Padding(0, 0, 0, 10);
+                        FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 52, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 10, 0, 0) }; actions.Controls.Add(accept); actions.Controls.Add(ignore);
+                        dialog.Padding = new Padding(24, 20, 24, 16); dialog.Controls.Add(preview); dialog.Controls.Add(heading); dialog.Controls.Add(actions); Theme.EndLayout(dialog); using (LocalConsent.Begin()) dialog.ShowDialog(this);
                     }
                 }
                 finally { result.TrySetResult(false); System.Threading.Interlocked.Exchange(ref clipboardPending, 0); }
@@ -258,8 +266,15 @@ namespace LumeRemote
             if (closing || IsDisposed || current != generation) { result.TrySetResult(false); return result.Task; }
             try { BeginInvoke((Action)delegate
             {
-                bool allowed; using (LocalConsent.Begin()) allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
-                result.TrySetResult(allowed && !closing && current == generation);
+                bool allowed = false;
+                try
+                {
+                    if (!closing && current == generation)
+                        using (LocalConsent.Begin())
+                        using (TimedConsentForm dialog = new TimedConsentForm("Lume - System audio", "Share this PC's sound?", "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Allow sound"))
+                            allowed = dialog.ShowDialog(this) == DialogResult.Yes;
+                }
+                finally { result.TrySetResult(allowed && !closing && current == generation); }
             }); } catch { result.TrySetResult(false); }
             return result.Task;
         }
@@ -272,7 +287,9 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) throw new OperationCanceledException();
-                    using (LocalConsent.Begin()) if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
+                    using (LocalConsent.Begin())
+                    using (TimedConsentForm dialog = new TimedConsentForm("Lume - Clipboard request", "Share your clipboard?", "The connected guest wants to read your clipboard text. Allow this once?", "Allow once"))
+                        if (dialog.ShowDialog(this) != DialogResult.Yes) throw new OperationCanceledException();
                     string text = await ClipboardAccess.Read();
                     if (closing || current != generation) throw new OperationCanceledException(); result.TrySetResult(text);
                 }
@@ -309,18 +326,48 @@ namespace LumeRemote
         public ConsentForm(PeerRequest request)
         {
             Theme.BeginLayout(this);
-            Text = "Lume - Connection request"; Icon = Brand.Icon; ClientSize = new Size(540, 365); BackColor = Theme.Background; ForeColor = Theme.Text;
+            Text = "Lume - Connection request"; Icon = Brand.Icon; ClientSize = new Size(540, 360); BackColor = Theme.Background; ForeColor = Theme.Text; Font = new Font(Theme.FontName, 10);
             FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false; TopMost = true;
-            FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill;
-            panel.Controls.Add(Theme.Label("Allow this connection?", 23, Theme.Text));
-            panel.Controls.Add(Theme.Label("Claimed name (not verified): " + request.Name + "\nRoute: " + request.Address, 12, Theme.Text));
-            panel.Controls.Add(Theme.Label(request.Control ? "This person can see your screen, use your keyboard and mouse" + (request.Files ? ", and browse, send and receive your files" : "") + ". Only accept someone you trust." : "This person will see the selected screen. Keyboard, mouse, clipboard and file access are disabled.", 11, Theme.Muted));
-            Label countdown = Theme.Label("Automatically declined in 60 seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
-            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true);
-            deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
+            FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill; panel.Padding = new Padding(28, 24, 28, 20);
+            panel.Controls.Add(Theme.Label("Allow this connection?", 16, Theme.Text));
+            panel.Controls.Add(Theme.Label("Claimed name (not verified): " + request.Name + "\nRoute: " + request.Address, 10, Theme.Muted));
+            panel.Controls.Add(new CapabilityRow("See your screen", true));
+            panel.Controls.Add(new CapabilityRow("Use your keyboard and mouse", request.Control));
+            panel.Controls.Add(new CapabilityRow(request.Files ? "Browse, send and receive your files" : "No access to your files", request.Control && request.Files));
+            Label trust = Theme.Label(request.Control ? "Only accept someone you trust. You can disconnect at any time." : "Keyboard, mouse, clipboard and file access stay disabled.", 10, Theme.Text); trust.Margin = new Padding(0, 12, 0, 4); panel.Controls.Add(trust);
+            Label countdown = Theme.Label("Automatically declined in 60 seconds.", 9, Theme.Muted); panel.Controls.Add(countdown);
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 0) }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true);
+            deny.Width = allow.Width = 160; deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
+            ActiveControl = deny;
             Theme.EndLayout(this);
             CancelButton = deny; AcceptButton = deny;
             timeout.Tick += delegate { remaining--; countdown.Text = "Automatically declined in " + remaining + " seconds."; if (remaining <= 0) { DialogResult = DialogResult.No; Close(); } }; timeout.Start();
+            FormClosed += delegate { timeout.Dispose(); };
+        }
+    }
+
+    // A guest's in-session request (system audio, clipboard read). Remote input is paused while
+    // it is open, so like the connection request it declines itself: Enter, Esc, closing the
+    // window and the countdown all decline.
+    sealed class TimedConsentForm : Form
+    {
+        readonly Timer timeout = new Timer { Interval = 1000 };
+        int remaining;
+        public TimedConsentForm(string title, string heading, string message, string allowText, int seconds = 60)
+        {
+            remaining = Math.Max(1, seconds);
+            Theme.BeginLayout(this);
+            Text = title; Icon = Brand.Icon; ClientSize = new Size(500, 280); BackColor = Theme.Background; ForeColor = Theme.Text;
+            FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false; TopMost = true;
+            FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill;
+            panel.Controls.Add(Theme.Label(heading, 18, Theme.Text));
+            panel.Controls.Add(Theme.Label(message, 11, Theme.Text));
+            Label countdown = Theme.Label("Automatically declined in " + remaining + " seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(allowText, true);
+            deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
+            Theme.EndLayout(this);
+            CancelButton = deny; AcceptButton = deny; ActiveControl = deny;
+            timeout.Tick += delegate { remaining--; countdown.Text = "Automatically declined in " + remaining + " seconds."; if (remaining <= 0) { timeout.Stop(); DialogResult = DialogResult.No; Close(); } }; timeout.Start();
             FormClosed += delegate { timeout.Dispose(); };
         }
     }

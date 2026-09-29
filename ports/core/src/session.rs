@@ -20,6 +20,13 @@ use std::{
 
 /// Buffered plaintext allowed before the invitation secret is verified.
 const PRE_AUTH_RECEIVE_LIMIT: usize = 128 * 1024;
+/// One absolute budget for a direct guest's TLS handshake and invitation proof.
+const PRE_AUTH_DEADLINE: Duration = Duration::from_secs(12);
+/// P2P keeps its previous worst case (12 s handshake followed by 12 s authentication).
+const PEER_PRE_AUTH_DEADLINE: Duration = Duration::from_secs(24);
+/// Unauthenticated direct connections processed at once. Extra connections are closed.
+const MAX_PRE_AUTH_HANDSHAKES: usize = 4;
+const FRESH_INVITATION: &str = "Start sharing again for a fresh invitation";
 
 pub enum Stream {
     Tcp(TcpStream),
@@ -83,18 +90,28 @@ pub struct Network {
     queued: usize,
 }
 impl Network {
-    fn new(mut tls: Connection, mut socket: Stream, stop: &AtomicBool) -> Result<Self> {
+    fn new(tls: Connection, socket: Stream, stop: &AtomicBool) -> Result<Self> {
+        Self::establish(
+            tls,
+            socket,
+            &|| stop.load(Ordering::Acquire),
+            Instant::now() + Duration::from_secs(12),
+        )
+    }
+    /// Completes the TLS handshake before `deadline`, polling `cancelled`.
+    fn establish(
+        mut tls: Connection,
+        mut socket: Stream,
+        cancelled: &dyn Fn() -> bool,
+        deadline: Instant,
+    ) -> Result<Self> {
         // Windows accepted sockets inherit the listener's nonblocking mode.
         socket.prepare()?;
         socket.blocking(false)?;
         tls.set_buffer_limit(None);
-        let started = Instant::now();
         while tls.is_handshaking() {
-            ensure!(!stop.load(Ordering::Acquire), "Connection cancelled");
-            ensure!(
-                started.elapsed() < Duration::from_secs(12),
-                "TLS handshake timed out"
-            );
+            ensure!(!cancelled(), "Connection cancelled");
+            ensure!(Instant::now() < deadline, "TLS handshake timed out");
             match tls.complete_io(&mut socket) {
                 Ok(_) => {}
                 Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
@@ -1159,10 +1176,24 @@ pub struct Host {
     worker: Option<thread::JoinHandle<()>>,
 }
 impl Host {
+    /// Direct guest listener. The invitation is single-use: once an authenticated
+    /// guest's approval request or session ends, the listener closes.
     pub fn listen(bind: &str, advertised: &str, control: bool, factory: Factory) -> Result<Self> {
+        Self::listen_with(bind, advertised, control, factory, PRE_AUTH_DEADLINE)
+    }
+    fn listen_with(
+        bind: &str,
+        advertised: &str,
+        control: bool,
+        factory: Factory,
+        pre_auth: Duration,
+    ) -> Result<Self> {
         let listener = TcpListener::bind(bind)?;
         listener.set_nonblocking(true)?;
-        let identity = tls::identity(advertised.into(), listener.local_addr()?.port())?;
+        let identity = Arc::new(tls::identity(
+            advertised.into(),
+            listener.local_addr()?.port(),
+        )?);
         let invitation = identity.invite.clone();
         let (requests_tx, requests) = mpsc::sync_channel(1);
         let status = Arc::new(Mutex::new("Waiting for a connection".into()));
@@ -1177,33 +1208,16 @@ impl Host {
             stop: stop.clone(),
         };
         handle.worker = Some(thread::spawn(move || {
-            while !stop.load(Ordering::Acquire) {
-                match listener.accept() {
-                    Ok((socket, _)) => {
-                        let result = host_session(
-                            Stream::Tcp(socket),
-                            &identity,
-                            control,
-                            &factory,
-                            &requests_tx,
-                            &stop,
-                            &status,
-                            None,
-                        );
-                        *status.lock().unwrap() = match result {
-                            Ok(()) => "Waiting for a connection".into(),
-                            Err(e) => format!("Session ended: {e}"),
-                        };
-                    }
-                    Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                        thread::sleep(Duration::from_millis(50))
-                    }
-                    Err(e) => {
-                        *status.lock().unwrap() = format!("Listener failed: {e}");
-                        break;
-                    }
-                }
-            }
+            let Some(guest) = direct_accept(listener, &identity, &stop, &status, pre_auth) else {
+                return;
+            };
+            let result =
+                host_authorized(guest, control, &factory, &requests_tx, &stop, &status, None);
+            // Fresh session secrets: this invitation never authorizes another session.
+            *status.lock().unwrap() = match result {
+                Ok(()) => format!("Session ended. {FRESH_INVITATION}"),
+                Err(e) => format!("Session ended: {e} — {FRESH_INVITATION}"),
+            };
         }));
         Ok(handle)
     }
@@ -1331,30 +1345,108 @@ impl Drop for OwnerDesktop {
         self.0.release();
     }
 }
-fn host_session(
+/// A guest that completed TLS and proved the invitation secret. Not yet approved.
+struct Authenticated {
+    net: Network,
+    version: i32,
+    name: String,
+}
+/// Accepts direct guests until one authenticates or sharing stops. TLS and the
+/// invitation proof run on bounded per-connection workers under one absolute
+/// deadline, so silent or slow peers cannot delay other guests. Returns only an
+/// authenticated stream; the listener is closed when this returns.
+fn direct_accept(
+    listener: TcpListener,
+    identity: &Arc<tls::Identity>,
+    stop: &Arc<AtomicBool>,
+    status: &Arc<Mutex<String>>,
+    pre_auth: Duration,
+) -> Option<Authenticated> {
+    let claimed = Arc::new(AtomicBool::new(false));
+    let (ready_tx, ready) = mpsc::sync_channel::<Authenticated>(1);
+    let mut workers: Vec<thread::JoinHandle<()>> = Vec::new();
+    let mut guest = None;
+    while !stop.load(Ordering::Acquire) {
+        if let Ok(authenticated) = ready.try_recv() {
+            guest = Some(authenticated);
+            break;
+        }
+        match listener.accept() {
+            Ok((socket, _)) => {
+                workers.retain(|worker| !worker.is_finished());
+                if workers.len() >= MAX_PRE_AUTH_HANDSHAKES {
+                    let _ = socket.shutdown(Shutdown::Both);
+                    continue;
+                }
+                let deadline = Instant::now() + pre_auth;
+                let (id, halt, taken, sender, shown) = (
+                    identity.clone(),
+                    stop.clone(),
+                    claimed.clone(),
+                    ready_tx.clone(),
+                    status.clone(),
+                );
+                let spawned = thread::Builder::new().spawn(move || {
+                    let cancelled =
+                        || halt.load(Ordering::Acquire) || taken.load(Ordering::Acquire);
+                    match authenticate(Stream::Tcp(socket), &id, &cancelled, deadline) {
+                        // A second authenticated guest is closed: one viewer at a time.
+                        Ok(authenticated) => drop(sender.try_send(authenticated)),
+                        Err(e) => {
+                            let mut shown = shown.lock().unwrap();
+                            if !cancelled() {
+                                *shown =
+                                    format!("Waiting for a connection. Refused an attempt: {e}");
+                            }
+                        }
+                    }
+                });
+                match spawned {
+                    Ok(worker) => workers.push(worker),
+                    Err(e) => {
+                        *status.lock().unwrap() = format!("Listener failed: {e}");
+                        break;
+                    }
+                }
+            }
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                thread::sleep(Duration::from_millis(20))
+            }
+            Err(e) => {
+                *status.lock().unwrap() = format!("Listener failed: {e}");
+                break;
+            }
+        }
+    }
+    // Single-use invitation: stop listening and cancel every other pending handshake.
+    drop(listener);
+    {
+        let _status = status.lock().unwrap();
+        claimed.store(true, Ordering::Release);
+    }
+    for worker in workers {
+        let _ = worker.join();
+    }
+    guest
+}
+/// TLS handshake plus invitation proof, both bounded by one absolute `deadline`.
+fn authenticate(
     socket: Stream,
     identity: &tls::Identity,
-    control: bool,
-    factory: &Factory,
-    requests: &SyncSender<HostRequest>,
-    stop: &AtomicBool,
-    status: &Mutex<String>,
-    resume_key: Option<&str>,
-) -> Result<()> {
-    let mut net = Network::new(
+    cancelled: &dyn Fn() -> bool,
+    deadline: Instant,
+) -> Result<Authenticated> {
+    let mut net = Network::establish(
         Connection::Server(ServerConnection::new(identity.config.clone())?),
         socket,
-        stop,
+        cancelled,
+        deadline,
     )?;
     // The authentication packet is tiny; do not buffer large packets for an unauthenticated peer.
     net.set_receive_limit(PRE_AUTH_RECEIVE_LIMIT);
-    let start = Instant::now();
     let (version, name) = loop {
-        ensure!(!stop.load(Ordering::Acquire), "Sharing stopped");
-        ensure!(
-            start.elapsed() < Duration::from_secs(12),
-            "Authentication timed out"
-        );
+        ensure!(!cancelled(), "Sharing stopped");
+        ensure!(Instant::now() < deadline, "Authentication timed out");
         let packets = net.tick()?;
         if let Some(p) = packets.first() {
             ensure!(packets.len() == 1 && p.0[0] == 1, "Authentication required");
@@ -1377,6 +1469,42 @@ fn host_session(
         thread::sleep(Duration::from_millis(5));
     };
     net.set_receive_limit(wire::FRAMER_LIMIT);
+    Ok(Authenticated { net, version, name })
+}
+#[allow(clippy::too_many_arguments)]
+fn host_session(
+    socket: Stream,
+    identity: &tls::Identity,
+    control: bool,
+    factory: &Factory,
+    requests: &SyncSender<HostRequest>,
+    stop: &AtomicBool,
+    status: &Mutex<String>,
+    resume_key: Option<&str>,
+) -> Result<()> {
+    let guest = authenticate(
+        socket,
+        identity,
+        &|| stop.load(Ordering::Acquire),
+        Instant::now() + PEER_PRE_AUTH_DEADLINE,
+    )?;
+    host_authorized(guest, control, factory, requests, stop, status, resume_key)
+}
+/// Local approval and the session for one authenticated guest.
+fn host_authorized(
+    guest: Authenticated,
+    control: bool,
+    factory: &Factory,
+    requests: &SyncSender<HostRequest>,
+    stop: &AtomicBool,
+    status: &Mutex<String>,
+    resume_key: Option<&str>,
+) -> Result<()> {
+    let Authenticated {
+        mut net,
+        version,
+        name,
+    } = guest;
     let (tx, rx) = mpsc::sync_channel(1);
     requests
         .try_send(HostRequest {
@@ -2114,6 +2242,134 @@ mod tests {
             }))
             .unwrap();
         wait(|| viewer.state.lock().unwrap().frames > previous);
+    }
+    /// Waits for the host to close `socket`; returns how long that took.
+    fn closed_by_host(socket: &mut TcpStream, started: Instant) -> Duration {
+        socket
+            .set_read_timeout(Some(Duration::from_secs(10)))
+            .unwrap();
+        match socket.read(&mut [0u8; 1]) {
+            Ok(0) => {}
+            Err(e) if e.kind() == io::ErrorKind::ConnectionReset => {}
+            other => panic!("Host did not close the connection: {other:?}"),
+        }
+        started.elapsed()
+    }
+    #[test]
+    fn silent_connections_do_not_delay_a_real_guest() {
+        let (mut host, count) = fixture();
+        let silent: Vec<_> = (0..MAX_PRE_AUTH_HANDSHAKES - 1)
+            .map(|_| TcpStream::connect(("127.0.0.1", host.invitation.port)).unwrap())
+            .collect();
+        thread::sleep(Duration::from_millis(100));
+        let started = Instant::now();
+        let viewer = Viewer::connect(host.invitation.clone(), Quality::default());
+        let request = host.requests.recv_timeout(Duration::from_secs(8)).unwrap();
+        // Previously a single silent socket held the accept thread for the full timeout.
+        assert!(started.elapsed() < Duration::from_secs(4));
+        request.answer.send(false).unwrap();
+        wait(|| host.is_finished());
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+        drop((viewer, silent));
+        host.close_and_wait();
+    }
+    #[test]
+    fn pre_auth_handshakes_are_capped_and_share_one_deadline() {
+        let budget = Duration::from_secs(3);
+        let count = Arc::new(AtomicUsize::new(0));
+        let c = count.clone();
+        let mut host = Host::listen_with(
+            "127.0.0.1:0",
+            "127.0.0.1",
+            false,
+            Arc::new(move || {
+                c.fetch_add(1, Ordering::Relaxed);
+                Ok(Box::new(Synthetic))
+            }),
+            budget,
+        )
+        .unwrap();
+        let port = host.invitation.port;
+        let started = Instant::now();
+        let mut silent: Vec<_> = (0..MAX_PRE_AUTH_HANDSHAKES)
+            .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
+            .collect();
+        thread::sleep(Duration::from_millis(200));
+        let mut extra = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let extra_started = Instant::now();
+        assert!(closed_by_host(&mut extra, extra_started) < Duration::from_millis(1500));
+        for socket in &mut silent {
+            let elapsed = closed_by_host(socket, started);
+            assert!(elapsed >= budget - Duration::from_millis(500) && elapsed < budget * 3);
+        }
+        // A peer that completes TLS but never proves the invitation hits the same deadline.
+        let client = ClientConnection::new(
+            tls::client(host.invitation.pin).unwrap(),
+            ServerName::try_from("lume-remote").unwrap(),
+        )
+        .unwrap();
+        let socket = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let started = Instant::now();
+        let never = AtomicBool::new(false);
+        let mut net =
+            Network::new(Connection::Client(client), Stream::Tcp(socket), &never).unwrap();
+        loop {
+            if net.tick().is_err() {
+                break;
+            }
+            assert!(
+                started.elapsed() < budget * 3,
+                "Unauthenticated TLS stayed open"
+            );
+            thread::sleep(Duration::from_millis(10));
+        }
+        assert!(started.elapsed() >= budget - Duration::from_millis(500));
+        drop(net);
+        // Unauthenticated attempts never consume the invitation.
+        assert!(!host.is_finished());
+        let viewer = Viewer::connect(host.invitation.clone(), Quality::default());
+        host.requests
+            .recv_timeout(Duration::from_secs(8))
+            .unwrap()
+            .answer
+            .send(false)
+            .unwrap();
+        wait(|| host.is_finished());
+        assert_eq!(count.load(Ordering::Relaxed), 0);
+        drop(viewer);
+        host.close_and_wait();
+    }
+    #[test]
+    fn direct_invitation_is_single_use() {
+        for approve in [false, true] {
+            let (mut host, count) = fixture();
+            let first = Viewer::connect(host.invitation.clone(), Quality::default());
+            host.requests
+                .recv_timeout(Duration::from_secs(8))
+                .unwrap()
+                .answer
+                .send(approve)
+                .unwrap();
+            if approve {
+                wait(|| first.state.lock().unwrap().frames > 0);
+                first.disconnect();
+            }
+            wait(|| host.is_finished());
+            assert!(host.status.lock().unwrap().contains(FRESH_INVITATION));
+            let replay = Viewer::connect(host.invitation.clone(), Quality::default());
+            wait(|| {
+                replay
+                    .state
+                    .lock()
+                    .unwrap()
+                    .status
+                    .starts_with("Connection ended")
+            });
+            assert!(host.requests.try_recv().is_err());
+            assert_eq!(count.load(Ordering::Relaxed), approve as usize);
+            drop((first, replay));
+            host.close_and_wait();
+        }
     }
     #[test]
     fn cancelling_a_partial_tls_handshake_joins_promptly() {
