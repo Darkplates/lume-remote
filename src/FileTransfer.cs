@@ -244,6 +244,28 @@ namespace LumeRemote
             Interlocked.Exchange(ref item.Activity, now);
             if (now - item.PreparationSent >= Stopwatch.Frequency) { item.PreparationSent = now; Send(FileOp.Preparing, item.Id); }
         }
+        // Verification, FlushFileBuffers and rename can outlast the sender's 30 s inactivity limit on a
+        // large file or a slow share. While completing, repeat the final acknowledgement (offset ==
+        // length): every peer version already accepts a non-decreasing Ack as liveness, so no new
+        // message or capability is needed, and it is ignored once the sender has its Result.
+        const int CompletionHeartbeatMilliseconds = 5000;
+        string CompleteWithHeartbeat(Transfer item, byte[] digest)
+        {
+            object beat = new object(); bool finished = false; long length = item.Incoming.Length; string id = item.Id;
+            using (System.Threading.Timer heartbeat = new System.Threading.Timer(delegate
+            {
+                lock (beat)
+                {
+                    if (finished || disposed || transportLost || item.Cancelled) return;
+                    Interlocked.Exchange(ref item.Activity, Stopwatch.GetTimestamp());
+                    try { Send(FileOp.Ack, id, delegate(BinaryWriter w) { w.Write(length); }); } catch (Exception) { }
+                }
+            }, null, CompletionHeartbeatMilliseconds, CompletionHeartbeatMilliseconds))
+            {
+                try { return item.Incoming.Complete(digest); }
+                finally { lock (beat) finished = true; }
+            }
+        }
         void HashPrefix(FileStream file, SHA256 hash, long length, Transfer item, SHA256 second = null)
         {
             byte[] buffer = new byte[ChunkSize]; long remaining = length;
@@ -390,7 +412,7 @@ namespace LumeRemote
                             if (receiving == null || receiving.Id != id || receiving.Cancelled || receiving.Incoming == null) return;
                             item = receiving;
                         }
-                        string saved = item.Incoming.Complete(digest); item.Incoming.Dispose();
+                        string saved = CompleteWithHeartbeat(item, digest); item.Incoming.Dispose();
                         SendResult(id, true, saved);
                         // Publish the receipt before waking a folder/batch continuation.
                         // Otherwise its next Get can overtake this transfer's Result.
