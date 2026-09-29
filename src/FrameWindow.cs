@@ -26,7 +26,7 @@ namespace LumeRemote
         {
             IntPtr handle = CreateWaitableTimerEx(IntPtr.Zero, null, 2, 0x1F0003);
             if (handle != IntPtr.Zero && handle != new IntPtr(-1))
-            { timer = new EventWaitHandle(false, EventResetMode.AutoReset); timer.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(handle, true); }
+            { timer = new EventWaitHandle(false, EventResetMode.AutoReset); var placeholder = timer.SafeWaitHandle; timer.SafeWaitHandle = new Microsoft.Win32.SafeHandles.SafeWaitHandle(handle, true); placeholder.Dispose(); }
         }
         public bool Wait(double milliseconds, WaitHandle stop)
         {
