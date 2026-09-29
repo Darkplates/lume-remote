@@ -252,8 +252,10 @@ namespace LumeRemote
             }
             catch (Exception error) { Reply(server, "error", error.Message); }
         }
+        // Wait until the client has read the reply: closing the server end first can
+        // discard it, and the dashboard then sees an unexpected end of stream.
         static void Reply(NamedPipeServerStream server, string status, string message)
-        { try { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); } catch { } }
+        { try { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } catch { } }
         bool Fresh(string nonce)
         {
             lock (gate)

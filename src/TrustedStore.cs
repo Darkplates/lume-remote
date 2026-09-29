@@ -255,7 +255,9 @@ namespace LumeRemote
                 if (pipeOwner == null || !(pipeOwner.IsWellKnown(WellKnownSidType.LocalSystemSid) || pipeOwner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid)))
                     throw new UnauthorizedAccessException("The settings channel is not owned by the Lume host service. The change was not sent.");
                 WriteFrame(client, Encoding.UTF8.GetBytes(JsonData.Encode(request)));
-                byte[] replyBytes = ReadFrame(client, 8192); string[] reply = new UTF8Encoding(false, true).GetString(replyBytes).Split(new char[] { '\n' }, 2);
+                byte[] replyBytes;
+                try { replyBytes = ReadFrame(client, 8192); }
+                catch (EndOfStreamException) { throw new IOException("The Lume host service closed the settings channel without an answer. Check Settings, then try again."); } string[] reply = new UTF8Encoding(false, true).GetString(replyBytes).Split(new char[] { '\n' }, 2);
                 if (reply.Length == 0 || reply[0] != "ok") throw new InvalidOperationException(reply.Length > 1 && reply[1].Length > 0 ? reply[1] : "The host service rejected the change.");
             }
         }
