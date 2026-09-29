@@ -68,11 +68,12 @@ namespace LumeRemote
             Icon = Brand.Icon;
             canvas.StatusMessage = information.Text = ConnectionDiagnostics.Caption(peer == null ? ConnectionStage.Contacting : ConnectionStage.Securing, invite);
             StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Background; ForeColor = Theme.Text;
-            FlowLayoutPanel toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12, 3, 12, 0), BackColor = Theme.Card, WrapContents = true };
-            Button disconnect = Theme.Button("Disconnect", false), fullscreen = Theme.Button("Full screen", false), clip = Theme.Button("Send clipboard text", false), release = Theme.Button("Release keys", false);
-            Button quality = Theme.Button("Quality", true), files = Theme.Button("Files", false), pixels = Theme.Button("1:1 pixels", false), more = Theme.Button("More", false); quality.Width = pixels.Width = 120; more.Width = files.Width = 90;
-            disconnect.Width = 120; fullscreen.Width = 120; clip.Width = 176; release.Width = 124;
-            toolbar.Controls.Add(Brand.Mark(42)); toolbar.Controls.Add(quality); toolbar.Controls.Add(files); toolbar.Controls.Add(fullscreen); toolbar.Controls.Add(more); toolbar.Controls.Add(disconnect); recordingBadge.Visible = false; recordingBadge.Margin = new Padding(12, 13, 0, 0); toolbar.Controls.Add(recordingBadge); microphoneBadge.Visible = false; microphoneBadge.Margin = new Padding(12, 13, 0, 0); toolbar.Controls.Add(microphoneBadge);
+            FlowLayoutPanel toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(10, 2, 10, 0), BackColor = Theme.Card, WrapContents = true };
+            // One quiet toolbar: ghost buttons, a single danger action. No accent competes with the remote desktop.
+            Button disconnect = Theme.DangerButton("Disconnect"), fullscreen = Theme.Button("Full screen", ButtonKind.Ghost), clip = Theme.Button("Send clipboard text", false), release = Theme.Button("Release keys", false);
+            Button quality = Theme.Button("Quality", ButtonKind.Ghost), files = Theme.Button("Files", ButtonKind.Ghost), pixels = Theme.Button("1:1 pixels", false), more = Theme.Button("More", ButtonKind.Ghost); quality.Width = pixels.Width = 96; more.Width = files.Width = 80;
+            disconnect.Width = 116; fullscreen.Width = 128; clip.Width = 176; release.Width = 124;
+            PictureBox toolbarMark = Brand.Mark(24); toolbarMark.Margin = new Padding(4, 12, 12, 0); toolbarMark.AccessibleRole = AccessibleRole.Graphic; toolbarMark.AccessibleName = "Lume logo"; toolbar.Controls.Add(toolbarMark); toolbar.Controls.Add(quality); toolbar.Controls.Add(files); toolbar.Controls.Add(fullscreen); toolbar.Controls.Add(more); toolbar.Controls.Add(disconnect); recordingBadge.Visible = false; recordingBadge.Margin = new Padding(12, 13, 0, 0); toolbar.Controls.Add(recordingBadge); microphoneBadge.Visible = false; microphoneBadge.Margin = new Padding(12, 13, 0, 0); toolbar.Controls.Add(microphoneBadge);
             files.Click += delegate
             {
                 ViewerConnection current = connection;
@@ -290,6 +291,7 @@ namespace LumeRemote
                             {
                                 if (closed) return;
                                 long started = Stopwatch.GetTimestamp(); decoder.Apply(packet);
+                                if (decoder.TakeVideoFailure() && !closed) VideoDecodeFailed(current);
                                 if (decoder.FrameReady && !closed)
                                 {
                                     SessionRecording capture = Volatile.Read(ref recording); if (capture != null) capture.Publish(decoder.Image);
@@ -326,6 +328,15 @@ namespace LumeRemote
         }
         void OnUi(Action action)
         { if (closed || IsDisposed) return; try { BeginInvoke((Action)delegate { if (!closed && !IsDisposed) action(); }); } catch (InvalidOperationException) { } }
+        // Called on the receive worker. The frame is still acknowledged by the caller, and the host sends a complete image
+        // after the quality change. The fallback also replaces a saved video quality so reconnects do not repeat the failure.
+        void VideoDecodeFailed(ViewerConnection current)
+        {
+            StreamQuality fallback = (desiredQuality ?? current.CurrentQuality ?? StreamQuality.Source).Copy(); fallback.Video = false; fallback.Lossless = true;
+            desiredQuality = fallback; current.SetQuality(fallback.Copy());
+            SessionLog.Write(SessionLog.UserDirectory, "viewer", "video_decode_fallback");
+            OnUi(delegate { if (QualityChanged != null) QualityChanged(fallback); ShowNotice("H.264 decoding failed on this PC. Switched to lossless images."); });
+        }
         void ReconnectProgress(string message) { OnUi(delegate { information.Text = canvas.StatusMessage = message; canvas.Invalidate(); }); }
         void PowerChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args)
         {

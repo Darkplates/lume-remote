@@ -25,6 +25,9 @@ namespace LumeRemote
         readonly TaskCompletionSource<bool> stopped = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         long nextId;
         volatile bool disposed;
+        // Runs on the receive thread before a request joins the sequential queue, so a request
+        // can withdraw an earlier one that is still waiting for a local prompt. Must not block.
+        internal Action<SessionTool, byte[]> Arrived { get; set; }
         public SessionTools(Wire wire, Action<Exception> failed, Func<SessionTool, Packet, Task<byte[]>> handler = null)
         {
             this.wire = wire; this.failed = failed; this.handler = handler;
@@ -64,6 +67,7 @@ namespace LumeRemote
             if (request <= 0 || !Enum.IsDefined(typeof(SessionTool), op)) throw new InvalidDataException("Invalid session request.");
             int remaining = checked((int)(packet.Reader.BaseStream.Length - packet.Reader.BaseStream.Position));
             byte[] payload = new byte[remaining + 1]; payload[0] = (byte)Kind.Tools; packet.Reader.Read(payload, 1, remaining); packet.End();
+            Action<SessionTool, byte[]> arrived = Arrived; if (arrived != null && !disposed) arrived(op, payload);
             Action action = delegate
             {
                 byte[] reply = Payload(); string error = "";

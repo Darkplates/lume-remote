@@ -11,10 +11,13 @@ namespace LumeRemote
     sealed class ComputersPanel : UserControl
     {
         readonly ListBox computers = List(), trusted = List();
-        readonly Button connect = Theme.Button("Connect", true), enable = Theme.Button("Enable permanent access", true), pair = Theme.Button("Pair another computer", false);
+        readonly Button connect = Theme.Button("Connect", true), enable = Theme.Button("Enable access", true), pair = Theme.Button("Pair another PC", false);
         readonly Button update = Theme.Button("Update installed host", false);
         readonly Label state = Theme.Label("", 10, Theme.Muted), progress = Theme.Label("Select a saved PC and connect with one click.", 10, Theme.Muted);
-        readonly Label deviceName = Theme.Label(Environment.MachineName, 16, Theme.Text), hostSummary = Theme.Label("Access off", 10, Theme.Muted);
+        readonly Label deviceName = Theme.Label(Environment.MachineName, 16, Theme.Text), hostSummary = new StatusPill { Text = "Access off" }, hostDetail = Theme.Label("", 10, Theme.Muted);
+        readonly LinkLabel trustedSummary = new LinkLabel { AutoSize = true, LinkColor = Theme.Accent, ActiveLinkColor = Theme.AccentHover, ForeColor = Theme.Muted, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 0, 0, 6) };
+        readonly FlowLayoutPanel empty = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Theme.Card, Padding = new Padding(4, 12, 4, 4) };
+        Button add;
         readonly CheckBox awake = new CheckBox { Text = "Keep this PC awake while plugged in", AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 8, 0, 12) };
         readonly System.Windows.Forms.Timer refresh = new System.Windows.Forms.Timer { Interval = 3000 };
         SavedPreferences saved;
@@ -24,35 +27,55 @@ namespace LumeRemote
         public ComputersPanel()
         {
             Dock = DockStyle.Fill; BackColor = Theme.Background;
-            TableLayoutPanel columns = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 1 };
-            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
-            FlowLayoutPanel left = Theme.Column(), right = Theme.Column(); Panel a = new Panel { Dock = DockStyle.Fill, AutoScroll = true }, b = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
-            left.Padding = new Padding(22, 16, 22, 16); deviceName.Margin = hostSummary.Margin = new Padding(0, 0, 0, 6);
-            a.Controls.Add(left); b.Controls.Add(right); columns.Controls.Add(a, 0, 0); Controls.Add(columns);
-            left.Controls.Add(Theme.Label("Your computers", 22, Theme.Text));
-            computers.Height = 128; computers.BackColor = Theme.Card; computers.DrawMode = DrawMode.OwnerDrawFixed; computers.ItemHeight = Theme.Px(64); computers.AccessibleName = "Saved computers";
+            // Two cards: saved computers (outgoing) and this PC's permanent access (incoming).
+            TableLayoutPanel columns = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 2, RowCount = 1, Margin = new Padding(0), Padding = new Padding(0), BackColor = Theme.Background };
+            columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 62)); columns.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 38));
+            CardPanel listCard = new CardPanel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 8, 0) }, hostCard = new CardPanel { Dock = DockStyle.Fill, Margin = new Padding(8, 0, 0, 0), AutoScroll = true };
+            TableLayoutPanel listLayout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 4, BackColor = Theme.Card, Margin = new Padding(0) };
+            listLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); listLayout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); listLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize)); listLayout.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+            FlowLayoutPanel left = Theme.Column(), right = Theme.Column(); Panel a = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Theme.Card }, b = new Panel { Dock = DockStyle.Fill, AutoScroll = true };
+            left.Padding = new Padding(0); left.Dock = DockStyle.Fill; a.Controls.Add(left); b.Controls.Add(right); hostCard.Controls.Add(a); listCard.Controls.Add(listLayout);
+            columns.Controls.Add(listCard, 0, 0); columns.Controls.Add(hostCard, 1, 0); Controls.Add(columns);
+            Label listTitle = Theme.Label("Your computers", 14, Theme.Text); listTitle.Margin = new Padding(0, 0, 0, 12); listLayout.Controls.Add(listTitle, 0, 0);
+            computers.Dock = DockStyle.Fill; computers.BackColor = Theme.Card; computers.DrawMode = DrawMode.OwnerDrawFixed; computers.ItemHeight = Theme.Px(Theme.RowHeight); computers.AccessibleName = "Saved computers";
             computers.DrawItem += DrawComputer;
-            left.Controls.Add(computers);
+            Panel listArea = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8), BackColor = Theme.Card }; listArea.Controls.Add(computers); listArea.Controls.Add(empty); empty.BringToFront();
+            listLayout.Controls.Add(listArea, 0, 1);
             Button add = Theme.Button("Add a computer", false), remove = Theme.Button("Forget selected PC", false), wake = Theme.Button("Wake setup...", false), cancel = Theme.Button("Cancel connection", false);
-            FlowLayoutPanel connectionActions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = new Padding(0) };
-            connect.Width = 170; add.Width = 180; Button manage = Theme.Button("More", false); manage.Width = 86;
-            connectionActions.Controls.Add(connect); connectionActions.Controls.Add(add); connectionActions.Controls.Add(manage); left.Controls.Add(connectionActions); left.Controls.Add(progress);
+            this.add = add;
+            FlowLayoutPanel connectionActions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = new Padding(0), BackColor = Theme.Card };
+            connect.Width = 130; add.Width = 160; Button manage = Theme.Button("More", false); manage.Width = 90;
+            connectionActions.Controls.Add(connect); connectionActions.Controls.Add(add); connectionActions.Controls.Add(manage); listLayout.Controls.Add(connectionActions, 0, 2); listLayout.Controls.Add(progress, 0, 3);
             ContextMenuStrip computerMenu = new ContextMenuStrip();
-            computerMenu.Items.Add("Wake setup", null, delegate { wake.PerformClick(); }); computerMenu.Items.Add("Forget selected PC", null, delegate { remove.PerformClick(); }); computerMenu.Items.Add("Cancel connection", null, delegate { cancel.PerformClick(); });
+            computerMenu.Items.Add("Cancel connection", null, delegate { cancel.PerformClick(); }); computerMenu.Items.Add("Wake setup...", null, delegate { wake.PerformClick(); }); computerMenu.Items.Add(new ToolStripSeparator()); computerMenu.Items.Add("Forget selected PC", null, delegate { remove.PerformClick(); });
             manage.Click += delegate { computerMenu.Show(manage, new Point(0, manage.Height)); };
-            left.Controls.Add(Theme.Label("THIS PC", 9, Theme.Accent)); left.Controls.Add(deviceName); left.Controls.Add(hostSummary);
-            FlowLayoutPanel hostActions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = new Padding(0) };
-            enable.Width = 170; pair.Width = 180; Button hostSettings = Theme.Button("Settings", false); hostSettings.Width = 86;
-            hostActions.Controls.Add(enable); hostActions.Controls.Add(pair); hostActions.Controls.Add(hostSettings); left.Controls.Add(hostActions);
-            right.Controls.Add(Theme.Label("This PC", 22, Theme.Text)); right.Controls.Add(state); right.Controls.Add(awake);
-            update.Width = 310; right.Controls.Add(update);
-            Button networkFolders = Theme.Button("Network folders", false); networkFolders.Width = 310; right.Controls.Add(networkFolders);
+            computers.ContextMenuStrip = computerMenu;
+            computers.KeyDown += async delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; await ConnectSelected(); } };
+            // Empty state: a short guide with Add a computer as the next step.
+            empty.Controls.Add(Theme.Label("No computers yet", 12, Theme.Text)); empty.Controls.Add(Theme.Label("Pair once, then connect with one click.", 10, Theme.Muted));
+            foreach (string step in new[] { "1   On the PC you want to control, open Lume and choose Enable access.", "2   There, choose Pair another PC and copy the code.", "3   Here, choose Add a computer and paste it." }) empty.Controls.Add(Theme.Label(step, 10, Theme.Text));
+            Label hostHeading = Theme.Label("This PC", 14, Theme.Text); hostHeading.Margin = new Padding(0, 0, 0, 8);
+            deviceName.Font = new Font(Theme.FontNameStrong, 12); deviceName.Margin = new Padding(0, 0, 0, 2);
+            left.Controls.Add(hostHeading); left.Controls.Add(deviceName); left.Controls.Add(hostSummary); left.Controls.Add(hostDetail); left.Controls.Add(trustedSummary);
+            FlowLayoutPanel hostActions = new FlowLayoutPanel { AutoSize = true, WrapContents = true, Margin = new Padding(0, 8, 0, 0), BackColor = Theme.Card };
+            pair.Width = 150; Button hostSettings = Theme.Button("Settings", false); hostSettings.Width = 100;
+            hostActions.Controls.Add(pair); hostActions.Controls.Add(hostSettings); left.Controls.Add(hostActions);
+            enable.Width = 258; enable.Margin = new Padding(0, 4, 0, 8); left.Controls.Add(enable);
+            trustedSummary.Click += delegate { hostSettings.PerformClick(); };
+            right.Controls.Add(Theme.Label("Computer settings", 16, Theme.Text));
+            right.Controls.Add(Section("Access")); right.Controls.Add(state); right.Controls.Add(awake);
+            right.Controls.Add(Section("Computers allowed to connect")); right.Controls.Add(trusted);
+            Button revoke = Theme.DangerButton("Revoke selected access"), helper = Theme.Button("Create wake-only pairing", false), uninstall = Theme.DangerButton("Remove Windows service");
+            right.Controls.Add(revoke);
+            right.Controls.Add(Theme.Label("Paired computers can see and control this PC, use the clipboard in both directions, transfer files and configured network folders, hear system sound, and lock, restart or shut it down. Guest invitations still ask for approval.", 9, Theme.Muted));
+            right.Controls.Add(Section("Wake")); right.Controls.Add(helper);
+            right.Controls.Add(Section("Network folders"));
+            Button networkFolders = Theme.Button("Network folders", false); right.Controls.Add(networkFolders);
             networkFolders.Click += delegate { try { if (!PermanentAccess.Installed) throw new InvalidOperationException("Enable permanent access before configuring network folders."); using (var dialog = new NetworkFoldersForm(TrustedStore.Machine.ReadHost().NetworkFolders.ToArray())) if (dialog.ShowDialog(this) == DialogResult.OK) TrustedStore.Machine.Change(new HostRequest { Op = "folders", Folders = dialog.Roots.ToList() }); } catch (Exception error) { ShowError(error); } };
-            right.Controls.Add(Theme.Label("Update restarts the installed host and closes its old dashboard. Saved pairings and the access ON/OFF setting are kept. Windows asks for administrator permission.", 10, Theme.Muted));
-            right.Controls.Add(Theme.Label("COMPUTERS ALLOWED TO CONNECT", 9, Theme.Muted)); right.Controls.Add(trusted);
-            Button revoke = Theme.Button("Revoke selected access", false), helper = Theme.Button("Create wake-only pairing", false), uninstall = Theme.Button("Remove Windows service", false);
-            revoke.Width = helper.Width = uninstall.Width = 310; right.Controls.Add(revoke); right.Controls.Add(helper); right.Controls.Add(uninstall);
-            right.Controls.Add(Theme.Label("Paired computers can control this PC, send clipboard text and transfer files. Guest invitations still ask for approval. Disable access at any time, or use Ctrl + Alt + Shift + F12 while the dashboard is open.", 10, Theme.Muted));
+            right.Controls.Add(Section("Maintenance")); right.Controls.Add(update);
+            right.Controls.Add(Theme.Label("Update restarts the installed host and closes its old dashboard. Saved pairings and the access setting are kept. Windows asks for administrator permission.", 9, Theme.Muted));
+            right.Controls.Add(Section("Danger zone")); right.Controls.Add(uninstall);
+            right.Controls.Add(Theme.Label("Disable access at any time from the dashboard or the tray icon, or press Ctrl + Alt + Shift + F12 while the dashboard is open.", 9, Theme.Muted));
             hostSettings.Click += delegate
             {
                 using (Form settings = Dialog("Computer settings", 620, 650))
@@ -107,10 +130,16 @@ namespace LumeRemote
             // The settings column moves between dialogs, so it is scaled here once instead of by each dialog.
             b.Scale(new SizeF(Theme.Factor, Theme.Factor));
         }
+        static Label Section(string title) { Label label = Theme.Label(title, 11, Theme.Text); label.Font = new Font(Theme.FontNameStrong, 11); label.Margin = new Padding(0, 16, 0, 6); return label; }
         static void Fit(FlowLayoutPanel panel, Panel parent)
         { int width = Math.Max(Theme.Px(250), parent.ClientSize.Width - Theme.Px(70)); panel.Width = parent.ClientSize.Width - Theme.Px(18); foreach (Control control in panel.Controls) { if (control is Label) control.MaximumSize = new Size(width, 0); else if (control is ListBox || control is FlowLayoutPanel) control.Width = width; else control.Width = Math.Min(Theme.Px(398), width); } }
         void Save() { TrustedStore.User.SaveComputers(saved); }
-        void ReloadSaved() { computers.Items.Clear(); computers.Items.AddRange(saved.Computers.ToArray()); if (computers.Items.Count > 0) computers.SelectedIndex = 0; progress.Text = computers.Items.Count == 0 ? "Add your first PC. Pair once, connect whenever you need it." : "Double-click a PC to connect. Each session opens in its own window."; }
+        void ReloadSaved() { computers.Items.Clear(); computers.Items.AddRange(saved.Computers.ToArray()); if (computers.Items.Count > 0) computers.SelectedIndex = 0; UpdateEmptyState(); progress.Text = computers.Items.Count == 0 ? "" : "Double-click a PC to connect. Each session opens in its own window."; }
+        void UpdateEmptyState()
+        {
+            bool none = computers.Items.Count == 0; empty.Visible = none; computers.Visible = !none; connect.Visible = !none;
+            if (add != null) ((ReadableButton)add).Kind = none ? ButtonKind.Primary : ButtonKind.Secondary;
+        }
         static ViewerForm OpenViewer(SavedComputer computer)
         { return Application.OpenForms.OfType<ViewerForm>().FirstOrDefault(window => window.ComputerId == computer.HostId && !window.IsDisposed); }
         void UpdateConnectButton()
@@ -123,14 +152,18 @@ namespace LumeRemote
         {
             if (args.Index < 0 || args.Index >= computers.Items.Count) return;
             SavedComputer computer = (SavedComputer)computers.Items[args.Index]; bool selected = (args.State & DrawItemState.Selected) != 0;
-            using (Brush background = new SolidBrush(selected ? Theme.Field : Theme.Card)) args.Graphics.FillRectangle(background, args.Bounds);
-            int y = args.Bounds.Y;
-            using (Pen line = new Pen(Theme.Accent, Theme.Px(2))) { args.Graphics.DrawRectangle(line, Theme.Px(17), y + Theme.Px(15), Theme.Px(31), Theme.Px(22)); args.Graphics.DrawLine(line, Theme.Px(32), y + Theme.Px(38), Theme.Px(32), y + Theme.Px(44)); args.Graphics.DrawLine(line, Theme.Px(24), y + Theme.Px(45), Theme.Px(40), y + Theme.Px(45)); }
-            using (Font name = new Font("Segoe UI Semibold", 12)) TextRenderer.DrawText(args.Graphics, computer.Name, name, new Rectangle(Theme.Px(66), y + Theme.Px(8), args.Bounds.Width - Theme.Px(80), Theme.Px(26)), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            Graphics g = args.Graphics; g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            using (Brush background = new SolidBrush(Theme.Card)) g.FillRectangle(background, args.Bounds);
+            Rectangle row = new Rectangle(args.Bounds.X, args.Bounds.Y + Theme.Px(2), args.Bounds.Width - Theme.Px(2), args.Bounds.Height - Theme.Px(4));
+            if (selected)
+                using (System.Drawing.Drawing2D.GraphicsPath path = Theme.Rounded(row, Theme.Px(6))) using (Brush fill = new SolidBrush(Theme.AccentSoft)) using (Pen edge = new Pen(Theme.Accent)) { g.FillPath(fill, path); g.DrawPath(edge, path); }
+            int y = row.Y + (row.Height - Theme.Px(52)) / 2;
+            using (Pen line = new Pen(Theme.Accent, Theme.Px(2))) { g.DrawRectangle(line, Theme.Px(16), y + Theme.Px(14), Theme.Px(28), Theme.Px(19)); g.DrawLine(line, Theme.Px(30), y + Theme.Px(34), Theme.Px(30), y + Theme.Px(39)); g.DrawLine(line, Theme.Px(23), y + Theme.Px(40), Theme.Px(37), y + Theme.Px(40)); }
+            using (Font name = new Font(Theme.FontNameStrong, 10.5f)) TextRenderer.DrawText(g, computer.Name, name, new Rectangle(Theme.Px(60), y + Theme.Px(6), row.Width - Theme.Px(72), Theme.Px(22)), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             ViewerForm viewer = OpenViewer(computer);
-            string detail = computer.WakeOnly ? "Wake helper" : viewer == null ? "Saved computer" : viewer.IsSessionConnected ? "Connected - click to return" : "Session window open";
-            TextRenderer.DrawText(args.Graphics, detail, Font, new Rectangle(Theme.Px(66), y + Theme.Px(34), args.Bounds.Width - Theme.Px(80), Theme.Px(23)), Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-            args.DrawFocusRectangle();
+            string detail = computer.WakeOnly ? "Wake helper" : viewer == null ? "Saved computer" : viewer.IsSessionConnected ? "Connected - open its window" : "Session window open";
+            TextRenderer.DrawText(g, detail, Font, new Rectangle(Theme.Px(60), y + Theme.Px(28), row.Width - Theme.Px(72), Theme.Px(20)), viewer != null && viewer.IsSessionConnected ? Theme.Success : Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            if (selected && (args.State & DrawItemState.Focus) != 0 && (args.State & DrawItemState.NoFocusRect) == 0) using (System.Drawing.Drawing2D.GraphicsPath path = Theme.Rounded(row, Theme.Px(6))) using (Pen ring = new Pen(Theme.Accent, Theme.Px(2))) g.DrawPath(ring, path);
         }
         void ShowError(Exception error) { progress.Text = error is OperationCanceledException ? "Cancelled." : error.Message; }
         public void RefreshHost()
@@ -148,8 +181,12 @@ namespace LumeRemote
                 string statusFile = Path.Combine(TrustedStore.MachineDirectory, "status.txt");
                 if (host != null && host.Enabled && File.Exists(statusFile) && DateTime.UtcNow - File.GetLastWriteTimeUtc(statusFile) < TimeSpan.FromSeconds(30)) state.Text = File.ReadAllText(statusFile).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 else if (host != null && host.Enabled) state.Text = "Permanent access is ON. Service status is not yet available.";
-                hostSummary.Text = host != null && host.Enabled ? "Access on - paired computers can connect" : "Access off";
-                hostSummary.ForeColor = host != null && host.Enabled ? Theme.Accent : Theme.Muted; computers.Invalidate();
+                bool on = host != null && host.Enabled; hostSummary.Text = on ? "Access on" : "Access off"; ((StatusPill)hostSummary).On = on;
+                hostDetail.Text = !installed ? "Enable access to reach this PC from your other computers." : on ? "Paired computers can connect." : "Saved computers cannot connect.";
+                int allowed = host == null ? 0 : host.Controllers.Count(c => !c.WakeOnly);
+                trustedSummary.Text = allowed == 0 ? "No computers can connect yet" : allowed + (allowed == 1 ? " computer can connect - Manage" : " computers can connect - Manage");
+                trustedSummary.LinkArea = allowed == 0 ? new LinkArea(0, 0) : new LinkArea(trustedSummary.Text.Length - 6, 6);
+                ((ReadableButton)enable).Kind = on ? ButtonKind.Secondary : ButtonKind.Primary; computers.Invalidate();
                 UpdateConnectButton();
             }
             catch (Exception error) { state.Text = error.Message; pair.Enabled = false; }

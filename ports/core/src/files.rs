@@ -459,34 +459,88 @@ impl Incoming {
             .sync_all()?;
         self.file.take();
         local_path(&self.folder)?;
-        for n in 0..10000 {
-            let candidate = if n == 0 {
-                self.name.clone()
-            } else {
-                let p = Path::new(&self.name);
-                let stem = p
-                    .file_stem()
-                    .context("Invalid file name")?
-                    .to_string_lossy();
-                match p.extension() {
-                    Some(ext) => format!("{stem} ({n}).{}", ext.to_string_lossy()),
-                    None => format!("{stem} ({n})"),
-                }
-            };
-            safe_name(&candidate)?;
-            let target = self.folder.join(candidate);
-            // Atomic publication without replacing an existing file or symlink.
-            match fs::hard_link(&self.temp, &target) {
+        publish(&self.temp, &self.folder, &self.name, |from, to| {
+            fs::hard_link(from, to)
+        })
+    }
+}
+/// Publishes a verified temporary file under the first free name, never replacing
+/// an existing file or link. A hard link publishes atomically; file systems that
+/// cannot link (FAT/exFAT, some SMB shares) use an exclusive-create copy instead.
+fn publish(
+    temp: &Path,
+    folder: &Path,
+    name: &str,
+    link: impl Fn(&Path, &Path) -> std::io::Result<()>,
+) -> Result<PathBuf> {
+    use std::io::ErrorKind;
+    let mut linkable = true;
+    for n in 0..10000 {
+        let candidate = if n == 0 {
+            name.to_owned()
+        } else {
+            let p = Path::new(name);
+            let stem = p
+                .file_stem()
+                .context("Invalid file name")?
+                .to_string_lossy();
+            match p.extension() {
+                Some(ext) => format!("{stem} ({n}).{}", ext.to_string_lossy()),
+                None => format!("{stem} ({n})"),
+            }
+        };
+        safe_name(&candidate)?;
+        let target = folder.join(candidate);
+        if linkable {
+            match link(temp, &target) {
                 Ok(()) => {
-                    fs::remove_file(&self.temp)?;
+                    fs::remove_file(temp)?;
                     return Ok(target);
                 }
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {}
-                Err(e) => return Err(e.into()),
+                Err(e) if e.kind() == ErrorKind::AlreadyExists => continue,
+                Err(e) if e.kind() == ErrorKind::NotFound => return Err(e.into()),
+                // Unsupported, PermissionDenied (EPERM on vfat/exFAT), EOPNOTSUPP,
+                // ERROR_INVALID_FUNCTION and similar. The copy below is equally
+                // non-destructive and reports its own error if the cause is general.
+                Err(_) => linkable = false,
             }
         }
-        bail!("Choose a different destination file name")
+        match copy_new(temp, &target) {
+            Ok(()) => {
+                fs::remove_file(temp)?;
+                return Ok(target);
+            }
+            Err(e) if e.kind() == ErrorKind::AlreadyExists => {}
+            Err(e) => return Err(e.into()),
+        }
     }
+    bail!("Choose a different destination file name")
+}
+/// Copies `temp` into a newly created `target`; fails if `target` exists.
+fn copy_new(temp: &Path, target: &Path) -> std::io::Result<()> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut out = options.open(target)?;
+    let result = (|| {
+        let mut input = File::open(temp)?;
+        let expected = input.metadata()?.len();
+        let copied = std::io::copy(&mut input, &mut out)?;
+        if copied != expected {
+            return Err(std::io::Error::other("Published copy is incomplete"));
+        }
+        out.sync_all()
+    })();
+    if result.is_err() {
+        // Only the file created exclusively above is removed.
+        drop(out);
+        let _ = fs::remove_file(target);
+    }
+    result
 }
 impl Drop for Incoming {
     fn drop(&mut self) {
@@ -1330,6 +1384,56 @@ mod tests {
             },
             rx,
         )
+    }
+    #[test]
+    fn publish_falls_back_to_exclusive_copy_without_overwriting() {
+        use std::io::{Error, ErrorKind};
+        let root =
+            std::env::temp_dir().join(format!("lume-publish-test-{}", identifier().unwrap()));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join("report.txt"), b"existing").unwrap();
+        for (n, kind) in [
+            ErrorKind::Unsupported,
+            ErrorKind::PermissionDenied,
+            ErrorKind::Other,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let temp = root.join(format!(".lume-{n}.partial"));
+            fs::write(&temp, format!("verified {n}")).unwrap();
+            let links = std::cell::Cell::new(0);
+            let published = publish(&temp, &root, "report.txt", |_, _| {
+                links.set(links.get() + 1);
+                Err(Error::from(kind))
+            })
+            .unwrap();
+            // The first failure selects the copy path; the name is never replaced.
+            assert_eq!(links.get(), 1);
+            assert_eq!(published, root.join(format!("report ({}).txt", n + 1)));
+            assert_eq!(
+                fs::read(&published).unwrap(),
+                format!("verified {n}").as_bytes()
+            );
+            assert!(!temp.exists());
+        }
+        assert_eq!(fs::read(root.join("report.txt")).unwrap(), b"existing");
+        // A missing temporary file is an error, never an empty published file.
+        assert!(
+            publish(&root.join("missing"), &root, "gone.txt", |_, _| Err(
+                Error::from(ErrorKind::Unsupported)
+            ))
+            .is_err()
+        );
+        assert!(!root.join("gone.txt").exists());
+        // The atomic hard-link path still publishes without replacing.
+        let temp = root.join(".lume-link.partial");
+        fs::write(&temp, b"linked").unwrap();
+        let linked = publish(&temp, &root, "report.txt", |a, b| fs::hard_link(a, b)).unwrap();
+        assert_eq!(linked, root.join("report (4).txt"));
+        assert_eq!(fs::read(linked).unwrap(), b"linked");
+        assert!(!temp.exists());
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn scoped_host_denies_traversal_and_unsolicited_viewer_writes() {

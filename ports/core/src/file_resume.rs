@@ -10,6 +10,35 @@ pub(super) struct Journal {
     keep: bool,
 }
 
+/// True only for a regular, unlinked journal holding exactly `header`.
+fn journal_matches(path: &Path, header: &[u8]) -> bool {
+    (|| -> Result<bool> {
+        local_path(path)?;
+        let mut state = File::open(path)?;
+        let metadata = state.metadata()?;
+        if !metadata.is_file() || metadata.len() != 80 {
+            return Ok(false);
+        }
+        let mut stored = [0; 80];
+        state.read_exact(&mut stored)?;
+        Ok(crate::wire::equal(header, &stored))
+    })()
+    .unwrap_or(false)
+}
+/// Removes a leftover journal file (never a folder); a missing journal is fine.
+fn remove_stale_journal(path: &Path) -> Result<()> {
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            ensure!(!metadata.is_dir(), "Invalid resume journal");
+            // Removing a link removes only the link, never its target.
+            fs::remove_file(path)?;
+            Ok(())
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(e.into()),
+    }
+}
+
 pub(super) fn key(value: &str) -> Result<Zeroizing<Vec<u8>>> {
     use base64::Engine;
     let bytes = Zeroizing::new(base64::engine::general_purpose::URL_SAFE_NO_PAD.decode(value)?);
@@ -81,32 +110,29 @@ impl Incoming {
                 "Linked partial files are not supported"
             );
         }
-        // A missing/invalid journal never authorizes reuse or deletion of someone else's data.
+        // The names carry this key's HMAC tag, and the .part is exclusively locked here.
+        // A missing/invalid journal never authorizes reusing partial bytes: it only
+        // restarts this keyed checkpoint from zero, so a crash cannot block it forever.
+        let write_journal = || -> Result<()> {
+            remove_stale_journal(&path)?;
+            let mut state = options.open(&path)?;
+            state.write_all(&header)?;
+            state.sync_all()?;
+            Ok(())
+        };
         if created {
-            let result = (|| -> Result<()> {
-                let mut state = options.open(&path)?;
-                state.write_all(&header)?;
-                state.sync_all()?;
-                Ok(())
-            })();
-            if let Err(e) = result {
+            // A crash can leave a journal whose partial file was already removed.
+            if let Err(e) = write_journal() {
                 drop(file);
                 let _ = fs::remove_file(&temp);
                 return Err(e);
             }
-        } else {
-            local_path(&path)?;
-            let mut state = File::open(&path)?;
-            ensure!(
-                state.metadata()?.is_file() && state.metadata()?.len() == 80,
-                "Invalid resume journal"
-            );
-            let mut stored = [0; 80];
-            state.read_exact(&mut stored)?;
-            ensure!(
-                crate::wire::equal(&header, &stored),
-                "Resume journal identity changed"
-            );
+        } else if !journal_matches(&path, &header) {
+            // Remove the journal first, so an interruption here restarts cleanly again.
+            remove_stale_journal(&path)?;
+            file.set_len(0)?;
+            file.sync_all()?;
+            write_journal()?;
         }
         let position = file.metadata()?.len();
         ensure!(position <= length, "Partial file exceeds its expected size");
@@ -393,6 +419,57 @@ mod tests {
         drop(resumed);
         assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
         fs::remove_dir(root).unwrap();
+    }
+    fn checkpoint(root: &Path, extension: &str) -> PathBuf {
+        fs::read_dir(root)
+            .unwrap()
+            .filter_map(Result::ok)
+            .map(|v| v.path())
+            .find(|p| p.extension().is_some_and(|s| s == extension))
+            .unwrap()
+    }
+    #[test]
+    fn crash_leftovers_restart_cleanly_instead_of_blocking() {
+        let root = root();
+        let digest: [u8; 32] = Sha256::digest(b"abcdef").into();
+        let open = || Incoming::resume(&root, "sample.bin", 6, digest, &[1; 32], || Ok(()));
+        let interrupted = |bytes: &[u8]| {
+            let mut first = open().unwrap();
+            first.append(0, bytes).unwrap();
+            first.preserve();
+            drop(first);
+        };
+        // A .part whose journal is missing (crash before/while writing it).
+        interrupted(b"abc");
+        fs::remove_file(checkpoint(&root, "state")).unwrap();
+        let restarted = open().unwrap();
+        assert_eq!(restarted.position, 0);
+        assert_eq!(fs::metadata(checkpoint(&root, "part")).unwrap().len(), 0);
+        assert_eq!(fs::metadata(checkpoint(&root, "state")).unwrap().len(), 80);
+        // Still exclusively locked while open.
+        assert!(open().is_err());
+        drop(restarted);
+        // A .part with an invalid journal.
+        interrupted(b"abc");
+        fs::write(checkpoint(&root, "state"), b"torn").unwrap();
+        assert_eq!(open().unwrap().position, 0);
+        // A journal whose .part is gone.
+        interrupted(b"ab");
+        fs::remove_file(checkpoint(&root, "part")).unwrap();
+        let mut clean = open().unwrap();
+        assert_eq!(clean.position, 0);
+        // A valid journal still resumes the verified prefix.
+        clean.append(0, b"abcd").unwrap();
+        clean.preserve();
+        drop(clean);
+        let mut resumed = open().unwrap();
+        assert_eq!(resumed.position, 4);
+        resumed.append(4, b"ef").unwrap();
+        let published = resumed.complete(&digest).unwrap();
+        drop(resumed);
+        assert_eq!(fs::read(&published).unwrap(), b"abcdef");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn corrupt_prefix_is_cancelled_and_retry_starts_clean() {

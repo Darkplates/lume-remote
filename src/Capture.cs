@@ -32,6 +32,11 @@ namespace LumeRemote
         Bitmap bitmap;
         Graphics graphics;
         IntPtr duplication;
+        // DXGI duplication is lost on secure-desktop switches, UAC, lock and display mode changes. While GDI is in use,
+        // retry it with backoff (1 s doubling to 8 s); a missing or incompatible bridge DLL stays on GDI.
+        readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+        long retryAt, retryDelay = 1000;
+        bool bridgeUnavailable;
         public string Backend { get { return duplication != IntPtr.Zero ? "DXGI" : "GDI fallback"; } }
         public bool FrameChanged { get; private set; }
         public Rectangle Bounds { get { return bounds; } }
@@ -40,11 +45,17 @@ namespace LumeRemote
         {
             this.bounds = bounds;
             Configure(StreamQuality.FromProfile(profile, bounds));
-            try { if (LumeCreate(bounds.X, bounds.Y, out duplication) < 0) duplication = IntPtr.Zero; }
-            catch (DllNotFoundException) { duplication = IntPtr.Zero; }
-            catch (EntryPointNotFoundException) { duplication = IntPtr.Zero; }
-            catch (BadImageFormatException) { duplication = IntPtr.Zero; }
+            CreateDuplication();
         }
+        void CreateDuplication()
+        {
+            try { if (LumeCreate(bounds.X, bounds.Y, out duplication) < 0) duplication = IntPtr.Zero; }
+            catch (DllNotFoundException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            catch (EntryPointNotFoundException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            catch (BadImageFormatException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            if (duplication == IntPtr.Zero) DuplicationFailed();
+        }
+        void DuplicationFailed() { retryAt = clock.ElapsedMilliseconds + retryDelay; retryDelay = Math.Min(8000, retryDelay * 2); }
         public void Configure(StreamQuality quality)
         {
             Size size = quality.Dimensions(bounds.Size); if (bitmap != null && bitmap.Size == size) return;
@@ -56,6 +67,7 @@ namespace LumeRemote
         Bitmap CaptureDesktop()
         {
             FrameChanged = true;
+            if (duplication == IntPtr.Zero && !bridgeUnavailable && clock.ElapsedMilliseconds >= retryAt) CreateDuplication();
             if (duplication != IntPtr.Zero)
             {
                 BitmapData pixels = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
@@ -63,7 +75,8 @@ namespace LumeRemote
                 {
                     int hr = LumeCapture(duplication, pixels.Scan0, bitmap.Width, bitmap.Height, pixels.Stride);
                     FrameChanged = hr != 1;
-                    if (hr < 0) { LumeDestroy(duplication); duplication = IntPtr.Zero; }
+                    if (hr < 0) { LumeDestroy(duplication); duplication = IntPtr.Zero; FrameChanged = true; DuplicationFailed(); }
+                    else retryDelay = 1000;
                 }
                 finally { bitmap.UnlockBits(pixels); }
             }
@@ -172,7 +185,16 @@ namespace LumeRemote
 
     public sealed class FrameDecoder : IDisposable
     {
-        VideoDecoder video;
+        IVideoFrameDecoder video;
+        readonly Func<int, int, IVideoFrameDecoder> videoFactory;
+        bool videoFailurePending;
+        public FrameDecoder() : this(null) { }
+        public FrameDecoder(Func<int, int, IVideoFrameDecoder> videoFactory) { this.videoFactory = videoFactory; }
+        // Set after a local H.264 create/decode failure. Later video frames are still validated and acknowledged, but not
+        // decoded, until the host resumes image frames. The last completed image is kept.
+        public bool VideoFailed { get; private set; }
+        // Returns true once per failure so the viewer can request an image quality without involving the UI thread.
+        public bool TakeVideoFailure() { bool pending = videoFailurePending; videoFailurePending = false; return pending; }
         public bool FrameReady { get; private set; }
         public Bitmap Image { get; private set; }
         public int Sequence { get; private set; }
@@ -202,12 +224,25 @@ namespace LumeRemote
                         if (count != 1 || x != 0 || y != 0 || pw != w || ph != h || bytes.Length < 6 || bytes[0] != 1 || bytes[1] > 1)
                             throw new InvalidDataException("Invalid video frame envelope.");
                         byte[] encoded = new byte[bytes.Length - 2]; Buffer.BlockCopy(bytes, 2, encoded, 0, encoded.Length);
-                        H264Bounds.Validate(encoded, w, h, bytes[1] == 1 || video == null);
-                        if (bytes[1] == 1 && video != null) { video.Dispose(); video = null; }
-                        if (video == null) video = new VideoDecoder(w, h);
-                        FrameReady = video.Decode(encoded, Image); continue;
+                        H264Bounds.Validate(encoded, w, h, bytes[1] == 1 || (video == null && !VideoFailed));
+                        if (VideoFailed) { FrameReady = false; continue; }
+                        try
+                        {
+                            if (bytes[1] == 1 && video != null) { video.Dispose(); video = null; }
+                            if (video == null) video = videoFactory != null ? videoFactory(w, h) : new VideoDecoder(w, h);
+                            FrameReady = video.Decode(encoded, Image);
+                        }
+                        catch (Exception error)
+                        {
+                            // A Windows decoder failure is local and recoverable; malformed envelopes/headers were rejected above.
+                            if (error is OutOfMemoryException) throw;
+                            if (video != null) { video.Dispose(); video = null; }
+                            FrameReady = false; VideoFailed = true; videoFailurePending = true;
+                        }
+                        continue;
                     }
                     if (video != null) { video.Dispose(); video = null; }
+                    VideoFailed = false;
                     if (codec == 1) { FastCodec.Decode(bytes, Image, new Rectangle(x, y, pw, ph)); continue; }
                     if (codec != 0 && codec != 3) throw new InvalidDataException("Unknown image codec.");
                     if (codec == 3) ValidatePng(bytes, pw, ph); else ValidateJpeg(bytes, pw, ph);

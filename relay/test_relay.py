@@ -88,6 +88,68 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
             await asyncio.sleep(0.01)
         self.assertEqual(len(self.relay.waiting), 0)
 
+    async def paired(self, room="a" * 32):
+        host, hw = await self.client("H", room)
+        self.assertEqual(await host.readexactly(1), b"\x01")
+        viewer, vw = await self.client("V", room)
+        self.assertEqual(await viewer.readexactly(1), b"\x01")
+        self.assertEqual(await host.readexactly(1), b"\x01")
+        return host, hw, viewer, vw
+
+    async def wait_for_cleanup(self):
+        for _ in range(200):
+            if self.relay.connections == 0 and not self.relay.waiting:
+                return
+            await asyncio.sleep(0.01)
+        self.fail("Relay did not release its connections")
+
+    async def test_idle_pipe_is_closed(self):
+        self.relay.idle_timeout = 0.3
+        host, _, viewer, _ = await self.paired()
+        self.assertEqual(await asyncio.wait_for(host.read(1), 3), b"")
+        self.assertEqual(await asyncio.wait_for(viewer.read(1), 3), b"")
+        await self.wait_for_cleanup()
+
+    async def test_one_way_traffic_keeps_pipe_open(self):
+        # Idle means no bytes in EITHER direction; a silent reverse direction is healthy.
+        self.relay.idle_timeout = 0.4
+        host, _, _, vw = await self.paired()
+        for n in range(12):
+            vw.write(bytes([n]))
+            await vw.drain()
+            self.assertEqual(await asyncio.wait_for(host.readexactly(1), 2), bytes([n]))
+            await asyncio.sleep(0.1)
+        self.assertEqual(self.relay.connections, 2)
+        self.assertEqual(await asyncio.wait_for(host.read(1), 3), b"")
+        await self.wait_for_cleanup()
+
+    async def test_zero_idle_timeout_disables_it(self):
+        self.relay.idle_timeout = 0
+        host, hw, viewer, _ = await self.paired()
+        await asyncio.sleep(0.3)
+        hw.write(b"late")
+        await hw.drain()
+        self.assertEqual(await asyncio.wait_for(viewer.readexactly(4), 2), b"late")
+
+    async def test_unpaired_host_wait_is_bounded(self):
+        self.relay.host_wait_timeout = 0.2
+        host, _ = await self.client("H")
+        self.assertEqual(await host.readexactly(1), b"\x01")
+        self.assertEqual(await asyncio.wait_for(host.read(1), 3), b"")
+        await self.wait_for_cleanup()
+        viewer, _ = await self.client("V")
+        self.assertEqual(await viewer.readexactly(1), b"\x02")
+
+    async def test_zero_host_wait_is_unlimited(self):
+        self.relay.host_wait_timeout = 0
+        host, _ = await self.client("H")
+        self.assertEqual(await host.readexactly(1), b"\x01")
+        await asyncio.sleep(0.3)
+        self.assertEqual(len(self.relay.waiting), 1)
+        viewer, _ = await self.client("V")
+        self.assertEqual(await viewer.readexactly(1), b"\x01")
+        self.assertEqual(await host.readexactly(1), b"\x01")
+
     async def test_rooms_are_isolated(self):
         reader, _ = await self.client("H", "b" * 32)
         self.assertEqual(await reader.readexactly(1), b"\x01")

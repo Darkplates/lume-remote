@@ -62,6 +62,12 @@ returns the created path through the existing Result message. Directory walks us
 the existing paged listings; ordinary files retain their offset/length/hash checks.
 Existing trees are never merged implicitly.
 
+While a receiver verifies, flushes and renames a finished file, it repeats its final
+Ack (offset equal to the length) every five seconds. Every peer already accepts a
+non-decreasing Ack as liveness and ignores it once the Result has arrived, so this
+needs no new operation or capability and keeps the sender's 30-second inactivity
+limit from reporting a saved file as failed.
+
 ## Paired file resume and configured roots
 
 Capabilities FileResume=256 and NetworkFolders=512 preserve the old file layouts.

@@ -15,6 +15,14 @@ WAN, second-Windows-user and 125-200 % display checks remain pending.
   screen with no other user signed in. Existing installations must open the new
   copy and choose Settings, then Update installed host.
 
+- Guest connections must authenticate within 15 seconds of connecting, and the
+  30-second cooldown after five rejected invitations applies only to the
+  offending address. Permanent-host signaling is rate-limited per sender.
+- Guest system-audio and clipboard-read prompts decline by default and after 60
+  seconds; a withdrawn or superseded voice request closes its prompt at once.
+- File browsing, downloads and cancellation no longer block the window while
+  sending, and a receiver completing a large file keeps the sender's transfer
+  alive, so a saved file is no longer reported as failed and duplicated on retry.
 - Local permission prompts (voice, system audio, clipboard) pause remote presses
   and pointer input so a guest with control cannot answer them. Voice consent
   focuses Decline; incoming chat no longer takes keyboard focus.
@@ -25,6 +33,12 @@ WAN, second-Windows-user and 125-200 % display checks remain pending.
 - The relay caps connections per source address and handles Python 3.10 timeouts.
 - JPEG/PNG regions are drawn 1:1 when host and viewer use different display
   scaling; H.264 decoding accepts macroblock-padded widths such as 1366.
+- A viewer-side H.264 decoder failure no longer ends the session: the last image
+  stays, frames are still acknowledged, the viewer switches to lossless images
+  with a notice and stops saving the failing video quality for that PC.
+- Host capture retries DXGI after it is lost (UAC, lock, mode change) instead of
+  staying on GDI, follows resolution changes of the selected display, and shows
+  the capture backend. Buffered H.264 output is flushed on unchanged screens.
 - Stalled paired transfers keep their resumable partial; finished recordings are
   never deleted on a name collision; a tool backlog answers busy instead of
   ending the session.

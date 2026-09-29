@@ -7,7 +7,10 @@ using System.Text;
 
 namespace LumeRemote
 {
-    public sealed class VideoEncoder : IDisposable
+    // Encodes one BGRA frame; returns null while a synchronous transform needs more input before producing output.
+    public interface IVideoFrameEncoder : IDisposable { bool Hardware { get; } string Name { get; } byte[] Encode(Bitmap image, bool keyframe); }
+
+    public sealed class VideoEncoder : IVideoFrameEncoder
     {
         IntPtr handle;
         readonly int width, height;
@@ -39,7 +42,10 @@ namespace LumeRemote
         public void Dispose() { if (handle != IntPtr.Zero) { VideoNative.Destroy(handle); handle = IntPtr.Zero; } }
     }
 
-    public sealed class VideoDecoder : IDisposable
+    // Decodes one Annex B access unit into a 32-bit image; returns false while the decoder buffers.
+    public interface IVideoFrameDecoder : IDisposable { bool Decode(byte[] bytes, Bitmap image); }
+
+    public sealed class VideoDecoder : IVideoFrameDecoder
     {
         IntPtr handle;
         readonly int width, height;

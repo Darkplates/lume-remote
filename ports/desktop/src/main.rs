@@ -317,8 +317,11 @@ impl eframe::App for App {
             if let Some(connection)=saved_connection{let previous=std::mem::take(&mut self.invitation);self.invitation=connection;self.connect();use zeroize::Zeroize;self.invitation.zeroize();self.invitation=previous;}
             ui.add_space(10.0);ui.separator();ui.heading("Share this computer");
             if let Some(host)=&self.host {
-                ui.label(host.status.lock().unwrap().clone());ui.horizontal(|ui|{if ui.button("Copy invitation").clicked(){ui.ctx().copy_text(host.code.clone());}});
-                if host.is_peer() { ui.add(egui::TextEdit::multiline(&mut self.reply).hint_text("Paste the other computer's reply").desired_rows(2).desired_width(f32::INFINITY)); if ui.add_enabled(!self.reply.trim().is_empty(),egui::Button::new("Use reply")).clicked(){match host.accept_reply(self.reply.clone()){Ok(())=>self.reply.clear(),Err(e)=>self.status=e.to_string()}} }
+                ui.label(host.status.lock().unwrap().clone());
+                // Invitations are single-use: a finished host offers no invitation to copy.
+                let live=!host.is_finished();
+                if live {ui.horizontal(|ui|{if ui.button("Copy invitation").clicked(){ui.ctx().copy_text(host.code.clone());}});}
+                if live && host.is_peer() { ui.add(egui::TextEdit::multiline(&mut self.reply).hint_text("Paste the other computer's reply").desired_rows(2).desired_width(f32::INFINITY)); if ui.add_enabled(!self.reply.trim().is_empty(),egui::Button::new("Use reply")).clicked(){match host.accept_reply(self.reply.clone()){Ok(())=>self.reply.clear(),Err(e)=>self.status=e.to_string()}} }
                 if self.approval.is_none(){self.approval=host.requests.try_recv().ok();}
                 if ui.button("Stop sharing").clicked(){self.stop_sharing();}
             }else{
