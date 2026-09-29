@@ -832,11 +832,22 @@ static partial class Tests
     static void RenderUi(string directory)
     {
         Directory.CreateDirectory(directory);
+        string scale = "System DPI " + Theme.Dpi + " (" + (Theme.Dpi * 100 / 96) + "% scale)" + (Theme.HighContrast ? ", high contrast" : "");
+        File.WriteAllText(Path.Combine(directory, "dpi.txt"), scale + Environment.NewLine); Console.WriteLine(scale);
         using (MainForm form = new MainForm())
         {
             form.Show(); Application.DoEvents();
             using (Bitmap image = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(image, new Rectangle(0, 0, form.Width, form.Height)); image.Save(Path.Combine(directory, "main-window.png"), ImageFormat.Png); }
             Console.WriteLine("Main UI rendered at " + form.Size + "; screen " + Screen.PrimaryScreen.Bounds);
+            // DrawToBitmap omits the DWM title bar; a screen copy of the owned window shows it when a desktop is available.
+            try
+            {
+                form.TopMost = true; form.Activate(); Stopwatch settle = Stopwatch.StartNew(); while (settle.ElapsedMilliseconds < 500) { Application.DoEvents(); Thread.Sleep(20); }
+                using (Bitmap image = new Bitmap(form.Width, form.Height)) { using (Graphics screen = Graphics.FromImage(image)) screen.CopyFromScreen(form.Location, Point.Empty, form.Size); image.Save(Path.Combine(directory, "main-window-screen.png"), ImageFormat.Png); }
+                form.TopMost = false;
+            }
+            catch (Exception error) { Console.WriteLine("Screen copy of the main window unavailable: " + error.Message); }
+            FindButton(form, "Guest access").PerformClick(); Application.DoEvents(); SaveUi(form, Path.Combine(directory, "main-guest-access.png"));
             form.Close();
         }
         using (ConsentForm form = new ConsentForm(new PeerRequest { Name = "Test computer", Address = "127.0.0.1", Control = true }))
@@ -884,8 +895,13 @@ static partial class Tests
         {
             form.Show(); Application.DoEvents();
             using (Bitmap image = new Bitmap(form.Width, form.Height)) { form.DrawToBitmap(image, new Rectangle(0, 0, form.Width, form.Height)); image.Save(Path.Combine(directory, "quality-settings.png"), ImageFormat.Png); }
+            FindButton(form, "Custom settings").PerformClick(); Application.DoEvents(); SaveUi(form, Path.Combine(directory, "quality-custom-settings.png"));
             form.Close();
         }
+        using (RecordingOptionsForm form = new RecordingOptionsForm(60, true, true)) { form.Show(); Application.DoEvents(); SaveUi(form, Path.Combine(directory, "recording-options.png")); form.Close(); }
+        using (NetworkFoldersForm form = new NetworkFoldersForm(new[] { "\\\\NAS\\Documents" })) { form.Show(); Application.DoEvents(); SaveUi(form, Path.Combine(directory, "network-folders.png")); form.Close(); }
+        using (SessionChatForm form = new SessionChatForm("Studio PC", delegate { return Task.FromResult(0); }))
+        { form.Show(); form.Add("Studio PC", "Sample message for the interface preview."); Application.DoEvents(); SaveUi(form, Path.Combine(directory, "chat.png")); form.Close(); }
         Console.WriteLine("Owned WinForms rendering completed. This is not a desktop screenshot from the UI automation tool.");
     }
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();

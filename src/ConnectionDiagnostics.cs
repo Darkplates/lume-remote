@@ -164,9 +164,9 @@ namespace LumeRemote
         public ConnectionDiagnosticsForm(Invitation invite, bool host)
         {
             this.invite = invite; this.host = host;
-            Text = "Lume - Connection diagnostics"; Size = new Size(840, 640); MinimumSize = new Size(620, 420);
-            BackColor = Theme.Background; StartPosition = FormStartPosition.CenterParent; Padding = new Padding(18);
-            AutoScaleMode = AutoScaleMode.Dpi;
+            Theme.BeginLayout(this);
+            Text = "Lume - Connection diagnostics"; Icon = Brand.Icon; Size = new Size(840, 640); MinimumSize = new Size(620, 420);
+            BackColor = Theme.Background; ForeColor = Theme.Text; StartPosition = FormStartPosition.CenterParent; Padding = new Padding(18);
             report.ReadOnly = true; report.Dock = DockStyle.Fill; report.ScrollBars = ScrollBars.Both; report.WordWrap = true;
             report.Font = new Font("Consolas", 10); report.Text = "Reading local network information...";
             FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 62 };
@@ -180,6 +180,7 @@ namespace LumeRemote
                 if (closed) return; report.AppendText(result + "\r\n"); test.Enabled = true;
             };
             Controls.Add(report); Controls.Add(actions);
+            Theme.EndLayout(this);
             FormClosing += delegate { closed = true; };
             Shown += async delegate
             {

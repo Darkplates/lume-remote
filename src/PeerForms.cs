@@ -17,8 +17,9 @@ namespace LumeRemote
         public PeerHostForm(PeerSignal offer, PeerTransport peer, Action connected, Action canceled)
         {
             this.offer = offer; this.peer = peer; this.connected = connected; this.canceled = canceled;
-            Text = "Lume - P2P / sharing computer"; Tag = "LumePeer"; Size = new Size(670, 560); MinimumSize = new Size(610, 530);
-            StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Background; AutoScaleMode = AutoScaleMode.Dpi;
+            Theme.BeginLayout(this);
+            Text = "Lume - P2P / sharing computer"; Tag = "LumePeer"; Icon = Brand.Icon; Size = new Size(670, 560); MinimumSize = new Size(610, 530);
+            StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Background; ForeColor = Theme.Text;
             FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.AutoScroll = true; panel.BackColor = Theme.Background;
             Label title = Theme.Label("Connect directly over the Internet", 20, Theme.Text); title.MaximumSize = new Size(590, 0); panel.Controls.Add(title);
             Label help = Theme.Label("1. Send your private invitation to the controlling PC.\n2. That PC returns a reply code. Paste it below.\n3. You still approve access before your screen is shared.", 11, Theme.Muted); help.MaximumSize = new Size(575, 0); panel.Controls.Add(help);
@@ -27,6 +28,7 @@ namespace LumeRemote
             panel.Controls.Add(Theme.Label("REPLY FROM THE CONTROLLING PC", 10, Theme.Accent));
             reply.Width = 570; reply.Height = 100; reply.MaxLength = 65536; reply.ScrollBars = ScrollBars.Vertical; panel.Controls.Add(reply);
             apply.Width = 270; panel.Controls.Add(apply); status.MaximumSize = new Size(570, 0); panel.Controls.Add(status); Controls.Add(panel);
+            Theme.EndLayout(this);
             apply.Click += async delegate { await Connect(); };
             FormClosing += delegate { closed = true; if (!accepted) canceled(); };
         }
@@ -61,8 +63,9 @@ namespace LumeRemote
         {
             if (offer.IsReply) throw new FormatException("Paste the invitation from the sharing PC, not a reply code.");
             this.offer = offer;
-            Text = "Lume - P2P / controlling computer"; Tag = "LumePeer"; Size = new Size(670, 505); MinimumSize = new Size(610, 475);
-            StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Background; AutoScaleMode = AutoScaleMode.Dpi;
+            Theme.BeginLayout(this);
+            Text = "Lume - P2P / controlling computer"; Tag = "LumePeer"; Icon = Brand.Icon; Size = new Size(670, 505); MinimumSize = new Size(610, 475);
+            StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Background; ForeColor = Theme.Text;
             FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.AutoScroll = true; panel.BackColor = Theme.Background;
             Label title = Theme.Label("Return this reply to the sharing PC", 19, Theme.Text); title.MaximumSize = new Size(590, 0); panel.Controls.Add(title);
             Label help = Theme.Label("Send the reply below back to the sharing PC. Paste it there and click Use reply and connect. Keep this window open; the desktop opens automatically after the host approves.", 11, Theme.Muted); help.MaximumSize = new Size(570, 0); panel.Controls.Add(help);
@@ -70,6 +73,7 @@ namespace LumeRemote
             copy.Width = 240; copy.Enabled = false; panel.Controls.Add(copy);
             copy.Click += delegate { try { Clipboard.SetText(reply.Text); status.Text = "Reply copied. Paste it on the sharing PC, then wait here."; } catch (Exception error) { status.Text = error.Message; } };
             status.MaximumSize = new Size(570, 0); panel.Controls.Add(status); Controls.Add(panel);
+            Theme.EndLayout(this);
             Shown += async delegate { await Prepare(); };
             FormClosing += delegate { closed = true; if (!transferred && peer != null) peer.Dispose(); };
         }

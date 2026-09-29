@@ -30,7 +30,7 @@ namespace LumeRemote
             left.Padding = new Padding(22, 16, 22, 16); deviceName.Margin = hostSummary.Margin = new Padding(0, 0, 0, 6);
             a.Controls.Add(left); b.Controls.Add(right); columns.Controls.Add(a, 0, 0); Controls.Add(columns);
             left.Controls.Add(Theme.Label("Your computers", 22, Theme.Text));
-            computers.Height = 128; computers.BackColor = Theme.Card; computers.DrawMode = DrawMode.OwnerDrawFixed; computers.ItemHeight = 64; computers.AccessibleName = "Saved computers";
+            computers.Height = 128; computers.BackColor = Theme.Card; computers.DrawMode = DrawMode.OwnerDrawFixed; computers.ItemHeight = Theme.Px(64); computers.AccessibleName = "Saved computers";
             computers.DrawItem += DrawComputer;
             left.Controls.Add(computers);
             Button add = Theme.Button("Add a computer", false), remove = Theme.Button("Forget selected PC", false), wake = Theme.Button("Wake setup...", false), cancel = Theme.Button("Cancel connection", false);
@@ -56,7 +56,7 @@ namespace LumeRemote
             hostSettings.Click += delegate
             {
                 using (Form settings = Dialog("Computer settings", 620, 650))
-                { settings.Controls.Add(b); Fit(right, b); settings.Shown += delegate { Fit(right, b); }; settings.ShowDialog(this); settings.Controls.Remove(b); }
+                { Theme.EndLayout(settings); settings.Controls.Add(b); Fit(right, b); settings.Shown += delegate { Fit(right, b); }; settings.ShowDialog(this); settings.Controls.Remove(b); }
             };
             try { saved = TrustedStore.User.ReadSaved(); } catch (Exception error) { saved = new SavedPreferences(); progress.Text = error.Message; add.Enabled = remove.Enabled = false; }
             ReloadSaved(); RefreshHost();
@@ -104,9 +104,11 @@ namespace LumeRemote
             VisibleChanged += delegate { if (Visible) { RefreshHost(); refresh.Start(); } else refresh.Stop(); };
             Disposed += delegate { refresh.Dispose(); if (connecting != null) connecting.Cancel(); b.Dispose(); computerMenu.Dispose(); };
             Resize += delegate { Fit(left, a); Fit(right, b); }; Load += delegate { Fit(left, a); Fit(right, b); };
+            // The settings column moves between dialogs, so it is scaled here once instead of by each dialog.
+            b.Scale(new SizeF(Theme.Factor, Theme.Factor));
         }
         static void Fit(FlowLayoutPanel panel, Panel parent)
-        { int width = Math.Max(250, parent.ClientSize.Width - 70); panel.Width = parent.ClientSize.Width - 18; foreach (Control control in panel.Controls) { if (control is Label) control.MaximumSize = new Size(width, 0); else if (control is ListBox || control is FlowLayoutPanel) control.Width = width; else control.Width = Math.Min(398, width); } }
+        { int width = Math.Max(Theme.Px(250), parent.ClientSize.Width - Theme.Px(70)); panel.Width = parent.ClientSize.Width - Theme.Px(18); foreach (Control control in panel.Controls) { if (control is Label) control.MaximumSize = new Size(width, 0); else if (control is ListBox || control is FlowLayoutPanel) control.Width = width; else control.Width = Math.Min(Theme.Px(398), width); } }
         void Save() { TrustedStore.User.SaveComputers(saved); }
         void ReloadSaved() { computers.Items.Clear(); computers.Items.AddRange(saved.Computers.ToArray()); if (computers.Items.Count > 0) computers.SelectedIndex = 0; progress.Text = computers.Items.Count == 0 ? "Add your first PC. Pair once, connect whenever you need it." : "Double-click a PC to connect. Each session opens in its own window."; }
         static ViewerForm OpenViewer(SavedComputer computer)
@@ -123,11 +125,11 @@ namespace LumeRemote
             SavedComputer computer = (SavedComputer)computers.Items[args.Index]; bool selected = (args.State & DrawItemState.Selected) != 0;
             using (Brush background = new SolidBrush(selected ? Theme.Field : Theme.Card)) args.Graphics.FillRectangle(background, args.Bounds);
             int y = args.Bounds.Y;
-            using (Pen line = new Pen(Theme.Accent, 2)) { args.Graphics.DrawRectangle(line, 17, y + 15, 31, 22); args.Graphics.DrawLine(line, 32, y + 38, 32, y + 44); args.Graphics.DrawLine(line, 24, y + 45, 40, y + 45); }
-            using (Font name = new Font("Segoe UI Semibold", 12)) TextRenderer.DrawText(args.Graphics, computer.Name, name, new Rectangle(66, y + 8, args.Bounds.Width - 80, 26), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            using (Pen line = new Pen(Theme.Accent, Theme.Px(2))) { args.Graphics.DrawRectangle(line, Theme.Px(17), y + Theme.Px(15), Theme.Px(31), Theme.Px(22)); args.Graphics.DrawLine(line, Theme.Px(32), y + Theme.Px(38), Theme.Px(32), y + Theme.Px(44)); args.Graphics.DrawLine(line, Theme.Px(24), y + Theme.Px(45), Theme.Px(40), y + Theme.Px(45)); }
+            using (Font name = new Font("Segoe UI Semibold", 12)) TextRenderer.DrawText(args.Graphics, computer.Name, name, new Rectangle(Theme.Px(66), y + Theme.Px(8), args.Bounds.Width - Theme.Px(80), Theme.Px(26)), Theme.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             ViewerForm viewer = OpenViewer(computer);
             string detail = computer.WakeOnly ? "Wake helper" : viewer == null ? "Saved computer" : viewer.IsSessionConnected ? "Connected - click to return" : "Session window open";
-            TextRenderer.DrawText(args.Graphics, detail, Font, new Rectangle(66, y + 34, args.Bounds.Width - 80, 23), Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+            TextRenderer.DrawText(args.Graphics, detail, Font, new Rectangle(Theme.Px(66), y + Theme.Px(34), args.Bounds.Width - Theme.Px(80), Theme.Px(23)), Theme.Muted, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
             args.DrawFocusRectangle();
         }
         void ShowError(Exception error) { progress.Text = error is OperationCanceledException ? "Cancelled." : error.Message; }
@@ -206,7 +208,7 @@ namespace LumeRemote
                 TextBox mac = Theme.Box(false); mac.Text = computer.WakeMac ?? ""; panel.Controls.Add(Theme.Label("Target Ethernet MAC", 9, Theme.Muted)); panel.Controls.Add(mac);
                 ComboBox helpers = Theme.Combo(); helpers.Items.Add("No wake helper"); helpers.Items.AddRange(saved.Computers.Where(c => c.WakeOnly).ToArray()); helpers.SelectedIndex = 0;
                 foreach (object item in helpers.Items) { SavedComputer helper = item as SavedComputer; if (helper != null && helper.Id == computer.WakeHelperId) helpers.SelectedItem = item; }
-                panel.Controls.Add(helpers); Button apply = Theme.Button("Save wake setup", true); panel.Controls.Add(apply); dialog.Controls.Add(panel);
+                panel.Controls.Add(helpers); Button apply = Theme.Button("Save wake setup", true); panel.Controls.Add(apply); dialog.Controls.Add(panel); Theme.EndLayout(dialog);
                 apply.Click += delegate { try { SavedComputer helper = helpers.SelectedItem as SavedComputer; computer.WakeMac = String.IsNullOrWhiteSpace(mac.Text) ? null : WakeOnLan.Normalize(mac.Text); if (helper != null && helper.WakeMac != computer.WakeMac) throw new InvalidOperationException("The helper was paired for a different MAC. Create its wake-only code for this PC's Ethernet MAC."); computer.WakeHelperId = helper == null ? null : helper.Id; Save(); dialog.Close(); } catch (Exception error) { MessageBox.Show(dialog, error.Message, "Wake setup"); } };
                 dialog.ShowDialog(this);
             }
@@ -219,10 +221,15 @@ namespace LumeRemote
                 panel.Controls.Add(Theme.Label("Pair once. Connect anytime.", 22, Theme.Text)); panel.Controls.Add(Theme.Label("Copy this code to Add a computer on your other PC. It expires in 15 minutes and works once. Anyone holding it can receive the access shown below.", 10, Theme.Muted));
                 panel.Controls.Add(Theme.Label(code.wake ? "WAKE PACKETS ONLY / " + code.mac : "PERMANENT SCREEN, KEYBOARD AND MOUSE ACCESS", 10, Theme.Accent));
                 TextBox value = Theme.Box(true); value.ReadOnly = true; value.Text = code.ToString(); panel.Controls.Add(value);
-                Button copy = Theme.Button("Copy pairing code", true); copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy); dialog.Controls.Add(panel); dialog.ShowDialog(this);
+                Button copy = Theme.Button("Copy pairing code", true); copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy); dialog.Controls.Add(panel); Theme.EndLayout(dialog); dialog.ShowDialog(this);
             }
         }
-        static Form Dialog(string title, int width, int height) { return new Form { Text = "Lume - " + title, Icon = Brand.Icon, ClientSize = new Size(width, height), BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterParent, AutoScaleMode = AutoScaleMode.Dpi, MinimumSize = new Size(width, height) }; }
+        // Callers add their controls, then call Theme.EndLayout before showing the dialog.
+        static Form Dialog(string title, int width, int height)
+        {
+            Form dialog = new Form { Text = "Lume - " + title, Icon = Brand.Icon, BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterParent };
+            Theme.BeginLayout(dialog); dialog.ClientSize = new Size(width, height); dialog.MinimumSize = new Size(width, height); return dialog;
+        }
         string Prompt(string title, string text, string initial, bool multiline)
         {
             using (Form dialog = Dialog(title, 580, 340))
@@ -230,7 +237,7 @@ namespace LumeRemote
                 FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Controls.Add(Theme.Label(text, 11, Theme.Text));
                 TextBox value = Theme.Box(multiline); value.MaxLength = 4096; value.Text = initial; panel.Controls.Add(value); FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
                 Button apply = Theme.Button("Continue", true), cancel = Theme.Button("Cancel", false); apply.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel; buttons.Controls.Add(apply); buttons.Controls.Add(cancel); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
-                dialog.AcceptButton = apply; dialog.CancelButton = cancel;
+                dialog.AcceptButton = apply; dialog.CancelButton = cancel; Theme.EndLayout(dialog);
                 return dialog.ShowDialog(this) == DialogResult.OK ? value.Text : null;
             }
         }

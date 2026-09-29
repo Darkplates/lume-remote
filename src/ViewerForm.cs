@@ -21,7 +21,7 @@ namespace LumeRemote
         int presentationPosted;
         long decodeTicks;
         readonly RemoteCanvas canvas = new RemoteCanvas();
-        readonly Panel viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Color.FromArgb(10, 13, 18) };
+        readonly Panel viewport = new Panel { Dock = DockStyle.Fill, AutoScroll = true, BackColor = Theme.Canvas };
         StreamQuality desiredQuality = StreamQuality.Source;
         bool originalPixels;
         readonly Label information = Theme.Label("Connecting securely...", 10, Theme.Muted);
@@ -63,10 +63,11 @@ namespace LumeRemote
         {
             this.reconnect = reconnect;
             desiredQuality = initialQuality ?? StreamQuality.Source;
+            Theme.BeginLayout(this);
             this.invite = invite; this.peer = peer; Text = "Lume - Remote desktop"; Size = new Size(1100, 750); MinimumSize = new Size(640, 420);
             Icon = Brand.Icon;
             canvas.StatusMessage = information.Text = ConnectionDiagnostics.Caption(peer == null ? ConnectionStage.Contacting : ConnectionStage.Securing, invite);
-            StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Background; ForeColor = Theme.Text; AutoScaleMode = AutoScaleMode.Dpi;
+            StartPosition = FormStartPosition.CenterScreen; BackColor = Theme.Background; ForeColor = Theme.Text;
             FlowLayoutPanel toolbar = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Padding = new Padding(12, 3, 12, 0), BackColor = Theme.Card, WrapContents = true };
             Button disconnect = Theme.Button("Disconnect", false), fullscreen = Theme.Button("Full screen", false), clip = Theme.Button("Send clipboard text", false), release = Theme.Button("Release keys", false);
             Button quality = Theme.Button("Quality", true), files = Theme.Button("Files", false), pixels = Theme.Button("1:1 pixels", false), more = Theme.Button("More", false); quality.Width = pixels.Width = 120; more.Width = files.Width = 90;
@@ -195,7 +196,7 @@ namespace LumeRemote
             menu.Items.Add("Chat", null, delegate { try { ShowChat(true); } catch (Exception error) { ShowNotice(error.Message); } });
             menu.Items.Add("Release keys", null, delegate { release.PerformClick(); });
             ToolStripMenuItem diagnostics = new ToolStripMenuItem("Connection details") { CheckOnClick = true };
-            diagnostics.CheckedChanged += delegate { showDetails = diagnostics.Checked; bottom.Height = showDetails ? 70 : 30; lastReport = 0; Tick(); }; menu.Items.Add(diagnostics);
+            diagnostics.CheckedChanged += delegate { showDetails = diagnostics.Checked; bottom.Height = Theme.Px(showDetails ? 70 : 30); lastReport = 0; Tick(); }; menu.Items.Add(diagnostics);
             menu.Opening += delegate
             {
                 ViewerConnection current = connection; SessionCapabilities capabilities = current == null ? SessionCapabilities.None : current.Capabilities;
@@ -236,6 +237,7 @@ namespace LumeRemote
             canvas.MouseWheel += delegate(object sender, MouseEventArgs e) { int delta = Math.Max(-1200, Math.Min(1200, e.Delta)); if (CanSendInput()) QueueInput(3, delta, 0); };
             canvas.LostFocus += delegate { ReleaseInput(); }; Deactivate += delegate { ReleaseInput(); };
             Controls.Add(viewport); Controls.Add(bottom); Controls.Add(toolbar);
+            Theme.EndLayout(this);
             Shown += async delegate { await Run(); };
             FormClosing += async delegate(object sender, FormClosingEventArgs args)
             {
@@ -394,11 +396,12 @@ namespace LumeRemote
             {
                 if (!connected || current == null || changingMonitor) return;
                 RemoteMonitor[] monitors = await current.GetMonitors(); if (current != connection || closed) return;
-                using (Form dialog = new Form { Text = "Lume - Display", Size = new Size(540, 175), FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false, StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, Padding = new Padding(18) })
+                using (Form dialog = new Form { Text = "Lume - Display", Icon = Brand.Icon, FormBorderStyle = FormBorderStyle.FixedDialog, MinimizeBox = false, MaximizeBox = false, StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text })
                 {
-                    ComboBox choices = new ComboBox { Dock = DockStyle.Top, DropDownStyle = ComboBoxStyle.DropDownList }; choices.Items.AddRange(monitors); choices.SelectedIndex = 0;
+                    Theme.BeginLayout(dialog); dialog.Size = new Size(540, 175); dialog.Padding = new Padding(18);
+                    ComboBox choices = Theme.Combo(); choices.Dock = DockStyle.Top; choices.Items.AddRange(monitors); choices.SelectedIndex = 0;
                     for (int i = 0; i < monitors.Length; i++) if (monitors[i].Selected) choices.SelectedIndex = i;
-                    Button apply = Theme.Button("Use display", true); apply.Dock = DockStyle.Bottom; apply.DialogResult = DialogResult.OK; dialog.Controls.Add(choices); dialog.Controls.Add(apply); dialog.AcceptButton = apply;
+                    Button apply = Theme.Button("Use display", true); apply.Dock = DockStyle.Bottom; apply.DialogResult = DialogResult.OK; dialog.Controls.Add(choices); dialog.Controls.Add(apply); dialog.AcceptButton = apply; Theme.EndLayout(dialog);
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
                     changingMonitor = true; pendingMouse = null;
                     await current.SelectMonitor(((RemoteMonitor)choices.SelectedItem).Id);
@@ -498,7 +501,7 @@ namespace LumeRemote
         public bool SessionEnded;
         public bool OriginalPixels;
         public event Action<byte, int, int> KeyInput;
-        public RemoteCanvas() { DoubleBuffered = true; BackColor = Color.FromArgb(10, 13, 18); TabStop = true; SetStyle(ControlStyles.Selectable, true); }
+        public RemoteCanvas() { DoubleBuffered = true; BackColor = Theme.Canvas; TabStop = true; SetStyle(ControlStyles.Selectable, true); }
         public Rectangle ImageRectangle()
         {
             Bitmap image = Frame == null ? null : Frame(); if (image == null) return Rectangle.Empty;
@@ -526,14 +529,14 @@ namespace LumeRemote
                 if (Stroke != null) AnnotationWire.Draw(e.Graphics, r, Stroke);
                 if (SessionEnded)
                 {
-                    using (Brush shade = new SolidBrush(Color.FromArgb(225, 10, 13, 18))) e.Graphics.FillRectangle(shade, ClientRectangle);
+                    using (Brush shade = new SolidBrush(Color.FromArgb(225, Theme.Canvas))) e.Graphics.FillRectangle(shade, ClientRectangle);
                     DrawStatus(e.Graphics);
                 }
             }
         }
         void DrawStatus(Graphics graphics)
         {
-            Rectangle area = new Rectangle(36, 24, Math.Max(1, ClientSize.Width - 72), Math.Max(1, ClientSize.Height - 48));
+            Rectangle area = new Rectangle(Theme.Px(36), Theme.Px(24), Math.Max(1, ClientSize.Width - Theme.Px(72)), Math.Max(1, ClientSize.Height - Theme.Px(48)));
             using (Font font = new Font("Segoe UI", 14)) TextRenderer.DrawText(graphics, StatusMessage, font, area, Theme.Text,
                 TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.WordBreak | TextFormatFlags.NoPrefix);
         }

@@ -83,13 +83,14 @@ namespace LumeRemote
         {
             cancellation.ThrowIfCancellationRequested();
             using (var document = await RemotePrintDocument.Open(path, cancellation))
-            using (var preview = new Form { Text = "Lume - Print " + Path.GetFileName(path), Icon = Brand.Icon, Size = new Size(850, 750), MinimumSize = new Size(600, 420), StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background })
+            using (var preview = new Form { Text = "Lume - Print " + Path.GetFileName(path), Icon = Brand.Icon, StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text })
             using (var image = new PictureBox { Dock = DockStyle.Fill, SizeMode = PictureBoxSizeMode.Zoom, BackColor = Color.DimGray })
             {
+                Theme.BeginLayout(preview); preview.Size = new Size(850, 750); preview.MinimumSize = new Size(600, 420);
                 int page = 0; bool submitted = false, rendering = false;
                 var bar = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 58, BackColor = Theme.Card, Padding = new Padding(12, 5, 12, 5) };
                 var previous = Theme.Button("Previous", false); var next = Theme.Button("Next", false); var print = Theme.Button("Choose printer", true); print.Width = 180;
-                var label = Theme.Label("", 10, Theme.Text); label.Margin = new Padding(8, 14, 8, 0); bar.Controls.Add(previous); bar.Controls.Add(next); bar.Controls.Add(label); bar.Controls.Add(print); preview.Controls.Add(image); preview.Controls.Add(bar);
+                var label = Theme.Label("", 10, Theme.Text); label.Margin = new Padding(8, 14, 8, 0); bar.Controls.Add(previous); bar.Controls.Add(next); bar.Controls.Add(label); bar.Controls.Add(print); preview.Controls.Add(image); preview.Controls.Add(bar); Theme.EndLayout(preview);
                 Func<Task> render = async delegate
                 {
                     if (rendering) return; rendering = true; previous.Enabled = next.Enabled = print.Enabled = false;

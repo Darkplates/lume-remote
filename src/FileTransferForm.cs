@@ -27,8 +27,9 @@ namespace LumeRemote
         bool closed, loading;
         public FileTransferForm(FileTransfer files, string remoteName)
         {
+            Theme.BeginLayout(this);
             this.files = files; Text = "Lume - Files on " + remoteName; Icon = Brand.Icon; Size = new Size(900, 620); MinimumSize = new Size(700, 440);
-            BackColor = Theme.Background; ForeColor = Theme.Text; StartPosition = FormStartPosition.CenterParent; AutoScaleMode = AutoScaleMode.Dpi;
+            BackColor = Theme.Background; ForeColor = Theme.Text; StartPosition = FormStartPosition.CenterParent;
             Panel top = new Panel { Dock = DockStyle.Top, Height = 62, Padding = new Padding(14, 12, 14, 10), BackColor = Theme.Card };
             Button drives = Theme.Button(files.NetworkFolders ? "Roots" : "Drives", false), up = Theme.Button("Up", false), go = Theme.Button("Go", false);
             drives.Dock = DockStyle.Left; drives.Width = 82; up.Dock = DockStyle.Left; up.Width = 64; go.Dock = DockStyle.Right; go.Width = 60; path.Dock = DockStyle.Fill;
@@ -38,8 +39,11 @@ namespace LumeRemote
             actions.Controls.Add(send); sendFolder.Width = 135; actions.Controls.Add(sendFolder); actions.Controls.Add(receive); print.Width = 160; actions.Controls.Add(print); actions.Controls.Add(cancel); actions.Controls.Add(previous); actions.Controls.Add(next);
             Panel summary = new Panel { Dock = DockStyle.Bottom, Height = 60, Padding = new Padding(16, 8, 16, 8), BackColor = Theme.Card };
             status.Dock = DockStyle.Fill; status.AutoSize = false; status.MaximumSize = Size.Empty; summary.Controls.Add(status);
-            entries.Columns.Add("Name", 490); entries.Columns.Add("Size", 130); entries.Columns.Add("Type", 100); entries.AllowDrop = true;
+            // Column widths are not auto-scaled. The last column fills the header so no unthemed strip remains.
+            entries.Columns.Add("Name", Theme.Px(490)); entries.Columns.Add("Size", Theme.Px(130)); entries.Columns.Add("Type", Theme.Px(100)); entries.AllowDrop = true;
+            EventHandler fillHeader = delegate { if (entries.IsHandleCreated) entries.Columns[entries.Columns.Count - 1].Width = -2; }; entries.Resize += fillHeader; Shown += fillHeader;
             Controls.Add(entries); Controls.Add(progress); Controls.Add(summary); Controls.Add(actions); Controls.Add(top);
+            Theme.EndLayout(this);
             Shown += async delegate { await Navigate(""); };
             drives.Click += async delegate { await Navigate(""); };
             up.Click += async delegate { await Navigate(directory.Length <= 3 || roots.Contains(directory.TrimEnd('\\')) ? "" : Path.GetDirectoryName(directory.TrimEnd('\\')) ?? ""); };

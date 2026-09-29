@@ -12,34 +12,6 @@ using System.Windows.Forms;
 
 namespace LumeRemote
 {
-    static class Theme
-    {
-        public static readonly Color Background = Color.FromArgb(18, 22, 28), Card = Color.FromArgb(27, 33, 42), Field = Color.FromArgb(35, 43, 54), Text = Color.FromArgb(235, 242, 246), Muted = Color.FromArgb(159, 174, 189), Accent = Color.FromArgb(107, 226, 192);
-        public static Label Label(string text, float size, Color color)
-        { return new Label { Text = text, AutoSize = true, ForeColor = color, Font = new Font("Segoe UI", size), Margin = new Padding(0, 0, 0, 10), MaximumSize = new Size(430, 0) }; }
-        public static Button Button(string text, bool primary)
-        {
-            Button button = new ReadableButton { Text = text, Height = 42, Width = 180, FlatStyle = FlatStyle.Flat, BackColor = primary ? Accent : Field, ForeColor = primary ? Background : Text, Font = new Font("Segoe UI Semibold", 10), Cursor = Cursors.Hand, Margin = new Padding(0, 6, 10, 10) };
-            button.FlatAppearance.BorderSize = 0; return button;
-        }
-        public static TextBox Box(bool multiline)
-        { return new TextBox { BackColor = Field, ForeColor = Text, BorderStyle = BorderStyle.FixedSingle, Font = new Font("Segoe UI", 10), Multiline = multiline, Width = 398, Height = multiline ? 96 : 29, Margin = new Padding(0, 0, 0, 14) }; }
-        public static ComboBox Combo()
-        { return new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.Flat, BackColor = Field, ForeColor = Text, Width = 398, Font = new Font("Segoe UI", 10), Margin = new Padding(0, 0, 0, 14) }; }
-        public static FlowLayoutPanel Column()
-        { return new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, WrapContents = false, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Dock = DockStyle.Top, Padding = new Padding(26), BackColor = Card }; }
-    }
-
-    sealed class ReadableButton : Button
-    {
-        protected override void OnPaint(PaintEventArgs args)
-        {
-            if (Enabled) { base.OnPaint(args); return; }
-            args.Graphics.Clear(Theme.Field);
-            TextRenderer.DrawText(args.Graphics, Text, Font, ClientRectangle, Theme.Muted, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
-        }
-    }
-
     public sealed class MainForm : Form
     {
         readonly ComboBox mode = Theme.Combo(), address = Theme.Combo(), screen = Theme.Combo(), profile = Theme.Combo();
@@ -59,8 +31,9 @@ namespace LumeRemote
         const int HotkeyId = 0x4C55;
         public MainForm()
         {
+            Theme.BeginLayout(this);
             Text = "Lume Remote"; BackColor = Theme.Background; ForeColor = Theme.Text; Font = new Font("Segoe UI", 10);
-            Size = new Size(960, 760); MinimumSize = new Size(840, 640); StartPosition = FormStartPosition.CenterScreen; AutoScaleMode = AutoScaleMode.Dpi;
+            Size = new Size(960, 760); MinimumSize = new Size(840, 640); StartPosition = FormStartPosition.CenterScreen;
             Icon = Brand.Icon;
             TableLayoutPanel root = new TableLayoutPanel { Dock = DockStyle.Fill, RowCount = 3, ColumnCount = 1, Padding = new Padding(24, 16, 24, 12) };
             root.RowStyles.Add(new RowStyle(SizeType.Absolute, 128)); root.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); root.RowStyles.Add(new RowStyle(SizeType.Absolute, 32));
@@ -78,8 +51,8 @@ namespace LumeRemote
             FlowLayoutPanel left = Theme.Column(), right = Theme.Column(); leftScroll.Controls.Add(left); rightScroll.Controls.Add(right);
             columns.Controls.Add(leftScroll, 0, 0); columns.Controls.Add(rightScroll, 1, 0);
             Panel pages = new Panel { Dock = DockStyle.Fill, Margin = new Padding(0) }; pages.Controls.Add(columns); pages.Controls.Add(home); columns.Visible = false; home.BringToFront(); root.Controls.Add(pages, 0, 1);
-            computersTab.Click += delegate { columns.Visible = false; home.Visible = true; home.BringToFront(); computersTab.BackColor = Theme.Accent; computersTab.ForeColor = Theme.Background; guestTab.BackColor = Theme.Field; guestTab.ForeColor = Theme.Text; };
-            guestTab.Click += delegate { home.Visible = false; columns.Visible = true; columns.BringToFront(); FitColumn(left, leftScroll); FitColumn(right, rightScroll); guestTab.BackColor = Theme.Accent; guestTab.ForeColor = Theme.Background; computersTab.BackColor = Theme.Field; computersTab.ForeColor = Theme.Text; };
+            computersTab.Click += delegate { columns.Visible = false; home.Visible = true; home.BringToFront(); computersTab.BackColor = Theme.Accent; computersTab.ForeColor = Theme.AccentText; guestTab.BackColor = Theme.Field; guestTab.ForeColor = Theme.Text; };
+            guestTab.Click += delegate { home.Visible = false; columns.Visible = true; columns.BringToFront(); FitColumn(left, leftScroll); FitColumn(right, rightScroll); guestTab.BackColor = Theme.Accent; guestTab.ForeColor = Theme.AccentText; computersTab.BackColor = Theme.Field; computersTab.ForeColor = Theme.Text; };
             left.Controls.Add(Theme.Label("Share this PC", 21, Theme.Text));
             left.Controls.Add(Theme.Label("Start, send the code, approve your guest.", 10, Theme.Muted));
             FlowLayoutPanel settings = Theme.Column(); settings.Name = "Settings"; settings.Padding = new Padding(0); settings.Visible = false;
@@ -127,6 +100,7 @@ namespace LumeRemote
             guide.Click += delegate { try { Process.Start(new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "START-HERE.txt")) { UseShellExecute = true }); } catch (Exception e) { SetStatus(e.Message); } };
             FlowLayoutPanel footer = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
             status.Text = "Ready"; status.MaximumSize = new Size(700, 0); resources.MaximumSize = new Size(170, 0); footer.Controls.Add(status); footer.Controls.Add(resources); root.Controls.Add(footer, 0, 2); Controls.Add(root);
+            Theme.EndLayout(this);
             Resize += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); };
             Shown += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); if (!RegisterHotKey(Handle, HotkeyId, 0x4007, 0x7B)) SetStatus("Emergency shortcut unavailable; use Stop sharing or Disable access."); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
@@ -159,8 +133,8 @@ namespace LumeRemote
         static void AddField(FlowLayoutPanel parent, string label, Control field) { parent.Controls.Add(Theme.Label(label, 9, Theme.Muted)); parent.Controls.Add(field); }
         static void FitColumn(FlowLayoutPanel column, Panel scroll)
         {
-            int width = Math.Max(270, scroll.ClientSize.Width - 70);
-            column.Width = scroll.ClientSize.Width - 18;
+            int width = Math.Max(Theme.Px(270), scroll.ClientSize.Width - Theme.Px(70));
+            column.Width = scroll.ClientSize.Width - Theme.Px(18);
             foreach (Control item in column.Controls)
             {
                 if (item is Label) { item.MaximumSize = new Size(width, 0); }
@@ -172,7 +146,7 @@ namespace LumeRemote
                         item.Width = width;
                         foreach (Control field in item.Controls) { if (field is Label) field.MaximumSize = new Size(width, 0); else if (field is TextBox || field is ComboBox) field.Width = width; }
                     }
-                    else foreach (Control button in item.Controls) button.Width = Math.Max(110, (width - 20) / 2);
+                    else foreach (Control button in item.Controls) button.Width = Math.Max(Theme.Px(110), (width - Theme.Px(20)) / 2);
                 }
             }
         }
@@ -265,12 +239,13 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) return;
-                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Icon = Brand.Icon, Tag = "LumeClipboard", Size = new Size(550, 390), StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false })
+                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Icon = Brand.Icon, Tag = "LumeClipboard", StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false })
                     {
+                        Theme.BeginLayout(dialog); dialog.Size = new Size(550, 390);
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
                         Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 210; accept.Dock = DockStyle.Bottom; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
                         Button ignore = Theme.Button("Don't copy", false); ignore.Dock = DockStyle.Bottom; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore;
-                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); using (LocalConsent.Begin()) dialog.ShowDialog(this);
+                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); Theme.EndLayout(dialog); using (LocalConsent.Begin()) dialog.ShowDialog(this);
                     }
                 }
                 finally { result.TrySetResult(false); System.Threading.Interlocked.Exchange(ref clipboardPending, 0); }
@@ -333,6 +308,7 @@ namespace LumeRemote
         int remaining = 60;
         public ConsentForm(PeerRequest request)
         {
+            Theme.BeginLayout(this);
             Text = "Lume - Connection request"; Icon = Brand.Icon; ClientSize = new Size(540, 365); BackColor = Theme.Background; ForeColor = Theme.Text;
             FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false; TopMost = true;
             FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill;
@@ -342,6 +318,7 @@ namespace LumeRemote
             Label countdown = Theme.Label("Automatically declined in 60 seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
             FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true);
             deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
+            Theme.EndLayout(this);
             CancelButton = deny; AcceptButton = deny;
             timeout.Tick += delegate { remaining--; countdown.Text = "Automatically declined in " + remaining + " seconds."; if (remaining <= 0) { DialogResult = DialogResult.No; Close(); } }; timeout.Start();
             FormClosed += delegate { timeout.Dispose(); };

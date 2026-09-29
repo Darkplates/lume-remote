@@ -27,6 +27,7 @@ namespace LumeRemote
         }
         public SessionChatForm(string peer, Func<string, Task> send)
         {
+            Theme.BeginLayout(this);
             this.send = send; Text = "Lume - Chat - " + peer; Icon = Brand.Icon;
             Size = new Size(460, 480); MinimumSize = new Size(350, 320); BackColor = Theme.Background; ForeColor = Theme.Text;
             Padding = new Padding(16); history.ReadOnly = true; history.Dock = DockStyle.Fill; history.ScrollBars = ScrollBars.Vertical;
@@ -36,6 +37,7 @@ namespace LumeRemote
             message.KeyDown += async delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Enter && !e.Shift) { e.SuppressKeyPress = true; if (submit.Enabled) await Send(submit); } };
             status.Dock = DockStyle.Bottom; status.Height = 30;
             Controls.Add(history); Controls.Add(message); Controls.Add(submit); Controls.Add(status);
+            Theme.EndLayout(this);
         }
         async Task Send(Button submit)
         {
