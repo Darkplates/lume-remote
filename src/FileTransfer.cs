@@ -259,8 +259,9 @@ namespace LumeRemote
             Queue(id, delegate { EndIncoming(id, new OperationCanceledException()); });
             if (!disposed) try { Send(FileOp.Cancel, id); } catch { }
         }
-        // A stall or a sender-side failure looks like a network loss, so a paired resumable
-        // partial is kept (Suspend is a no-op otherwise); retry verifies its prefix.
+        // A locally detected stall looks like a network loss, so a paired resumable partial is
+        // kept (Suspend is a no-op otherwise); retry verifies its prefix. A failure result from
+        // the peer can mean a rejected prefix, so it still discards the partial.
         void EndIncoming(string id, Exception error, bool preserve = false)
         {
             Transfer item;
@@ -415,7 +416,7 @@ namespace LumeRemote
                         TaskCompletionSource<RemoteFileList> listing;
                         if (lists.TryGetValue(id, out listing)) listing.TrySetException(new IOException(message));
                     }
-                    if (!success) Queue(id, delegate { EndIncoming(id, new IOException(message), true); }); break;
+                    if (!success) Queue(id, delegate { EndIncoming(id, new IOException(message)); }); break;
                 default: throw new InvalidDataException("Unknown file operation.");
             }
             return true;
