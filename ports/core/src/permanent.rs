@@ -103,6 +103,48 @@ fn response(
         )?,
     })
 }
+/// Signaling messages accepted from one broker source per second.
+const SOURCE_BUDGET: u32 = 30;
+/// Signaling messages read per 20 ms host tick.
+const MESSAGES_PER_TICK: usize = 64;
+/// Sources tracked at once. The oldest window is evicted, which can only reset
+/// a sender's own budget; it never consumes another source's budget.
+const MAX_SOURCES: usize = 256;
+/// Per-source signaling budget, counted before authentication so one noisy
+/// broker identity cannot starve connection requests from the others.
+#[derive(Default)]
+struct SourceBudget {
+    windows: HashMap<String, (Instant, u32)>,
+}
+impl SourceBudget {
+    fn allow(&mut self, source: &str, now: Instant) -> bool {
+        if source.is_empty() || source.len() > 256 {
+            return false;
+        }
+        let window = Duration::from_secs(1);
+        if !self.windows.contains_key(source) && self.windows.len() >= MAX_SOURCES {
+            self.windows
+                .retain(|_, (started, _)| now.saturating_duration_since(*started) < window);
+            if self.windows.len() >= MAX_SOURCES {
+                if let Some(oldest) = self
+                    .windows
+                    .iter()
+                    .min_by_key(|(_, (started, _))| *started)
+                    .map(|(key, _)| key.clone())
+                {
+                    self.windows.remove(&oldest);
+                }
+            }
+        }
+        let (started, count) = self.windows.entry(source.to_owned()).or_insert((now, 0));
+        if now.saturating_duration_since(*started) >= window {
+            *started = now;
+            *count = 0;
+        }
+        *count = count.saturating_add(1);
+        *count <= SOURCE_BUDGET
+    }
+}
 fn fresh(recent: &mut HashMap<String, i64>, source: &str, request: &str) -> bool {
     let now = paired::now();
     recent.retain(|_, until| *until > now);
@@ -125,8 +167,7 @@ fn run(
     let mut active: Option<Active> = None;
     let (out_tx, out_rx) = mpsc::sync_channel::<Outgoing>(8);
     let mut recent = HashMap::new();
-    let mut window = Instant::now();
-    let mut count = 0u32;
+    let mut budget = SourceBudget::default();
     let mut config = store.load()?;
     let mut checked = Instant::now();
     while !stop.load(Ordering::Acquire) {
@@ -163,33 +204,39 @@ fn run(
                         break;
                     }
                 }
-                if let Some(packet) = channel.read()? {
-                    if window.elapsed() >= Duration::from_secs(1) {
-                        count = 0;
-                        window = Instant::now();
+                // Drain a bounded batch so over-budget messages from one source
+                // do not delay other sources' messages behind them.
+                let mut reloaded = false;
+                for _ in 0..MESSAGES_PER_TICK {
+                    let Some(packet) = channel.read()? else {
+                        break;
+                    };
+                    let Some(source) = packet["src"].as_str() else {
+                        continue;
+                    };
+                    if !budget.allow(source, Instant::now()) {
+                        continue;
                     }
-                    count += 1;
-                    if count <= 30 {
-                        if let (Some(source), Ok(env)) = (
-                            packet["src"].as_str(),
-                            serde_json::from_value::<Envelope>(
-                                packet["payload"]["metadata"].clone(),
-                            ),
-                        ) {
-                            // Invalid authentication never tears down another person's host/session.
+                    if let Ok(env) =
+                        serde_json::from_value::<Envelope>(packet["payload"]["metadata"].clone())
+                    {
+                        // Invalid authentication never tears down another person's host/session.
+                        // Settings are re-read once per tick; store changes re-check atomically.
+                        if !reloaded {
                             config = store.load()?;
-                            let _ = receive(
-                                &store,
-                                &config,
-                                &library,
-                                &factory,
-                                source,
-                                env,
-                                &mut recent,
-                                &mut active,
-                                &out_tx,
-                            );
+                            reloaded = true;
                         }
+                        let _ = receive(
+                            &store,
+                            &config,
+                            &library,
+                            &factory,
+                            source,
+                            env,
+                            &mut recent,
+                            &mut active,
+                            &out_tx,
+                        );
                     }
                 }
                 Ok(())
@@ -413,6 +460,35 @@ fn receive(
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn signaling_budget_is_per_source_and_bounded() {
+        let mut budget = SourceBudget::default();
+        let now = Instant::now();
+        for _ in 0..SOURCE_BUDGET {
+            assert!(budget.allow("noisy", now));
+        }
+        for _ in 0..1000 {
+            assert!(!budget.allow("noisy", now));
+        }
+        // One flooding source never consumes another source's budget.
+        for _ in 0..SOURCE_BUDGET {
+            assert!(budget.allow("owner", now));
+        }
+        assert!(!budget.allow("owner", now));
+        // Many sources stay bounded; eviction only resets a sender's own window.
+        for n in 0..MAX_SOURCES * 4 {
+            assert!(budget.allow(&format!("source-{n}"), now));
+            assert!(budget.windows.len() <= MAX_SOURCES);
+        }
+        assert!(budget.allow("late", now));
+        assert!(!budget.allow("", now));
+        assert!(!budget.allow(&"x".repeat(257), now));
+        let later = now + Duration::from_secs(1);
+        for _ in 0..SOURCE_BUDGET {
+            assert!(budget.allow("noisy", later));
+        }
+        assert!(!budget.allow("noisy", later));
+    }
     #[test]
     fn replay_window_is_bounded_and_identity_scoped() {
         let mut recent = HashMap::new();
