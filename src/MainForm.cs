@@ -221,7 +221,7 @@ namespace LumeRemote
             generation++; if (peer != null) { peer.Dispose(); peer = null; } if (host != null) { host.Dispose(); host = null; }
             invitation.Clear(); copy.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
-            foreach (Form owned in OwnedForms) if (owned is ConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
+            foreach (Form owned in OwnedForms) if (owned is ConsentForm || owned is TimedConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
         }
         bool Approve(PeerRequest request, int current)
         {
@@ -259,8 +259,15 @@ namespace LumeRemote
             if (closing || IsDisposed || current != generation) { result.TrySetResult(false); return result.Task; }
             try { BeginInvoke((Action)delegate
             {
-                bool allowed; using (LocalConsent.Begin()) allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
-                result.TrySetResult(allowed && !closing && current == generation);
+                bool allowed = false;
+                try
+                {
+                    if (!closing && current == generation)
+                        using (LocalConsent.Begin())
+                        using (TimedConsentForm dialog = new TimedConsentForm("Lume - System audio", "Share this PC's sound?", "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Allow sound"))
+                            allowed = dialog.ShowDialog(this) == DialogResult.Yes;
+                }
+                finally { result.TrySetResult(allowed && !closing && current == generation); }
             }); } catch { result.TrySetResult(false); }
             return result.Task;
         }
@@ -273,7 +280,9 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) throw new OperationCanceledException();
-                    using (LocalConsent.Begin()) if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
+                    using (LocalConsent.Begin())
+                    using (TimedConsentForm dialog = new TimedConsentForm("Lume - Clipboard request", "Share your clipboard?", "The connected guest wants to read your clipboard text. Allow this once?", "Allow once"))
+                        if (dialog.ShowDialog(this) != DialogResult.Yes) throw new OperationCanceledException();
                     string text = await ClipboardAccess.Read();
                     if (closing || current != generation) throw new OperationCanceledException(); result.TrySetResult(text);
                 }
@@ -326,6 +335,32 @@ namespace LumeRemote
             Theme.EndLayout(this);
             CancelButton = deny; AcceptButton = deny;
             timeout.Tick += delegate { remaining--; countdown.Text = "Automatically declined in " + remaining + " seconds."; if (remaining <= 0) { DialogResult = DialogResult.No; Close(); } }; timeout.Start();
+            FormClosed += delegate { timeout.Dispose(); };
+        }
+    }
+
+    // A guest's in-session request (system audio, clipboard read). Remote input is paused while
+    // it is open, so like the connection request it declines itself: Enter, Esc, closing the
+    // window and the countdown all decline.
+    sealed class TimedConsentForm : Form
+    {
+        readonly Timer timeout = new Timer { Interval = 1000 };
+        int remaining;
+        public TimedConsentForm(string title, string heading, string message, string allowText, int seconds = 60)
+        {
+            remaining = Math.Max(1, seconds);
+            Theme.BeginLayout(this);
+            Text = title; Icon = Brand.Icon; ClientSize = new Size(500, 280); BackColor = Theme.Background; ForeColor = Theme.Text;
+            FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false; TopMost = true;
+            FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill;
+            panel.Controls.Add(Theme.Label(heading, 18, Theme.Text));
+            panel.Controls.Add(Theme.Label(message, 11, Theme.Text));
+            Label countdown = Theme.Label("Automatically declined in " + remaining + " seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(allowText, true);
+            deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
+            Theme.EndLayout(this);
+            CancelButton = deny; AcceptButton = deny; ActiveControl = deny;
+            timeout.Tick += delegate { remaining--; countdown.Text = "Automatically declined in " + remaining + " seconds."; if (remaining <= 0) { timeout.Stop(); DialogResult = DialogResult.No; Close(); } }; timeout.Start();
             FormClosed += delegate { timeout.Dispose(); };
         }
     }
