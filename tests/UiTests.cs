@@ -158,7 +158,8 @@ static partial class Tests
             ((Label)Field(home, "deviceName")).Text = "This laptop";
             StatusPill pill = (StatusPill)Field(home, "hostSummary"); pill.Text = "Access on"; pill.On = true;
             ((Label)Field(home, "hostDetail")).Text = "Paired computers can connect.";
-            ((LinkLabel)Field(home, "trustedSummary")).Text = "2 computers can connect - Manage";
+            TextAction manage = (TextAction)Field(home, "trustedSummary"); manage.Text = "2 computers can connect - Manage"; manage.Active = true;
+            Button enable = (Button)Field(home, "enable"); enable.Text = "Disable access"; ((ReadableButton)enable).Kind = ButtonKind.Secondary; ((Button)Field(home, "pair")).Enabled = true;
             ((Label)Field(home, "progress")).Text = "Double-click a PC to connect. Each session opens in its own window.";
             ((Label)Field(dashboard, "status")).Text = "Ready";
             Application.DoEvents(); SaveUi(dashboard, Path.Combine(directory, "computers.png"));

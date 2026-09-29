@@ -207,25 +207,42 @@ namespace LumeRemote
         }
     }
 
-    // A rounded status pill with a coloured dot ("Access on" / "Access off").
-    sealed class StatusPill : Label
+    // A rounded status pill with a coloured dot ("Access on" / "Access off"). A plain Control with a fixed
+    // height, so no Label auto-size rules can collapse it.
+    sealed class StatusPill : Control
     {
         bool on;
         public bool On { get { return on; } set { on = value; Invalidate(); } }
-        public StatusPill() { AutoSize = false; Height = 28; Width = 150; Font = new Font(Theme.FontNameStrong, 9.5f); Margin = new Padding(0, 4, 0, 8); }
-        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); FitText(); }
+        public StatusPill()
+        {
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw | ControlStyles.SupportsTransparentBackColor, true);
+            SetStyle(ControlStyles.Selectable, false); TabStop = false; AccessibleRole = AccessibleRole.StaticText;
+            Font = new Font(Theme.FontNameStrong, 9.5f); Size = new Size(150, 28); MinimumSize = new Size(60, 28); Margin = new Padding(0, 4, 0, 8);
+        }
+        protected override void OnTextChanged(EventArgs e) { base.OnTextChanged(e); AccessibleName = Text; FitText(); Invalidate(); }
         protected override void OnFontChanged(EventArgs e) { base.OnFontChanged(e); FitText(); }
-        void FitText() { Width = TextRenderer.MeasureText(Text, Font).Width + Theme.Px(40); }
+        void FitText() { Width = TextRenderer.MeasureText(Text ?? "", Font).Width + Theme.Px(40); }
         protected override void OnPaint(PaintEventArgs e)
         {
             Color parent = Parent != null ? Parent.BackColor : Theme.Card; e.Graphics.Clear(parent);
-            if (Theme.HighContrast) { TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, ForeColor, TextFormatFlags.VerticalCenter); return; }
+            if (Theme.HighContrast) { TextRenderer.DrawText(e.Graphics, Text, Font, ClientRectangle, SystemColors.WindowText, TextFormatFlags.VerticalCenter); return; }
             e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
             Color fill = on ? Theme.SuccessSoft : Theme.Field, ink = on ? Theme.Success : Theme.Muted;
             using (System.Drawing.Drawing2D.GraphicsPath path = Theme.Rounded(new Rectangle(0, 0, Width - 1, Height - 1), (Height - 1) / 2)) using (SolidBrush brush = new SolidBrush(fill)) e.Graphics.FillPath(brush, path);
             int dot = Theme.Px(8); using (SolidBrush brush = new SolidBrush(ink)) e.Graphics.FillEllipse(brush, Theme.Px(12), (Height - dot) / 2, dot, dot);
             TextRenderer.DrawText(e.Graphics, Text, Font, new Rectangle(Theme.Px(26), 0, Width - Theme.Px(30), Height), ink, TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPrefix);
         }
+    }
+
+    // A text action drawn in the accent colour; used instead of LinkLabel so it renders the same everywhere.
+    sealed class TextAction : Label
+    {
+        bool active;
+        public bool Active { get { return active; } set { active = value; ForeColor = value ? Theme.Accent : Theme.Muted; Cursor = value ? Cursors.Hand : Cursors.Default; TabStop = value; AccessibleRole = value ? AccessibleRole.Link : AccessibleRole.StaticText; } }
+        public TextAction() { AutoSize = true; Font = new Font(Theme.FontName, 10); ForeColor = Theme.Muted; Margin = new Padding(0, 0, 0, 6); }
+        protected override void OnMouseEnter(EventArgs e) { if (active) Font = new Font(Font, FontStyle.Underline); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { Font = new Font(Font, FontStyle.Regular); base.OnMouseLeave(e); }
+        protected override void OnClick(EventArgs e) { if (active) base.OnClick(e); }
     }
 
     // One line of a capability list: a check (allowed) or a dash (not allowed) followed by text.

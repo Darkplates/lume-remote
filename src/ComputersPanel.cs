@@ -14,8 +14,9 @@ namespace LumeRemote
         readonly Button connect = Theme.Button("Connect", true), enable = Theme.Button("Enable access", true), pair = Theme.Button("Pair another PC", false);
         readonly Button update = Theme.Button("Update installed host", false);
         readonly Label state = Theme.Label("", 10, Theme.Muted), progress = Theme.Label("Select a saved PC and connect with one click.", 10, Theme.Muted);
-        readonly Label deviceName = Theme.Label(Environment.MachineName, 16, Theme.Text), hostSummary = new StatusPill { Text = "Access off" }, hostDetail = Theme.Label("", 10, Theme.Muted);
-        readonly LinkLabel trustedSummary = new LinkLabel { AutoSize = true, LinkColor = Theme.Accent, ActiveLinkColor = Theme.AccentHover, ForeColor = Theme.Muted, LinkBehavior = LinkBehavior.HoverUnderline, Margin = new Padding(0, 0, 0, 6) };
+        readonly Label deviceName = Theme.Label(Environment.MachineName, 16, Theme.Text), hostDetail = Theme.Label("", 10, Theme.Muted);
+        readonly StatusPill hostSummary = new StatusPill { Text = "Access off" };
+        readonly TextAction trustedSummary = new TextAction();
         readonly FlowLayoutPanel empty = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Theme.Card, Padding = new Padding(4, 12, 4, 4) };
         Button add;
         readonly CheckBox awake = new CheckBox { Text = "Keep this PC awake while plugged in", AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 8, 0, 12) };
@@ -132,7 +133,7 @@ namespace LumeRemote
         }
         static Label Section(string title) { Label label = Theme.Label(title, 11, Theme.Text); label.Font = new Font(Theme.FontNameStrong, 11); label.Margin = new Padding(0, 16, 0, 6); return label; }
         static void Fit(FlowLayoutPanel panel, Panel parent)
-        { int width = Math.Max(Theme.Px(250), parent.ClientSize.Width - Theme.Px(70)); panel.Width = parent.ClientSize.Width - Theme.Px(18); foreach (Control control in panel.Controls) { if (control is Label) control.MaximumSize = new Size(width, 0); else if (control is ListBox || control is FlowLayoutPanel) control.Width = width; else control.Width = Math.Min(Theme.Px(398), width); } }
+        { int width = Math.Max(Theme.Px(250), parent.ClientSize.Width - Theme.Px(70)); panel.Width = parent.ClientSize.Width - Theme.Px(18); foreach (Control control in panel.Controls) { if (control is StatusPill) continue; if (control is Label) control.MaximumSize = new Size(width, 0); else if (control is ListBox || control is FlowLayoutPanel) control.Width = width; else control.Width = Math.Min(Theme.Px(398), width); } }
         void Save() { TrustedStore.User.SaveComputers(saved); }
         void ReloadSaved() { computers.Items.Clear(); computers.Items.AddRange(saved.Computers.ToArray()); if (computers.Items.Count > 0) computers.SelectedIndex = 0; UpdateEmptyState(); progress.Text = computers.Items.Count == 0 ? "" : "Double-click a PC to connect. Each session opens in its own window."; }
         void UpdateEmptyState()
@@ -181,11 +182,11 @@ namespace LumeRemote
                 string statusFile = Path.Combine(TrustedStore.MachineDirectory, "status.txt");
                 if (host != null && host.Enabled && File.Exists(statusFile) && DateTime.UtcNow - File.GetLastWriteTimeUtc(statusFile) < TimeSpan.FromSeconds(30)) state.Text = File.ReadAllText(statusFile).Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Last();
                 else if (host != null && host.Enabled) state.Text = "Permanent access is ON. Service status is not yet available.";
-                bool on = host != null && host.Enabled; hostSummary.Text = on ? "Access on" : "Access off"; ((StatusPill)hostSummary).On = on;
+                bool on = host != null && host.Enabled; hostSummary.Text = on ? "Access on" : "Access off"; hostSummary.On = on;
                 hostDetail.Text = !installed ? "Enable access to reach this PC from your other computers." : on ? "Paired computers can connect." : "Saved computers cannot connect.";
                 int allowed = host == null ? 0 : host.Controllers.Count(c => !c.WakeOnly);
                 trustedSummary.Text = allowed == 0 ? "No computers can connect yet" : allowed + (allowed == 1 ? " computer can connect - Manage" : " computers can connect - Manage");
-                trustedSummary.LinkArea = allowed == 0 ? new LinkArea(0, 0) : new LinkArea(trustedSummary.Text.Length - 6, 6);
+                trustedSummary.Active = allowed > 0;
                 ((ReadableButton)enable).Kind = on ? ButtonKind.Secondary : ButtonKind.Primary; computers.Invalidate();
                 UpdateConnectButton();
             }
