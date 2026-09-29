@@ -148,7 +148,9 @@ namespace LumeRemote
         ActiveSession active;
         FileSystemWatcher watcher;
         Task controlServer;
-        int messageCount; long messageWindow = DateTime.UtcNow.Ticks;
+        // Signaling rate limit per broker source id, so one sender that knows the HostId cannot starve paired computers.
+        readonly Dictionary<string, long[]> messageRates = new Dictionary<string, long[]>(StringComparer.Ordinal);
+        internal const int MessageRateSources = 256, MessagesPerSecond = 30;
         DateTime lastStatusWrite;
         public bool Ready { get; private set; }
         public string State { get; private set; }
@@ -268,12 +270,32 @@ namespace LumeRemote
                 recent[nonce] = now + TimeSpan.TicksPerMinute * 5; return true;
             }
         }
+        internal bool AllowMessage(string source)
+        {
+            lock (gate)
+            {
+                long now = DateTime.UtcNow.Ticks; long[] rate; // [window start, count]
+                if (!messageRates.TryGetValue(source, out rate))
+                {
+                    if (messageRates.Count >= MessageRateSources)
+                    {
+                        string oldest = null; long oldestStart = long.MaxValue;
+                        foreach (KeyValuePair<string, long[]> item in messageRates) if (item.Value[0] < oldestStart) { oldest = item.Key; oldestStart = item.Value[0]; }
+                        messageRates.Remove(oldest);
+                    }
+                    messageRates.Add(source, rate = new long[] { now, 0 });
+                }
+                if (now - rate[0] >= TimeSpan.TicksPerSecond) { rate[0] = now; rate[1] = 0; }
+                return ++rate[1] <= MessagesPerSecond;
+            }
+        }
+        internal int MessageRateCount { get { lock (gate) return messageRates.Count; } }
         void Receive(SignalBroker channel, BrokerPacket packet)
         {
             try
             {
                 if (stopped.IsCancellationRequested || packet == null || packet.payload == null || packet.src == null || !packet.src.StartsWith("lume-", StringComparison.Ordinal) || !Invitation.IsHex(packet.src.Substring(5), 32)) return;
-                lock (gate) { long now = DateTime.UtcNow.Ticks; if (now - messageWindow >= TimeSpan.TicksPerSecond) { messageWindow = now; messageCount = 0; } if (++messageCount > 30) return; }
+                if (!AllowMessage(packet.src)) return;
                 HostPreferences preferences = store.ReadHost(); if (!preferences.Enabled) return;
                 SignalEnvelope envelope = packet.payload;
                 if (envelope.stage == "pair")
