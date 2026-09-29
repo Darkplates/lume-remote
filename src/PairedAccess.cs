@@ -226,12 +226,18 @@ namespace LumeRemote
         }
         void HandleControlClient(NamedPipeServerStream server, string ownerSid)
         {
+            // Windows only allows impersonating a pipe client after data has been read
+            // from it, so read the bounded frame first (the pipe ACL already limits who
+            // can connect), then authenticate the caller before parsing or applying it.
+            byte[] payload;
+            try { payload = TrustedStore.ReadFrame(server, 65536); }
+            catch (Exception) { Reply(server, "error", "The settings request was invalid."); return; }
             string clientSid = null; bool clientAdmin = false;
             try { server.RunAsClient(delegate { using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) { clientSid = identity.User != null ? identity.User.Value : null; clientAdmin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator); } }); }
             catch { clientSid = null; }
             if (clientSid == null || (clientSid != ownerSid && !clientAdmin)) { Reply(server, "error", "Only the owner of this PC can change these settings."); return; }
             HostRequest request;
-            try { byte[] payload = TrustedStore.ReadFrame(server, 65536); request = TrustedStore.ReadRequestJson(payload); }
+            try { request = TrustedStore.ReadRequestJson(payload); }
             catch (Exception) { Reply(server, "error", "The settings request was invalid."); return; }
             try
             {

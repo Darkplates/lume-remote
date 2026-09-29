@@ -248,6 +248,12 @@ namespace LumeRemote
             {
                 try { client.Connect(4000); }
                 catch (TimeoutException) { throw new IOException("The Lume host service is not running on this PC, so the change was not applied. Open Lume there, or use Disable/Remove on that PC."); }
+                // Any local user can create a pipe with this name while the worker is not
+                // listening. Requests can carry a pairing secret, so only talk to a pipe
+                // owned by SYSTEM or Administrators, which a standard user cannot fake.
+                SecurityIdentifier pipeOwner = client.GetAccessControl().GetOwner(typeof(SecurityIdentifier)) as SecurityIdentifier;
+                if (pipeOwner == null || !(pipeOwner.IsWellKnown(WellKnownSidType.LocalSystemSid) || pipeOwner.IsWellKnown(WellKnownSidType.BuiltinAdministratorsSid)))
+                    throw new UnauthorizedAccessException("The settings channel is not owned by the Lume host service. The change was not sent.");
                 WriteFrame(client, Encoding.UTF8.GetBytes(JsonData.Encode(request)));
                 byte[] replyBytes = ReadFrame(client, 8192); string[] reply = new UTF8Encoding(false, true).GetString(replyBytes).Split(new char[] { '\n' }, 2);
                 if (reply.Length == 0 || reply[0] != "ok") throw new InvalidOperationException(reply.Length > 1 && reply[1].Length > 0 ? reply[1] : "The host service rejected the change.");
