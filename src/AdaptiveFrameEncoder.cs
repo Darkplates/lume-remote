@@ -11,10 +11,10 @@ namespace LumeRemote
         IVideoFrameEncoder video;
         int width, height, rate, bitrate;
         bool resetVideo, pendingOutput;
-        // True while the video encoder has accepted input without producing an access unit. The capture loop must keep
-        // feeding frames, even unchanged ones, until the buffered picture is flushed to the viewer.
         public AdaptiveFrameEncoder() : this(null) { }
         public AdaptiveFrameEncoder(Func<int, int, int, int, IVideoFrameEncoder> videoFactory) { this.videoFactory = videoFactory; }
+        // True while the video encoder has accepted input without producing an access unit. The capture loop must keep
+        // feeding frames, even unchanged ones, until the buffered picture is flushed to the viewer.
         public bool PendingOutput { get { return video != null && pendingOutput; } }
         public string Backend { get { return video == null ? "Image updates" : video.Name; } }
         public bool Hardware { get { return video != null && video.Hardware; } }
