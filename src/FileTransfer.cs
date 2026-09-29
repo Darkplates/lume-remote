@@ -57,7 +57,7 @@ namespace LumeRemote
             expiry = new System.Threading.Timer(delegate
             {
                 string id = null; lock (gate) if (receiving != null && (Stopwatch.GetTimestamp() - receiving.Activity) / (double)Stopwatch.Frequency > 30) id = receiving.Id;
-                if (id != null) try { Queue(id, delegate { EndIncoming(id, new IOException("File transfer stalled. Retry the file.")); SendResult(id, false, "File transfer stalled. Retry the file."); }); } catch (Exception error) { failed(error); }
+                if (id != null) try { Queue(id, delegate { EndIncoming(id, new IOException("File transfer stalled. Retry the file."), true); SendResult(id, false, "File transfer stalled. Retry the file."); }); } catch (Exception error) { failed(error); }
             }, null, 5000, 5000);
         }
         public FileProgress Progress
@@ -259,7 +259,10 @@ namespace LumeRemote
             Queue(id, delegate { EndIncoming(id, new OperationCanceledException()); });
             if (!disposed) try { Send(FileOp.Cancel, id); } catch { }
         }
-        void EndIncoming(string id, Exception error)
+        // A locally detected stall looks like a network loss, so a paired resumable partial is
+        // kept (Suspend is a no-op otherwise); retry verifies its prefix. A failure result from
+        // the peer can mean a rejected prefix, so it still discards the partial.
+        void EndIncoming(string id, Exception error, bool preserve = false)
         {
             Transfer item;
             lock (gate)
@@ -269,7 +272,7 @@ namespace LumeRemote
                 if (error is OperationCanceledException) item.Done.TrySetCanceled(); else item.Done.TrySetException(error);
                 receiving = null;
             }
-            if (item.Incoming != null) { if ((disposed || transportLost) && !item.Cancelled) item.Incoming.Suspend(); item.Incoming.Dispose(); }
+            if (item.Incoming != null) { if ((disposed || transportLost || preserve) && !item.Cancelled) item.Incoming.Suspend(); item.Incoming.Dispose(); }
         }
         public bool Handle(Packet packet)
         {

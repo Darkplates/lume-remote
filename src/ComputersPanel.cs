@@ -66,12 +66,12 @@ namespace LumeRemote
             cancel.Click += delegate { if (connecting != null) connecting.Cancel(); };
             add.Click += async delegate
             {
-                string code = Prompt("Add a computer", "On the other PC: enable permanent access, then choose Pair another computer. Paste its one-time code here.", "", true); if (code == null) return;
+                string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Paste its one-time code here.", "", true); if (code == null) return;
                 add.Enabled = false;
                 try { using (CancellationTokenSource timeout = new CancellationTokenSource(40000)) { progress.Text = "Pairing securely..."; SavedComputer computer = await PairedClient.Pair(PairingCode.Parse(code), Environment.MachineName, timeout.Token); saved.Computers.RemoveAll(c => c.HostId == computer.HostId && c.WakeOnly == computer.WakeOnly && (!c.WakeOnly || c.WakeMac == computer.WakeMac)); saved.Computers.Add(computer); Save(); ReloadSaved(); computers.SelectedItem = computer; progress.Text = "Saved. Use Connect whenever you need this PC."; } }
                 catch (Exception error) { ShowError(error); } finally { add.Enabled = true; }
             };
-            remove.Click += delegate { SavedComputer selected = computers.SelectedItem as SavedComputer; if (selected == null) return; saved.Computers.Remove(selected); foreach (SavedComputer c in saved.Computers) if (c.WakeHelperId == selected.Id) c.WakeHelperId = null; Save(); ReloadSaved(); };
+            remove.Click += delegate { SavedComputer selected = computers.SelectedItem as SavedComputer; if (selected == null) return; if (MessageBox.Show(FindForm(), "Forget " + selected + " on this PC? You will need a new pairing code to connect again.", "Lume - Forget computer", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return; saved.Computers.Remove(selected); foreach (SavedComputer c in saved.Computers) if (c.WakeHelperId == selected.Id) c.WakeHelperId = null; Save(); ReloadSaved(); };
             enable.Click += async delegate
             {
                 enable.Enabled = false;
@@ -99,7 +99,7 @@ namespace LumeRemote
                 try { ShowPairing(TrustedStore.Machine.CreatePairing(true, mac)); } catch (Exception error) { ShowError(error); }
             };
             wake.Click += delegate { ConfigureWake(); };
-            uninstall.Click += async delegate { try { PermanentAccess.Disable(); uninstall.Enabled = false; await PermanentAccess.Install(true); RefreshHost(); } catch (Exception error) { ShowError(error); } finally { uninstall.Enabled = true; } };
+            uninstall.Click += async delegate { if (MessageBox.Show(FindForm(), "Remove the Lume Windows service? Permanent access to this PC stops now, and Windows will ask for administrator approval.", "Lume - Remove Windows service", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return; try { PermanentAccess.Disable(); uninstall.Enabled = false; await PermanentAccess.Install(true); RefreshHost(); } catch (Exception error) { ShowError(error); } finally { uninstall.Enabled = true; } };
             refresh.Tick += delegate { RefreshHost(); }; refresh.Start();
             VisibleChanged += delegate { if (Visible) { RefreshHost(); refresh.Start(); } else refresh.Stop(); };
             Disposed += delegate { refresh.Dispose(); if (connecting != null) connecting.Cancel(); b.Dispose(); computerMenu.Dispose(); };
@@ -222,13 +222,15 @@ namespace LumeRemote
                 Button copy = Theme.Button("Copy pairing code", true); copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy); dialog.Controls.Add(panel); dialog.ShowDialog(this);
             }
         }
-        static Form Dialog(string title, int width, int height) { return new Form { Text = "Lume - " + title, ClientSize = new Size(width, height), BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterParent, AutoScaleMode = AutoScaleMode.Dpi, MinimumSize = new Size(width, height) }; }
+        static Form Dialog(string title, int width, int height) { return new Form { Text = "Lume - " + title, Icon = Brand.Icon, ClientSize = new Size(width, height), BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterParent, AutoScaleMode = AutoScaleMode.Dpi, MinimumSize = new Size(width, height) }; }
         string Prompt(string title, string text, string initial, bool multiline)
         {
             using (Form dialog = Dialog(title, 580, 340))
             {
                 FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Controls.Add(Theme.Label(text, 11, Theme.Text));
-                TextBox value = Theme.Box(multiline); value.MaxLength = 4096; value.Text = initial; panel.Controls.Add(value); Button apply = Theme.Button("Continue", true); apply.DialogResult = DialogResult.OK; panel.Controls.Add(apply); dialog.Controls.Add(panel);
+                TextBox value = Theme.Box(multiline); value.MaxLength = 4096; value.Text = initial; panel.Controls.Add(value); FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
+                Button apply = Theme.Button("Continue", true), cancel = Theme.Button("Cancel", false); apply.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel; buttons.Controls.Add(apply); buttons.Controls.Add(cancel); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
+                dialog.AcceptButton = apply; dialog.CancelButton = cancel;
                 return dialog.ShowDialog(this) == DialogResult.OK ? value.Text : null;
             }
         }

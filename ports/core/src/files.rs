@@ -636,6 +636,11 @@ impl Worker {
                         .context("Invalid file name")?
                         .to_owned();
                     safe_name(&name)?;
+                    // Refuse FIFOs and devices before open(), which could block this worker forever.
+                    ensure!(
+                        fs::symlink_metadata(&local)?.is_file(),
+                        "Choose a regular file"
+                    );
                     let mut file = File::open(local)?;
                     let metadata = file.metadata()?;
                     ensure!(

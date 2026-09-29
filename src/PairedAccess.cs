@@ -41,7 +41,11 @@ namespace LumeRemote
                         if (envelope.stage == "paired") reply.TrySetResult(SignalCrypto.Open(newKey, packet.src, broker.Id, envelope));
                         else if (envelope.stage == "error") reply.TrySetException(new IOException(SignalCrypto.Open(code.key, packet.src, broker.Id, envelope).message));
                     }
+                    // Anyone can address this broker ID: ignore unauthenticated or malformed envelopes
+                    // instead of failing the attempt (and, for saved computers, automatic recovery).
                     catch (CryptographicException) { }
+                    catch (InvalidDataException) { }
+                    catch (FormatException) { }
                     catch (Exception error) { reply.TrySetException(error); }
                 };
                 await broker.Start(Security.Token(32)).ConfigureAwait(false);
@@ -70,7 +74,11 @@ namespace LumeRemote
                         SignalBody body = SignalCrypto.Open(computer.Key, packet.src, broker.Id, envelope);
                         if (envelope.stage == "offer") reply.TrySetResult(body); else if (envelope.stage == "error") reply.TrySetException(new IOException(body.message));
                     }
+                    // Anyone can address this broker ID: ignore unauthenticated or malformed envelopes
+                    // instead of failing the attempt (and, for saved computers, automatic recovery).
                     catch (CryptographicException) { }
+                    catch (InvalidDataException) { }
+                    catch (FormatException) { }
                     catch (Exception error) { reply.TrySetException(error); }
                 };
                 try
@@ -110,7 +118,11 @@ namespace LumeRemote
                         SignalBody body = SignalCrypto.Open(helper.Key, packet.src, broker.Id, envelope);
                         if (envelope.stage == "woke") reply.TrySetResult(body); else if (envelope.stage == "error") reply.TrySetException(new IOException(body.message));
                     }
+                    // Anyone can address this broker ID: ignore unauthenticated or malformed envelopes
+                    // instead of failing the attempt (and, for saved computers, automatic recovery).
                     catch (CryptographicException) { }
+                    catch (InvalidDataException) { }
+                    catch (FormatException) { }
                     catch (Exception error) { reply.TrySetException(error); }
                 };
                 await broker.Start(Security.Token(32)).ConfigureAwait(false);

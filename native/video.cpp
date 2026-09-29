@@ -147,7 +147,8 @@ void DecoderOutputType(Codec& codec) {
         GUID subtype; Check(type->GetGUID(MF_MT_SUBTYPE, &subtype));
         if (subtype != MFVideoFormat_NV12) continue;
         UINT32 width = 0, height = 0; Check(MFGetAttributeSize(type.Get(), MF_MT_FRAME_SIZE, &width, &height));
-        if (width != codec.width || height < codec.height || height > codec.height + 32) Check(MF_E_INVALIDMEDIATYPE);
+        // Decoders report macroblock-aligned frame sizes (1366 -> 1376, 1080 -> 1088); FromNv12 copies only the coded area.
+        if (width < codec.width || width > codec.width + 16 || height < codec.height || height > codec.height + 32) Check(MF_E_INVALIDMEDIATYPE);
         Check(codec.transform->SetOutputType(codec.outputId, type.Get(), 0));
         UINT32 stride = 0;
         if (FAILED(type->GetUINT32(MF_MT_DEFAULT_STRIDE, &stride))) stride = width;

@@ -216,7 +216,10 @@ namespace LumeRemote
                     using (Graphics canvas = Graphics.FromImage(Image))
                     {
                         if (patch.Width != pw || patch.Height != ph) throw new InvalidDataException("Unexpected image dimensions.");
-                        canvas.DrawImageUnscaled(patch, x, y);
+                        // Map pixels 1:1. DrawImageUnscaled honours the patch's embedded DPI, which
+                        // differs between hosts and viewers with different display scaling.
+                        canvas.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.NearestNeighbor; canvas.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                        canvas.DrawImage(patch, new Rectangle(x, y, pw, ph), 0, 0, pw, ph, GraphicsUnit.Pixel);
                     }
                 }
             }

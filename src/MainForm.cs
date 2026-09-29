@@ -96,7 +96,13 @@ namespace LumeRemote
             AddField(settings, "Initial stream quality", profile); profile.Items.AddRange(Profile.All); profile.SelectedIndex = 3;
             settings.Controls.Add(control);
             Label shareSummary = Theme.Label("P2P Internet / source resolution", 10, Theme.Muted); settings.Controls.Add(shareSummary);
-            mode.SelectedIndexChanged += delegate { shareSummary.Text = (mode.SelectedIndex == 0 ? "P2P Internet" : mode.SelectedIndex == 1 ? "Direct LAN/VPN" : "Your Internet relay") + "  /  " + ((Profile)profile.SelectedItem).Name.Split('-')[0].Trim().ToLowerInvariant() + " quality\nKeyboard and mouse require your approval."; };
+            // The summary must reflect every choice that changes what a guest can do.
+            EventHandler summarize = delegate
+            {
+                Profile selected = profile.SelectedItem as Profile;
+                shareSummary.Text = (mode.SelectedIndex == 0 ? "P2P Internet" : mode.SelectedIndex == 1 ? "Direct LAN/VPN" : "Your Internet relay") + "  /  " + (selected == null ? "" : selected.Name.Split('-')[0].Trim().ToLowerInvariant() + " quality") + "\n" + (control.Checked ? "Viewing, keyboard, mouse and files require your approval." : "View only. Viewing requires your approval.");
+            };
+            mode.SelectedIndexChanged += summarize; profile.SelectedIndexChanged += summarize; control.CheckedChanged += summarize; summarize(null, EventArgs.Empty);
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) }; actions.Controls.Add(start); actions.Controls.Add(stop); left.Controls.Add(actions);
             stop.Enabled = false; start.Click += async delegate { await StartSharing(); }; stop.Click += delegate { StopSharing(); };
             left.Controls.Add(Theme.Label("YOUR PRIVATE INVITATION", 9, Theme.Muted)); invitation.ReadOnly = true; invitation.ScrollBars = ScrollBars.Vertical; invitation.TabStop = false; left.Controls.Add(invitation);
@@ -120,7 +126,7 @@ namespace LumeRemote
             Button guide = Theme.Button("Open quick start", false); right.Controls.Add(guide);
             guide.Click += delegate { try { Process.Start(new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "START-HERE.txt")) { UseShellExecute = true }); } catch (Exception e) { SetStatus(e.Message); } };
             FlowLayoutPanel footer = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
-            status.Text = "Ready"; status.MaximumSize = new Size(700, 22); resources.MaximumSize = new Size(170, 22); footer.Controls.Add(status); footer.Controls.Add(resources); root.Controls.Add(footer, 0, 2); Controls.Add(root);
+            status.Text = "Ready"; status.MaximumSize = new Size(700, 0); resources.MaximumSize = new Size(170, 0); footer.Controls.Add(status); footer.Controls.Add(resources); root.Controls.Add(footer, 0, 2); Controls.Add(root);
             Resize += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); };
             Shown += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); if (!RegisterHotKey(Handle, HotkeyId, 0x4007, 0x7B)) SetStatus("Emergency shortcut unavailable; use Stop sharing or Disable access."); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
@@ -259,11 +265,12 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) return;
-                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Tag = "LumeClipboard", Size = new Size(550, 390), StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false })
+                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Icon = Brand.Icon, Tag = "LumeClipboard", Size = new Size(550, 390), StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false })
                     {
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
                         Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 210; accept.Dock = DockStyle.Bottom; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
-                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.ShowDialog(this);
+                        Button ignore = Theme.Button("Don't copy", false); ignore.Dock = DockStyle.Bottom; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore;
+                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); using (LocalConsent.Begin()) dialog.ShowDialog(this);
                     }
                 }
                 finally { result.TrySetResult(false); System.Threading.Interlocked.Exchange(ref clipboardPending, 0); }
@@ -276,7 +283,7 @@ namespace LumeRemote
             if (closing || IsDisposed || current != generation) { result.TrySetResult(false); return result.Task; }
             try { BeginInvoke((Action)delegate
             {
-                bool allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+                bool allowed; using (LocalConsent.Begin()) allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
                 result.TrySetResult(allowed && !closing && current == generation);
             }); } catch { result.TrySetResult(false); }
             return result.Task;
@@ -290,7 +297,7 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) throw new OperationCanceledException();
-                    if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
+                    using (LocalConsent.Begin()) if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
                     string text = await ClipboardAccess.Read();
                     if (closing || current != generation) throw new OperationCanceledException(); result.TrySetResult(text);
                 }
@@ -312,7 +319,7 @@ namespace LumeRemote
         void UpdateResources()
         {
             int sessions = Application.OpenForms.OfType<ViewerForm>().Count(window => window.IsSessionConnected);
-            resources.Text = sessions == 0 ? "0.7 dev" : sessions + (sessions == 1 ? " session" : " sessions");
+            resources.Text = sessions == 0 ? "v" + typeof(MainForm).Assembly.GetName().Version.ToString(2) + " preview" : sessions + (sessions == 1 ? " session" : " sessions");
             tray.Text = "Lume Remote - " + resources.Text;
         }
         protected override void WndProc(ref Message message) { if (message.Msg == 0x312 && message.WParam.ToInt32() == HotkeyId) { StopSharing(); try { PermanentAccess.Disable(); home.RefreshHost(); } catch (Exception error) { SetStatus(error.Message); } ShowDashboard(); } base.WndProc(ref message); }
@@ -326,11 +333,11 @@ namespace LumeRemote
         int remaining = 60;
         public ConsentForm(PeerRequest request)
         {
-            Text = "Lume - Connection request"; ClientSize = new Size(540, 365); BackColor = Theme.Background; ForeColor = Theme.Text;
+            Text = "Lume - Connection request"; Icon = Brand.Icon; ClientSize = new Size(540, 365); BackColor = Theme.Background; ForeColor = Theme.Text;
             FormBorderStyle = FormBorderStyle.FixedDialog; StartPosition = FormStartPosition.CenterParent; MinimizeBox = false; MaximizeBox = false; TopMost = true;
             FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill;
             panel.Controls.Add(Theme.Label("Allow this connection?", 23, Theme.Text));
-            panel.Controls.Add(Theme.Label("Claimed name: " + request.Name + "\nRoute: " + request.Address, 12, Theme.Accent));
+            panel.Controls.Add(Theme.Label("Claimed name (not verified): " + request.Name + "\nRoute: " + request.Address, 12, Theme.Text));
             panel.Controls.Add(Theme.Label(request.Control ? "This person can see your screen, use your keyboard and mouse" + (request.Files ? ", and browse, send and receive your files" : "") + ". Only accept someone you trust." : "This person will see the selected screen. Keyboard, mouse, clipboard and file access are disabled.", 11, Theme.Muted));
             Label countdown = Theme.Label("Automatically declined in 60 seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
             FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true);

@@ -13,6 +13,7 @@ namespace LumeRemote
         readonly Action stopped;
         readonly object gate = new object();
         Form form; bool disposed, granted;
+        IDisposable localOnly;
         CancellationTokenRegistration registration;
         HostVoiceConsent(Action stopped, CancellationToken cancellation)
         {
@@ -28,15 +29,18 @@ namespace LumeRemote
                 {
                     var text = Theme.Label("The connected computer requests a two-way voice call. Allow this PC's microphone for this call? Use headphones to avoid feedback.", 11, Theme.Text); text.Dock = DockStyle.Fill; text.AutoSize = false; text.MaximumSize = Size.Empty;
                     var buttons = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 55 }; var allow = Theme.Button("Allow call", true); var stop = Theme.Button("Decline", false); allow.Width = stop.Width = 170; buttons.Controls.Add(allow); buttons.Controls.Add(stop); window.Padding = new Padding(18); window.Controls.Add(text); window.Controls.Add(buttons);
-                    allow.Click += delegate { lock (gate) { if (disposed || granted) return; granted = true; } allow.Visible = false; stop.Text = "Stop microphone"; text.Text = "Microphone ON for this Lume call. Stop sharing at any time."; approved.TrySetResult(this); };
+                    // A stray Enter or Space must never grant the microphone: focus and Esc decline.
+                    window.ActiveControl = stop; window.CancelButton = stop;
+                    allow.Click += delegate { lock (gate) { if (disposed || granted) return; granted = true; } if (localOnly != null) localOnly.Dispose(); allow.Visible = false; stop.Text = "Stop microphone"; text.Text = "Microphone ON for this Lume call. Select Stop microphone at any time."; approved.TrySetResult(this); };
                     stop.Click += delegate { window.Close(); };
                     window.FormClosed += delegate { bool notify; lock (gate) { notify = granted && !disposed; disposed = true; form = null; } approved.TrySetResult(null); if (notify) stopped(); };
                     lock (gate) { if (disposed) return; form = window; window.CreateControl(); var handle = window.Handle; }
+                    localOnly = LocalConsent.Begin();
                     Application.Run(window);
                 }
             }
             catch (Exception error) { approved.TrySetException(error); }
-            finally { approved.TrySetResult(null); registration.Dispose(); }
+            finally { if (localOnly != null) localOnly.Dispose(); approved.TrySetResult(null); registration.Dispose(); }
         }
         public void Dispose()
         {

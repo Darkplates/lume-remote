@@ -82,7 +82,7 @@ fn valid_host(host: &str) -> bool {
 }
 pub fn hex(value: &str, size: usize) -> Result<Vec<u8>> {
     ensure!(
-        value.len() == size * 2 && value.is_ascii(),
+        value.len() == size * 2 && value.bytes().all(|b| b.is_ascii_hexdigit()),
         "Invalid hexadecimal value"
     );
     (0..size)
@@ -183,15 +183,29 @@ impl Packet {
         Ok(v)
     }
 }
-#[derive(Default)]
+pub const FRAMER_LIMIT: usize = MAX_PACKET + 65540;
 pub struct Framer {
     bytes: Vec<u8>,
     consumed: usize,
+    limit: usize,
+}
+impl Default for Framer {
+    fn default() -> Self {
+        Self {
+            bytes: Vec::new(),
+            consumed: 0,
+            limit: FRAMER_LIMIT,
+        }
+    }
 }
 impl Framer {
+    /// Bounds buffered, not-yet-parsed bytes; unauthenticated peers get a small limit.
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit = limit.min(FRAMER_LIMIT);
+    }
     pub fn push(&mut self, bytes: &[u8]) -> Result<()> {
         ensure!(
-            self.bytes.len() - self.consumed + bytes.len() <= MAX_PACKET + 65540,
+            self.bytes.len() - self.consumed + bytes.len() <= self.limit,
             "Receive buffer exceeded"
         );
         if self.consumed > 0 {
@@ -323,6 +337,19 @@ mod tests {
         assert!(Reader::new(&[2]).boolean().is_err());
         assert!(Reader::new(&[255; 4]).text(100).is_err());
         assert!(!equal(b"key", b"ke"));
+    }
+    #[test]
+    fn hex_is_canonical_and_framer_limit_applies() {
+        assert_eq!(hex("0aFf", 2).unwrap(), vec![0x0a, 0xff]);
+        for bad in ["+f+f", "-1-1", " f f", "0x0a"] {
+            assert!(hex(bad, 2).is_err(), "{bad}");
+        }
+        let mut f = Framer::default();
+        f.set_limit(16);
+        assert!(f.push(&[0; 16]).is_ok());
+        assert!(f.push(&[0]).is_err());
+        f.set_limit(usize::MAX);
+        assert!(f.push(&[0; 32]).is_ok());
     }
     #[test]
     fn invitations_and_secrets() {

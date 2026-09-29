@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased (review fixes, not yet validated on Windows hardware)
+
+These changes were compile-checked (C#) and unit-tested (Rust core/bridge, relay)
+on Linux only. Windows UI, native video and two-PC acceptance remain pending.
+
+- Local permission prompts (voice, system audio, clipboard) pause remote presses
+  and pointer input so a guest with control cannot answer them. Voice consent
+  focuses Decline; incoming chat no longer takes keyboard focus.
+- Paired and portable signaling ignore malformed unauthenticated envelopes instead
+  of ending the attempt and automatic recovery.
+- Portable hosts bound buffered data before authentication and refuse FIFOs in
+  shared folders; the hex validator rejects sign characters.
+- The relay caps connections per source address and handles Python 3.10 timeouts.
+- JPEG/PNG regions are drawn 1:1 when host and viewer use different display
+  scaling; H.264 decoding accepts macroblock-padded widths such as 1366.
+- Stalled paired transfers keep their resumable partial; finished recordings are
+  never deleted on a name collision; a tool backlog answers busy instead of
+  ending the session.
+- UI: confirm Forget and Remove Windows service, Cancel/Esc in the code prompt,
+  unverified-name wording in connection requests, accurate guest summary, real
+  version in the footer, Exit full screen label, no clipped footer text.
+
 ## 0.12.0 development
 
 - Fix consecutive Windows file transfers by ordering the completion receipt before

@@ -83,8 +83,16 @@ namespace LumeRemote
                 if (!disposed) try { wire.Send(Kind.ToolReply, delegate(BinaryWriter w) { w.Write(request); w.Write(error.Length == 0); Wire.Text(w, error); w.Write(reply.Length); w.Write(reply); }); }
                 catch (Exception problem) { failed(problem); }
             };
-            try { if (!disposed && !work.TryAdd(action)) throw new InvalidDataException("Too many session requests."); }
-            catch (InvalidOperationException) { if (!disposed) throw; }
+            // A backlog behind an unanswered local prompt is not a protocol error: answer busy
+            // instead of ending the desktop session. Each reply is bounded like the request.
+            bool queued;
+            try { queued = disposed || work.TryAdd(action); }
+            catch (InvalidOperationException) { if (!disposed) throw; return; }
+            if (!queued)
+            {
+                const string busy = "The remote PC is still answering a previous request. Try again.";
+                wire.Send(Kind.ToolReply, delegate(BinaryWriter w) { byte[] empty = Payload(); w.Write(request); w.Write(false); Wire.Text(w, busy); w.Write(empty.Length); w.Write(empty); });
+            }
         }
         public void Dispose()
         {
