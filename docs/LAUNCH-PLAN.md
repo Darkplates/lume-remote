@@ -118,3 +118,21 @@ long-session checks, installed-host lifecycle and security review, real devices 
 printers, plus distribution trust. Apple remains explicitly uncompiled/untested
 until someone with suitable hardware supplies reproducible evidence. Public source
 availability and production readiness are separate statuses.
+
+## 0.12.1 launch checklist
+
+Nothing is posted automatically. Tick each item in order; stop at the first failure.
+
+1. Two PCs you own, on different networks, both running the 0.12.1 ZIP from the
+   release page (check the SHA-256 against the `.sha256` file).
+2. On PC A: Enable access, Pair another PC. On PC B: Add a computer, paste the code.
+3. Connect from PC B. Confirm the "... is connected" pill appears on PC A and its
+   Disconnect button ends the session.
+4. Clipboard text both ways, one file each way (compare SHA-256), a 60-minute idle
+   session, reconnect after restarting PC A, then Revoke from PC A's settings.
+5. Guest access: start sharing on PC A, connect from PC B, check the approval dialog.
+6. Record the result (routes, versions, any failed attempt) as an issue or in
+   `docs/evidence/`, without pairing codes or private screen content.
+7. Only then: pin the release, add the promo video to the README/release, and post
+   the drafts in [LAUNCH-COPY.txt](LAUNCH-COPY.txt), one channel at a time, answering
+   replies the same day.
