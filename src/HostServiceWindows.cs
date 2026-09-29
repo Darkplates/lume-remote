@@ -19,7 +19,7 @@ namespace LumeRemote
         public const string ServiceName = "LumeRemoteHost";
         public static bool Installed { get { using (ServiceController service = new ServiceController(ServiceName)) { try { var status = service.Status; return true; } catch (InvalidOperationException) { return false; } } } }
         public static void Disable()
-        { if (File.Exists(TrustedStore.Machine.HostFile)) TrustedStore.Machine.ChangeHost(delegate(HostPreferences host) { host.Enabled = false; host.PairId = host.PairKey = null; host.PairExpires = 0; }); }
+        { if (File.Exists(TrustedStore.Machine.HostFile)) TrustedStore.Machine.Disable(); }
         public static Task Install(bool remove, bool update = false)
         {
             string script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "permanent-access.ps1");
@@ -85,8 +85,13 @@ namespace LumeRemote
                 while (!stop.WaitOne(1000))
                 {
                     uint current = WTSGetActiveConsoleSessionId();
-                    if (worker != null && (worker.HasExited || current != session)) { StopWorker(worker, workerStop); worker = null; workerStop = null; }
-                    if (worker != null || current == UInt32.MaxValue) continue;
+                    // Owner-only policy: run the console worker only when the console
+                    // belongs to the owner, or when nobody is signed in (logon/lock)
+                    // and no other user is signed in anywhere. End it otherwise.
+                    string owner = ReadOwnerSid();
+                    bool allowed = owner != null && AllowedForConsole(current, owner);
+                    if (worker != null && (worker.HasExited || current != session || !allowed)) { StopWorker(worker, workerStop); worker = null; workerStop = null; }
+                    if (worker != null || current == UInt32.MaxValue || !allowed) continue;
                     try
                     {
                         string name = "Global\\LumeHostStop-" + Guid.NewGuid().ToString("N"); EventWaitHandleSecurity security = new EventWaitHandleSecurity();
@@ -100,7 +105,48 @@ namespace LumeRemote
             catch (Exception error) { WriteStatus("Host service failed: " + error.Message); }
             finally { StopWorker(worker, workerStop); }
         }
-        static void WriteStatus(string message) { try { File.WriteAllText(Path.Combine(TrustedStore.MachineDirectory, "status.txt"), DateTime.UtcNow.ToString("u") + "\r\n" + message); } catch { } }
+        static void WriteStatus(string message) { try { string path = Path.Combine(TrustedStore.MachineDirectory, "status.txt"); TrustedStore.CheckNoReparse(path); File.WriteAllText(path, DateTime.UtcNow.ToString("u") + "\r\n" + message); } catch { } }
+        static string ReadOwnerSid()
+        {
+            try { if (!File.Exists(TrustedStore.Machine.HostFile)) return null; return TrustedStore.Machine.ReadHost().OwnerSid; } catch { return null; }
+        }
+        // Allowed when the console user is the owner, or when there is no interactive
+        // console user (logon/lock/secure desktop) and no other user is signed in.
+        static bool AllowedForConsole(uint session, string owner)
+        {
+            IntPtr token;
+            if (WTSQueryUserToken(session, out token))
+            {
+                try { using (WindowsIdentity identity = new WindowsIdentity(token)) return identity.User != null && identity.User.Value == owner; }
+                catch { return false; }
+                finally { CloseHandle(token); }
+            }
+            return NoOtherUserSignedIn(owner);
+        }
+        static bool NoOtherUserSignedIn(string owner)
+        {
+            IntPtr info; int count;
+            if (!WTSEnumerateSessions(IntPtr.Zero, 0, 1, out info, out count)) return false; // fail closed
+            try
+            {
+                int size = Marshal.SizeOf(typeof(WTS_SESSION_INFO));
+                for (int i = 0; i < count; i++)
+                {
+                    WTS_SESSION_INFO entry = (WTS_SESSION_INFO)Marshal.PtrToStructure((IntPtr)(info.ToInt64() + (long)i * size), typeof(WTS_SESSION_INFO));
+                    // WTSActive=0, WTSConnected=1, WTSDisconnected=4.
+                    if (entry.State != 0 && entry.State != 1 && entry.State != 4) continue;
+                    IntPtr token;
+                    if (WTSQueryUserToken((uint)entry.SessionId, out token))
+                    {
+                        try { using (WindowsIdentity identity = new WindowsIdentity(token)) if (identity.User != null && identity.User.Value != owner) return false; }
+                        catch { return false; }
+                        finally { CloseHandle(token); }
+                    }
+                }
+                return true;
+            }
+            finally { WTSFreeMemory(info); }
+        }
         static void StopWorker(Process process, EventWaitHandle signal)
         {
             try { if (signal != null) signal.Set(); if (process != null && !process.HasExited && !process.WaitForExit(10000)) process.Kill(); }
@@ -129,7 +175,11 @@ namespace LumeRemote
         [StructLayout(LayoutKind.Sequential, Pack=4)] struct TOKEN_PRIVILEGES { public uint count; public long luid; public uint attributes; }
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)] struct STARTUPINFO { public int cb; public string reserved, desktop, title; public uint x,y,width,height,xChars,yChars,fill,flags; public short show,reservedSize; public IntPtr reservedPointer,input,output,error; }
         [StructLayout(LayoutKind.Sequential)] struct PROCESS_INFORMATION { public IntPtr process, thread; public uint processId, threadId; }
+        [StructLayout(LayoutKind.Sequential)] struct WTS_SESSION_INFO { public int SessionId; public IntPtr WinStationName; public int State; }
         [DllImport("kernel32.dll")] static extern uint WTSGetActiveConsoleSessionId();
+        [DllImport("wtsapi32.dll", SetLastError=true)] static extern bool WTSQueryUserToken(uint session, out IntPtr token);
+        [DllImport("wtsapi32.dll", SetLastError=true)] static extern bool WTSEnumerateSessions(IntPtr server, uint reserved, uint version, out IntPtr sessionInfo, out int count);
+        [DllImport("wtsapi32.dll")] static extern void WTSFreeMemory(IntPtr memory);
         [DllImport("kernel32.dll")] static extern IntPtr GetCurrentProcess();
         [DllImport("kernel32.dll")] static extern bool CloseHandle(IntPtr handle);
         [DllImport("advapi32.dll", SetLastError=true)] static extern bool OpenProcessToken(IntPtr process,uint access,out IntPtr token);

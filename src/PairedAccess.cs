@@ -2,8 +2,11 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
+using System.IO.Pipes;
 using System.Linq;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
@@ -144,6 +147,7 @@ namespace LumeRemote
         SignalBroker broker;
         ActiveSession active;
         FileSystemWatcher watcher;
+        Task controlServer;
         int messageCount; long messageWindow = DateTime.UtcNow.Ticks;
         DateTime lastStatusWrite;
         public bool Ready { get; private set; }
@@ -153,12 +157,14 @@ namespace LumeRemote
         void Status(string message)
         {
             State = message; report(message);
-            try { File.WriteAllText(Path.Combine(store.DirectoryPath, "status.txt"), DateTime.UtcNow.ToString("u") + "\r\n" + message, new System.Text.UTF8Encoding(false)); lastStatusWrite = DateTime.UtcNow; } catch (IOException) { } catch (UnauthorizedAccessException) { }
+            try { string path = Path.Combine(store.DirectoryPath, "status.txt"); TrustedStore.CheckNoReparse(path); File.WriteAllText(path, DateTime.UtcNow.ToString("u") + "\r\n" + message, new System.Text.UTF8Encoding(false)); lastStatusWrite = DateTime.UtcNow; } catch (IOException) { } catch (UnauthorizedAccessException) { }
         }
         void Pulse() { try { if (changed.CurrentCount == 0) changed.Release(); } catch (SemaphoreFullException) { } }
         public async Task Run()
         {
             Directory.CreateDirectory(store.DirectoryPath);
+            string ownerSid = null; try { if (File.Exists(store.HostFile)) ownerSid = store.ReadHost().OwnerSid; } catch { ownerSid = null; }
+            if (ownerSid != null) { string owner = ownerSid; controlServer = Task.Run(delegate { ServeControl(owner); }); }
             watcher = new FileSystemWatcher(store.DirectoryPath, "host.dat") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, EnableRaisingEvents = true };
             watcher.Changed += delegate { Pulse(); }; watcher.Created += delegate { Pulse(); }; watcher.Renamed += delegate { Pulse(); };
             DateTime retry = DateTime.MinValue;
@@ -193,6 +199,65 @@ namespace LumeRemote
             finally { if (watcher != null) watcher.Dispose(); DisconnectBroker(); lock (gate) { if (active != null) active.Dispose(); active = null; } }
         }
         void DisconnectBroker() { SignalBroker previous = broker; broker = null; Ready = false; if (previous != null) previous.Dispose(); }
+        // Owner control channel. The dashboard cannot write the protected host.dat;
+        // it sends validated setting requests here. The pipe ACL admits only SYSTEM,
+        // Administrators and the owner, and each request is additionally authenticated
+        // as the owner (or an administrator) before it is applied.
+        void ServeControl(string ownerSid)
+        {
+            while (!stopped.IsCancellationRequested)
+            {
+                NamedPipeServerStream server = null;
+                try
+                {
+                    PipeSecurity security = new PipeSecurity();
+                    security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
+                    security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
+                    security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(ownerSid), PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize, AccessControlType.Allow));
+                    // BeginWaitForConnection requires an asynchronous pipe on .NET Framework; with
+                    // PipeOptions.None it throws after the client may already have connected.
+                    server = new NamedPipeServerStream(store.ControlPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 8192, 8192, security);
+                    IAsyncResult wait = server.BeginWaitForConnection(null, null);
+                    while (!wait.AsyncWaitHandle.WaitOne(500)) { if (stopped.IsCancellationRequested) { try { server.Dispose(); } catch { } return; } }
+                    server.EndWaitForConnection(wait);
+                    HandleControlClient(server, ownerSid);
+                }
+                catch (Exception error) { if (!stopped.IsCancellationRequested) { SessionLog.Write(store.DirectoryPath, "host", "control_channel_failed", error); stopped.Token.WaitHandle.WaitOne(500); } }
+                finally { if (server != null) { try { server.Dispose(); } catch { } } }
+            }
+        }
+        void HandleControlClient(NamedPipeServerStream server, string ownerSid)
+        {
+            // Windows only allows impersonating a pipe client after data has been read
+            // from it, so read the bounded frame first (the pipe ACL already limits who
+            // can connect), then authenticate the caller before parsing or applying it.
+            byte[] payload;
+            try { payload = TrustedStore.ReadFrame(server, 65536); }
+            catch (Exception) { Reply(server, "error", "The settings request was invalid."); return; }
+            string clientSid = null; bool clientAdmin = false;
+            try { server.RunAsClient(delegate { using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) { clientSid = identity.User != null ? identity.User.Value : null; clientAdmin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator); } }); }
+            catch { clientSid = null; }
+            if (clientSid == null || (clientSid != ownerSid && !clientAdmin)) { Reply(server, "error", "Only the owner of this PC can change these settings."); return; }
+            HostRequest request;
+            try { request = TrustedStore.ReadRequestJson(payload); }
+            catch (Exception) { Reply(server, "error", "The settings request was invalid."); return; }
+            try
+            {
+                store.ApplyRequest(request);
+                // Disable and revocation must take effect before we answer.
+                lock (gate)
+                {
+                    if (active != null && ((request.Op == "enable" && !request.Flag) || (request.Op == "revoke" && active.Controller.Id == request.ControllerId))) { active.Dispose(); active = null; }
+                }
+                Pulse();
+                Reply(server, "ok", null);
+            }
+            catch (Exception error) { SessionLog.Write(store.DirectoryPath, "host", "control_request_failed", error); Reply(server, "error", error.Message); }
+        }
+        // Wait until the client has read the reply: closing the server end first can
+        // discard it, and the dashboard then sees an unexpected end of stream.
+        static void Reply(NamedPipeServerStream server, string status, string message)
+        { try { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } catch { } }
         bool Fresh(string nonce)
         {
             lock (gate)
@@ -285,7 +350,7 @@ namespace LumeRemote
                 if (!stopped.IsCancellationRequested && Ready) Status("Permanent access ready. Paired computers can reconnect.");
             }
         }
-        public void Dispose() { stopped.Cancel(); Pulse(); DisconnectBroker(); lock (gate) { if (active != null) active.Dispose(); } }
+        public void Dispose() { stopped.Cancel(); Pulse(); DisconnectBroker(); lock (gate) { if (active != null) active.Dispose(); } if (controlServer != null) { try { controlServer.Wait(3000); } catch { } } }
         sealed class ActiveSession : IDisposable
         {
             public TrustedController Controller; public string Request, Remote; public HostService Host; public PeerTransport Peer;

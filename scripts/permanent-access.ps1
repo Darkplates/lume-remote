@@ -86,8 +86,12 @@ try {
     Protect-Directory $installRoot $false
     Protect-Directory (Join-Path $installRoot 'scripts') $false
     Protect-Directory $dataRoot $false
-    Protect-Directory $hostRoot $true
-    foreach ($entry in Get-ChildItem -LiteralPath $hostRoot -File -Force) { Protect-File $entry.FullName $true }
+    # The Host directory holds only SYSTEM-written state (host.dat, status.txt,
+    # connections.log*, host.lock). The owner gets read-only access so it cannot
+    # plant a mount point/symlink to redirect SYSTEM writes. Owner setting changes
+    # go through the SYSTEM worker's authenticated control pipe, not this folder.
+    Protect-Directory $hostRoot $false
+    foreach ($entry in Get-ChildItem -LiteralPath $hostRoot -File -Force) { Protect-File $entry.FullName $false }
     if ($service) { $wasRunning = $service.State -eq 'Running'; Stop-Service -Name $serviceName -Force }
     if ($sourceRoot -ne $installRoot) {
         $backup = Join-Path $installRoot ('backup-' + [Guid]::NewGuid().ToString('N'))

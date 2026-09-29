@@ -55,6 +55,7 @@ static partial class Tests
         if (args.Length > 0 && args[0] == "--quality") { QualityChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--signal") { Run("Encrypted signaling rejects tampering and address substitution", SignalSecurity); Run("Public signaling delivers authenticated encrypted messages", PublicSignaling); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--paired") { Run("Protected settings and one-time pairing code", ProtectedSettings); Run("Pair once, reconnect automatically, then revoke the live session", PersistentPairing); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
+        if (args.Length > 0 && args[0] == "--hardening") { HardeningChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--installed-host") { Run("Installed service: real source capture, keyboard, mouse and revocation", InstalledHost); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--installed-files") { Run("Installed service transfers files using owner permissions", InstalledFiles); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--p2p")
@@ -76,6 +77,7 @@ static partial class Tests
         int relayArgument = Array.IndexOf(args, "--relay-port"); if (relayArgument >= 0 && relayArgument + 1 < args.Length) relayPort = Int32.Parse(args[relayArgument + 1]);
         ResumeChecks();
         PortableChecks();
+        HardeningChecks();
         PrintingChecks();
         SessionToolChecks();
         MediaChecks();

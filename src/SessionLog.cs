@@ -33,6 +33,9 @@ namespace LumeRemote
                 {
                     Directory.CreateDirectory(directory);
                     string path = Path.Combine(directory, "connections.log"), previous = path + ".previous";
+                    // Defence in depth: never follow a reparse point when the SYSTEM
+                    // worker writes diagnostics into the protected Host directory.
+                    TrustedStore.CheckNoReparse(path); TrustedStore.CheckNoReparse(previous);
                     if (File.Exists(path) && new FileInfo(path).Length >= Limit)
                     { File.Copy(path, previous, true); File.WriteAllText(path, "", new UTF8Encoding(false)); }
                     string type = error == null ? "none" : error.GetType().Name;
