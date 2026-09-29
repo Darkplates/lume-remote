@@ -5,6 +5,14 @@
 These changes were compile-checked (C#) and unit-tested (Rust core/bridge, relay)
 on Linux only. Windows UI, native video and two-PC acceptance remain pending.
 
+- Guest connections must authenticate within 15 seconds of connecting, and the
+  30-second cooldown after five rejected invitations applies only to the
+  offending address. Permanent-host signaling is rate-limited per sender.
+- Guest system-audio and clipboard-read prompts decline by default and after 60
+  seconds; a withdrawn or superseded voice request closes its prompt at once.
+- File browsing, downloads and cancellation no longer block the window while
+  sending, and a receiver completing a large file keeps the sender's transfer
+  alive, so a saved file is no longer reported as failed and duplicated on retry.
 - Local permission prompts (voice, system audio, clipboard) pause remote presses
   and pointer input so a guest with control cannot answer them. Voice consent
   focuses Decline; incoming chat no longer takes keyboard focus.
