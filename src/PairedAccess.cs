@@ -214,13 +214,15 @@ namespace LumeRemote
                     security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
                     security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null), PipeAccessRights.FullControl, AccessControlType.Allow));
                     security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(ownerSid), PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize, AccessControlType.Allow));
-                    server = new NamedPipeServerStream(store.ControlPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.None, 8192, 8192, security);
+                    // BeginWaitForConnection requires an asynchronous pipe on .NET Framework; with
+                    // PipeOptions.None it throws after the client may already have connected.
+                    server = new NamedPipeServerStream(store.ControlPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 8192, 8192, security);
                     IAsyncResult wait = server.BeginWaitForConnection(null, null);
                     while (!wait.AsyncWaitHandle.WaitOne(500)) { if (stopped.IsCancellationRequested) { try { server.Dispose(); } catch { } return; } }
                     server.EndWaitForConnection(wait);
                     HandleControlClient(server, ownerSid);
                 }
-                catch (Exception) { if (!stopped.IsCancellationRequested) stopped.Token.WaitHandle.WaitOne(500); }
+                catch (Exception error) { if (!stopped.IsCancellationRequested) { SessionLog.Write(store.DirectoryPath, "host", "control_channel_failed", error); stopped.Token.WaitHandle.WaitOne(500); } }
                 finally { if (server != null) { try { server.Dispose(); } catch { } } }
             }
         }
@@ -250,7 +252,7 @@ namespace LumeRemote
                 Pulse();
                 Reply(server, "ok", null);
             }
-            catch (Exception error) { Reply(server, "error", error.Message); }
+            catch (Exception error) { SessionLog.Write(store.DirectoryPath, "host", "control_request_failed", error); Reply(server, "error", error.Message); }
         }
         // Wait until the client has read the reply: closing the server end first can
         // discard it, and the dashboard then sees an unexpected end of stream.
