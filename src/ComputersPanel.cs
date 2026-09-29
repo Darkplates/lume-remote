@@ -47,7 +47,7 @@ namespace LumeRemote
             right.Controls.Add(Theme.Label("This PC", 22, Theme.Text)); right.Controls.Add(state); right.Controls.Add(awake);
             update.Width = 310; right.Controls.Add(update);
             Button networkFolders = Theme.Button("Network folders", false); networkFolders.Width = 310; right.Controls.Add(networkFolders);
-            networkFolders.Click += delegate { try { if (!PermanentAccess.Installed) throw new InvalidOperationException("Enable permanent access before configuring network folders."); using (var dialog = new NetworkFoldersForm(TrustedStore.Machine.ReadHost().NetworkFolders.ToArray())) if (dialog.ShowDialog(this) == DialogResult.OK) TrustedStore.Machine.ChangeHost(delegate(HostPreferences host) { host.NetworkFolders = dialog.Roots.ToList(); }); } catch (Exception error) { ShowError(error); } };
+            networkFolders.Click += delegate { try { if (!PermanentAccess.Installed) throw new InvalidOperationException("Enable permanent access before configuring network folders."); using (var dialog = new NetworkFoldersForm(TrustedStore.Machine.ReadHost().NetworkFolders.ToArray())) if (dialog.ShowDialog(this) == DialogResult.OK) TrustedStore.Machine.Change(new HostRequest { Op = "folders", Folders = dialog.Roots.ToList() }); } catch (Exception error) { ShowError(error); } };
             right.Controls.Add(Theme.Label("Update restarts the installed host and closes its old dashboard. Saved pairings and the access ON/OFF setting are kept. Windows asks for administrator permission.", 10, Theme.Muted));
             right.Controls.Add(Theme.Label("COMPUTERS ALLOWED TO CONNECT", 9, Theme.Muted)); right.Controls.Add(trusted);
             Button revoke = Theme.Button("Revoke selected access", false), helper = Theme.Button("Create wake-only pairing", false), uninstall = Theme.Button("Remove Windows service", false);
@@ -78,7 +78,7 @@ namespace LumeRemote
                 try
                 {
                     if (!PermanentAccess.Installed) { state.Text = "Approve the Windows administrator prompt to install automatic access."; await PermanentAccess.Install(false); }
-                    else TrustedStore.Machine.ChangeHost(delegate(HostPreferences host) { host.Enabled = !host.Enabled; if (!host.Enabled) { host.PairKey = host.PairId = null; host.PairExpires = 0; } });
+                    else TrustedStore.Machine.Change(new HostRequest { Op = "enable", Flag = !TrustedStore.Machine.ReadHost().Enabled });
                     RefreshHost();
                 }
                 catch (Exception error) { ShowError(error); } finally { enable.Enabled = true; }
@@ -91,8 +91,8 @@ namespace LumeRemote
                 finally { update.Enabled = true; }
             };
             pair.Click += delegate { try { ShowPairing(TrustedStore.Machine.CreatePairing(false, null)); } catch (Exception error) { ShowError(error); } };
-            awake.CheckedChanged += delegate { if (loading) return; try { TrustedStore.Machine.ChangeHost(delegate(HostPreferences host) { host.KeepAwake = awake.Checked; }); } catch (Exception error) { ShowError(error); } };
-            revoke.Click += delegate { TrustedController controller = trusted.SelectedItem as TrustedController; if (controller == null) return; try { TrustedStore.Machine.ChangeHost(delegate(HostPreferences host) { host.Controllers.RemoveAll(c => c.Id == controller.Id); }); RefreshHost(); } catch (Exception error) { ShowError(error); } };
+            awake.CheckedChanged += delegate { if (loading) return; try { TrustedStore.Machine.Change(new HostRequest { Op = "keepawake", Flag = awake.Checked }); } catch (Exception error) { ShowError(error); } };
+            revoke.Click += delegate { TrustedController controller = trusted.SelectedItem as TrustedController; if (controller == null) return; try { TrustedStore.Machine.Change(new HostRequest { Op = "revoke", ControllerId = controller.Id }); RefreshHost(); } catch (Exception error) { ShowError(error); } };
             helper.Click += delegate
             {
                 string mac = Prompt("Wake helper", "Use this on an always-on PC in the sleeping PC's network. Enter the sleeping PC's Ethernet MAC. This pairing can only send wake packets to that address.", "", false); if (mac == null) return;
