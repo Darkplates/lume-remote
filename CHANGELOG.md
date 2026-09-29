@@ -1,9 +1,19 @@
 # Changelog
 
-## Unreleased (review fixes, not yet validated on Windows hardware)
+## 0.12.1 development preview
 
-These changes were compile-checked (C#) and unit-tested (Rust core/bridge, relay)
-on Linux only. Windows UI, native video and two-PC acceptance remain pending.
+Security and review fixes. Windows CI (build, native, `verify.ps1 -Safe`, portable
+interoperability) and Linux CI passed. The permanent-access fix was also checked on
+one physical Windows 11 PC (99 safe checks, install, pairing and disable). Two-PC
+WAN, second-Windows-user and 125-200 % display checks remain pending.
+
+- Security (GHSA-hp7w-v83m-qgx8): the permanent-access host directory is now
+  read-only for the owner; the SYSTEM service is its only writer. Owner setting
+  changes go through an authenticated named pipe whose owner and caller are
+  verified. The settings lock is a file inside the protected directory, and paired
+  unattended access runs only in the owner's console session or at a logon/lock
+  screen with no other user signed in. Existing installations must open the new
+  copy and choose Settings, then Update installed host.
 
 - Local permission prompts (voice, system audio, clipboard) pause remote presses
   and pointer input so a guest with control cannot answer them. Voice consent

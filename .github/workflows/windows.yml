@@ -62,7 +62,7 @@ jobs:
           .\scripts\test-portable-file-host.ps1 -Scratch "$env:RUNNER_TEMP\lume-file-host" *> verification/ci-file-host.txt
           .\scripts\test-portable-permanent.ps1 -Scratch "$env:RUNNER_TEMP\lume-permanent" *> verification/ci-permanent.txt
       - name: Package Windows development checkpoint
-        run: .\scripts\package.ps1 -OutputPath "$env:RUNNER_TEMP\LumeRemote-0.12.0-dev-win64.zip"
+        run: .\scripts\package.ps1 -OutputPath "$env:RUNNER_TEMP\LumeRemote-0.12.1-dev-win64.zip"
       - name: Build Android development and isolated-test APKs
         shell: pwsh
         run: |
@@ -89,13 +89,13 @@ jobs:
           python scripts/verify-android-inputs.py ports/android/app/build/outputs/apk/debug/app-debug.apk
           if ($LASTEXITCODE -ne 0) { throw 'Android native input identity verification failed.' }
       - name: Verify archive contents and hashes
-        run: .\scripts\verify-package.ps1 -Archive "$env:RUNNER_TEMP\LumeRemote-0.12.0-dev-win64.zip" -ExtractDirectory "$env:RUNNER_TEMP\lume-extracted"
+        run: .\scripts\verify-package.ps1 -Archive "$env:RUNNER_TEMP\LumeRemote-0.12.1-dev-win64.zip" -ExtractDirectory "$env:RUNNER_TEMP\lume-extracted"
       - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         if: always()
         with:
           name: windows-development-and-test-reports
           path: |
-            ${{ runner.temp }}/LumeRemote-0.12.0-dev-win64.zip
+            ${{ runner.temp }}/LumeRemote-0.12.1-dev-win64.zip
             verification/*.txt
             ports/android/app/build/outputs/apk/debug/*.apk
             ports/android/app/build/outputs/apk/androidTest/debug/*.apk

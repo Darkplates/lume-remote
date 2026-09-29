@@ -2,7 +2,7 @@
 
 A small, native remote desktop app for Windows. Pair your PCs once, then connect with one click.
 
-**0.12.0 development - public source preview** · Windows 10/11 x64 · .NET Framework 4.8 · MIT application source
+**0.12.1 development - public source preview** · Windows 10/11 x64 · .NET Framework 4.8 · MIT application source
 
 [Windows CI](https://github.com/Darkplates/lume-remote/actions/workflows/windows.yml) ·
 [Linux CI](https://github.com/Darkplates/lume-remote/actions/workflows/portable.yml) ·

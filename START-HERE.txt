@@ -1,4 +1,4 @@
-LUME REMOTE 0.12.0 WINDOWS DEVELOPMENT CHECKPOINT
+LUME REMOTE 0.12.1 WINDOWS DEVELOPMENT CHECKPOINT
 Public source preview. Stable-release acceptance remains open.
 This package runs the native Windows implementation; portable source has separate limits.
 
