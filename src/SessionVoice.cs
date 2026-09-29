@@ -38,6 +38,8 @@ namespace LumeRemote
         readonly CancellationTokenSource stopping = new CancellationTokenSource();
         readonly object gate = new object();
         SessionVoice voice; IDisposable grant; int generation, latestRequest; bool disposed;
+        // Cancels the open "Allow call" prompt when its request is withdrawn or superseded.
+        CancellationTokenSource pendingRequest;
         public HostVoiceController(Wire wire, Func<Action, CancellationToken, Task<IDisposable>> consent) { this.wire = wire; this.consent = consent; }
         public async Task Set(bool enabled, int nextGeneration)
         {
@@ -45,12 +47,24 @@ namespace LumeRemote
             lock (gate) { if (nextGeneration < latestRequest) { if (enabled) throw new InvalidDataException("Stale voice request."); return; } latestRequest = nextGeneration; }
             Stop(false);
             if (!enabled) return;
-            lock (gate) { if (disposed) throw new OperationCanceledException(); generation = nextGeneration; }
+            CancellationTokenSource request = new CancellationTokenSource(), superseded;
+            lock (gate)
+            {
+                if (disposed || nextGeneration < latestRequest) { request.Dispose(); throw new OperationCanceledException(); }
+                generation = nextGeneration; superseded = pendingRequest; pendingRequest = request;
+            }
+            CancelQuietly(superseded);
             try
             {
-                IDisposable approved;
-                using (var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token))
-                { requestTimeout.CancelAfter(60000); approved = await consent(delegate { Stop(true, nextGeneration); }, requestTimeout.Token).ConfigureAwait(false); }
+                IDisposable approved; bool withdrawn;
+                try
+                {
+                    using (var requestTimeout = CancellationTokenSource.CreateLinkedTokenSource(stopping.Token, request.Token))
+                    { requestTimeout.CancelAfter(60000); approved = await consent(delegate { Stop(true, nextGeneration); }, requestTimeout.Token).ConfigureAwait(false); }
+                }
+                finally { lock (gate) { if (pendingRequest == request) pendingRequest = null; withdrawn = request.IsCancellationRequested; } request.Dispose(); }
+                // A withdrawn request never starts the microphone, even if Allow raced the withdrawal.
+                if (withdrawn) { if (approved != null) approved.Dispose(); throw new OperationCanceledException("The remote microphone request was withdrawn."); }
                 if (approved == null) throw new InvalidOperationException("The remote microphone request was declined.");
                 SessionVoice next;
                 lock (gate)
@@ -65,13 +79,26 @@ namespace LumeRemote
         }
         public void Receive(Packet packet)
         { int packetGeneration; byte[] bytes = SessionVoice.Read(packet, out packetGeneration); lock (gate) { if (!disposed && generation == packetGeneration && voice != null) voice.Receive(bytes); } }
+        // Called on the receive thread when a Voice request arrives, before it waits in the
+        // sequential tool queue: any newer generation (a withdrawal or a new call) dismisses the
+        // prompt that is still open. Malformed bodies are left for the queued handler to reject.
+        public void Preview(byte[] payload)
+        {
+            if (payload == null || payload.Length != 6) return;
+            int nextGeneration = BitConverter.ToInt32(payload, 2); CancellationTokenSource superseded = null;
+            lock (gate) { if (pendingRequest != null && nextGeneration > generation) { superseded = pendingRequest; pendingRequest = null; } }
+            CancelQuietly(superseded);
+        }
         void Stop(bool notify, int expectedGeneration = 0)
         {
-            SessionVoice previous; IDisposable oldGrant; int previousGeneration;
-            lock (gate) { if (expectedGeneration != 0 && generation != expectedGeneration) return; previous = voice; voice = null; oldGrant = grant; grant = null; previousGeneration = generation; generation = 0; }
+            SessionVoice previous; IDisposable oldGrant; int previousGeneration; CancellationTokenSource withdrawn;
+            lock (gate) { if (expectedGeneration != 0 && generation != expectedGeneration) return; previous = voice; voice = null; oldGrant = grant; grant = null; previousGeneration = generation; generation = 0; withdrawn = pendingRequest; pendingRequest = null; }
+            CancelQuietly(withdrawn);
             if (previous != null) previous.Dispose(); if (oldGrant != null) oldGrant.Dispose();
             if (notify && previousGeneration > 0) try { wire.Send(Kind.VoiceEnded, delegate(BinaryWriter w) { w.Write(previousGeneration); }); } catch { }
         }
+        static void CancelQuietly(CancellationTokenSource source)
+        { if (source != null) try { source.Cancel(); } catch (ObjectDisposedException) { } catch (AggregateException) { } }
         public void Dispose() { lock (gate) { if (disposed) return; disposed = true; } stopping.Cancel(); Stop(false); }
     }
 }

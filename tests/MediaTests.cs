@@ -129,15 +129,23 @@ static partial class Tests
     static void VoiceConsentSafety()
     {
         var pending = new System.Threading.Tasks.TaskCompletionSource<IDisposable>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously); int requests = 0;
-        using (var host = new HostService(delegate { return new Synthetic(); }, Profile.All[1], true, delegate { return true; }, delegate { }, delegate { }, microphonePermission: delegate(Action stop, CancellationToken cancel) { Interlocked.Increment(ref requests); cancel.Register(delegate { pending.TrySetResult(null); }); return pending.Task; }))
+        using (var host = new HostService(delegate { return new Synthetic(); }, Profile.All[1], true, delegate { return true; }, delegate { }, delegate { }, microphonePermission: delegate(Action stop, CancellationToken cancel) { Interlocked.Increment(ref requests); var current = pending; cancel.Register(delegate { current.TrySetResult(null); }); return current.Task; }))
         using (var viewer = new ViewerConnection())
         {
             host.Start(System.Net.IPAddress.Loopback, 0, "127.0.0.1"); viewer.Connect(host.Invite, "Voice permission fixture"); int frames = 0;
             var receiver = System.Threading.Tasks.Task.Run(delegate { try { using (var decoder = new FrameDecoder()) viewer.Receive(delegate(Packet p) { decoder.Apply(p); viewer.Ack(decoder.Sequence); Interlocked.Increment(ref frames); }, delegate { }); } catch { } });
             var call = viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(1); }); Spin(delegate { return requests == 1 && frames >= 3; }, 6000, "Pending microphone approval blocked frames.");
             Check(!call.IsCompleted, "Voice request did not wait for local approval."); pending.TrySetResult(null); Reject(delegate { Await(call); }); Check(host.HasSession && !viewer.VoiceEnabled, "A denied microphone request affected the desktop.");
+            var withdrawnPrompt = pending = new System.Threading.Tasks.TaskCompletionSource<IDisposable>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            var withdrawn = viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(2); }); Spin(delegate { return requests == 2; }, 4000, "Second permission request did not arrive.");
+            Await(viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(false); w.Write(3); }));
+            Spin(delegate { return withdrawnPrompt.Task.IsCompleted; }, 3000, "A withdrawn microphone request left its prompt open."); Reject(delegate { Await(withdrawn); });
+            var supersededPrompt = pending = new System.Threading.Tasks.TaskCompletionSource<IDisposable>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            var superseded = viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(4); }); Spin(delegate { return requests == 3; }, 4000, "Third permission request did not arrive.");
             pending = new System.Threading.Tasks.TaskCompletionSource<IDisposable>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
-            var interrupted = viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(2); }); Spin(delegate { return requests == 2; }, 4000, "Second permission request did not arrive."); viewer.Dispose(); receiver.Wait(3000);
+            var interrupted = viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(5); }); Spin(delegate { return requests == 4; }, 4000, "Newer permission request did not arrive.");
+            Spin(delegate { return supersededPrompt.Task.IsCompleted; }, 3000, "A superseded microphone request left its prompt open."); Reject(delegate { Await(superseded); });
+            viewer.Dispose(); receiver.Wait(3000);
             Spin(delegate { return pending.Task.IsCompleted; }, 5000, "Disconnect did not dismiss pending microphone consent.");
         }
         using (var fixture = new FilesFixture(false)) { Check((fixture.Viewer.Capabilities & SessionCapabilities.Voice) == 0, "View-only session acquired a microphone capability."); Reject(delegate { Await(fixture.Viewer.Tools.Request(SessionTool.Voice, delegate(BinaryWriter w) { w.Write(true); w.Write(1); })); }); Check(fixture.Host.HasSession, "Denied voice tool closed view-only video."); }

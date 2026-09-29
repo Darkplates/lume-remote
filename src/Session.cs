@@ -315,6 +315,7 @@ namespace LumeRemote
                                 }
                                 throw new InvalidOperationException("This action is unavailable on this host.");
                             });
+                            if (hostVoice != null) tools.Arrived = delegate(SessionTool op, byte[] payload) { if (op == SessionTool.Voice) hostVoice.Preview(payload); };
                             if (enableChat) chat = new HostSessionChat(name, async delegate(string text) { await tools.Request(SessionTool.Chat, delegate(BinaryWriter w) { Wire.Text(w, text); }).ConfigureAwait(false); });
                         }
                         try
