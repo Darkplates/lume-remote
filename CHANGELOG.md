@@ -21,6 +21,15 @@ on Linux only. Windows UI, native video and two-PC acceptance remain pending.
 - UI: confirm Forget and Remove Windows service, Cancel/Esc in the code prompt,
   unverified-name wording in connection requests, accurate guest summary, real
   version in the footer, Exit full screen label, no clipped footer text.
+- Display scaling: every form now declares its 96-DPI design size before adding
+  controls, so buttons, rows, padding and dialogs scale with the text at 125-200%
+  instead of clipping it. Sizes applied later use `Theme.Px`. The process stays
+  system-DPI-aware; capture and input coordinates are unchanged.
+- Dark theme: dark title bars, scroll bars, drop-down lists, number boxes and a
+  themed Files list header where Windows supports them. High contrast keeps the
+  system colours and native controls. `CHECK-UI-SCALE.bat` renders every form
+  and runs the UI checks at the current display scale; screenshots at 100, 125,
+  150 and 200 percent are still required before calling scaling fixed.
 
 ## 0.12.0 development
 

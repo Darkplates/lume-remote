@@ -12,6 +12,68 @@ static partial class Tests
     {
         Run("Two viewers survive closing the dashboard and disconnect independently", MultiSessionTray);
         Run("Simple quality presets retain custom source and frame rate controls", QualityPresetUi);
+        Run("Layouts scale once with the system DPI and buttons fit their labels", DpiLayout);
+        Run("Themed inputs, list headers and later controls follow the theme", ThemedControls);
+    }
+    // Valid at any Windows display scale: run at 100/125/150/200% to compare. Every issue is reported at once.
+    static void DpiLayout()
+    {
+        Console.WriteLine("System DPI " + Theme.Dpi + " (" + (Theme.Dpi * 100 / 96) + "% scale)" + (Theme.HighContrast ? ", high contrast" : ""));
+        System.Collections.Generic.List<string> issues = new System.Collections.Generic.List<string>();
+        using (MainForm dashboard = new MainForm())
+        {
+            dashboard.Show(); Application.DoEvents();
+            ComputersPanel home = (ComputersPanel)Field(dashboard, "home");
+            ((System.Windows.Forms.Timer)Field(home, "refresh")).Stop();
+            InspectLayout(dashboard, "Dashboard", issues);
+            Button update = (Button)Field(home, "update"); if (Math.Abs(update.Height - Theme.Px(42)) > 1) issues.Add("Computer settings column: button height " + update.Height + ", expected " + Theme.Px(42) + " (scaled zero or two times).");
+            if (((ListBox)Field(home, "computers")).ItemHeight != Theme.Px(64)) issues.Add("Saved computers row height was not scaled.");
+            FindButton(dashboard, "Guest access").PerformClick(); Application.DoEvents(); InspectLayout(dashboard, "Guest access", issues);
+            dashboard.ExitDashboard(); Application.DoEvents();
+        }
+        using (ConsentForm form = new ConsentForm(new PeerRequest { Name = "Test computer", Address = "127.0.0.1", Control = true, Files = true })) { form.Show(); Application.DoEvents(); InspectLayout(form, "Approval", issues); form.Close(); }
+        using (StreamQualityForm form = new StreamQualityForm(StreamQuality.Source, 2560, 1440, 180))
+        { form.Show(); Application.DoEvents(); FindButton(form, "Custom settings").PerformClick(); Application.DoEvents(); InspectLayout(form, "Quality", issues); form.Close(); }
+        using (RecordingOptionsForm form = new RecordingOptionsForm(60, true, true)) { form.Show(); Application.DoEvents(); InspectLayout(form, "Recording", issues); form.Close(); }
+        using (NetworkFoldersForm form = new NetworkFoldersForm(new[] { "\\\\NAS\\Documents" })) { form.Show(); Application.DoEvents(); InspectLayout(form, "Network folders", issues); form.Close(); }
+        using (SessionChatForm form = new SessionChatForm("Studio PC", delegate { return System.Threading.Tasks.Task.FromResult(0); })) { form.Show(); Application.DoEvents(); InspectLayout(form, "Chat", issues); form.Close(); }
+        using (PeerHostForm form = new PeerHostForm(new PeerSignal { Session = Sample() }, null, delegate { }, delegate { })) { form.Show(); Application.DoEvents(); InspectLayout(form, "P2P sharing", issues); form.Close(); }
+        Check(issues.Count == 0, String.Join(Environment.NewLine, issues));
+    }
+    static void InspectLayout(Control parent, string where, System.Collections.Generic.List<string> issues)
+    {
+        foreach (Control control in parent.Controls)
+        {
+            Button button = control as Button;
+            if (button != null && button.Visible)
+            {
+                // Theme buttons are 42 px at 96 DPI; docked Fill/Left/Right buttons take their container's height.
+                if (button is ReadableButton && (button.Dock == DockStyle.None || button.Dock == DockStyle.Top || button.Dock == DockStyle.Bottom) && Math.Abs(button.Height - Theme.Px(42)) > 1)
+                    issues.Add(where + ": \"" + button.Text + "\" is " + button.Height + " px high, expected " + Theme.Px(42) + ".");
+                Size text = TextRenderer.MeasureText(button.Text, button.Font);
+                if (text.Width > button.Width || text.Height > button.Height) issues.Add(where + ": \"" + button.Text + "\" needs " + text.Width + " x " + text.Height + " px, button is " + button.Width + " x " + button.Height + ".");
+            }
+            InspectLayout(control, where, issues);
+        }
+    }
+    static void ThemedControls()
+    {
+        using (StreamQualityForm form = new StreamQualityForm(StreamQuality.Source, 1920, 1080, 60))
+        {
+            form.Show(); Application.DoEvents();
+            foreach (string name in new[] { "resolution", "fps", "codec" }) { ComboBox combo = (ComboBox)Field(form, name); Check(combo is ThemedComboBox && (Theme.HighContrast || (combo.BackColor == Theme.Field && combo.DrawMode == DrawMode.OwnerDrawFixed)), name + " is not a themed drop-down list."); }
+            if (!Theme.HighContrast) foreach (string name in new[] { "jpeg", "bitrate" }) Check(((NumericUpDown)Field(form, name)).BackColor == Theme.Field, name + " kept the light number box.");
+            form.Close();
+        }
+        using (Form form = new Form())
+        {
+            ListView list = new ListView { View = View.Details }; list.Columns.Add("Name", 100); form.Controls.Add(list); Theme.Apply(form);
+            NumericUpDown later = new NumericUpDown(); Panel host = new Panel(); host.Controls.Add(later); form.Controls.Add(host);
+            form.Show(); Application.DoEvents();
+            // High contrast keeps native headers and system colours.
+            Check(Theme.HighContrast ? !list.OwnerDraw : list.OwnerDraw && later.BackColor == Theme.Field, "Theme.Apply did not style the list header or a control added after it ran.");
+            form.Close();
+        }
     }
     static void MultiSessionTray()
     {

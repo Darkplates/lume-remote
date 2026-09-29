@@ -10,7 +10,8 @@ namespace LumeRemote
         public string[] Roots { get; private set; }
         public NetworkFoldersForm(string[] roots)
         {
-            Text = "Lume - Network folders"; Icon = Brand.Icon; Size = new Size(650, 455); MinimumSize = Size; StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Background; ForeColor = Theme.Text; AutoScaleMode = AutoScaleMode.Dpi;
+            Theme.BeginLayout(this);
+            Text = "Lume - Network folders"; Icon = Brand.Icon; Size = new Size(650, 455); MinimumSize = Size; StartPosition = FormStartPosition.CenterParent; BackColor = Theme.Background; ForeColor = Theme.Text;
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 1, RowCount = 5, Padding = new Padding(18) };
             layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 70)); layout.RowStyles.Add(new RowStyle(SizeType.Percent, 100)); layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 40)); layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 54)); layout.RowStyles.Add(new RowStyle(SizeType.Absolute, 35));
             var explanation = Theme.Label("Paired computers can access only the network folders added here, using your Windows permissions. Changes apply to new file operations; disable access to stop an active session.", 10, Theme.Muted); explanation.Dock = DockStyle.Fill; explanation.AutoSize = false; explanation.MaximumSize = Size.Empty;
@@ -23,6 +24,7 @@ namespace LumeRemote
             remove.Click += delegate { if (list.SelectedIndex >= 0) list.Items.RemoveAt(list.SelectedIndex); };
             save.Click += delegate { Roots = list.Items.Cast<string>().ToArray(); DialogResult = DialogResult.OK; Close(); };
             AcceptButton = add;
+            Theme.EndLayout(this);
         }
     }
 }

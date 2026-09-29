@@ -91,7 +91,8 @@ namespace LumeRemote
         public StreamQuality Selection { get; private set; }
         public StreamQualityForm(StreamQuality current, int sourceWidth, int sourceHeight, int sourceHz, bool videoAvailable = true)
         {
-            Text = "Lume - Quality"; Size = new Size(560, 380); MinimumSize = new Size(520, 360); BackColor = Theme.Background; StartPosition = FormStartPosition.CenterParent; AutoScaleMode = AutoScaleMode.Dpi; Icon = Brand.Icon;
+            Theme.BeginLayout(this);
+            Text = "Lume - Quality"; Size = new Size(560, 380); MinimumSize = new Size(520, 360); BackColor = Theme.Background; StartPosition = FormStartPosition.CenterParent; Icon = Brand.Icon;
             FlowLayoutPanel content = Theme.Column(); content.AutoSize = false; content.Dock = DockStyle.Fill; content.AutoScroll = true; Controls.Add(content);
             content.Controls.Add(Theme.Label("Quality", 22, Theme.Text));
             FlowLayoutPanel presets = new FlowLayoutPanel { AutoSize = true, Width = 480, WrapContents = true, Margin = new Padding(0) };
@@ -100,7 +101,7 @@ namespace LumeRemote
             Label summary = Theme.Label("", 11, Theme.Muted); content.Controls.Add(summary);
             Button custom = Theme.Button("Custom settings", false); custom.Width = 210; content.Controls.Add(custom);
             FlowLayoutPanel settings = Theme.Column(); settings.Dock = DockStyle.None; settings.Padding = new Padding(0); settings.Width = 460; settings.Visible = false; content.Controls.Add(settings);
-            custom.Click += delegate { settings.Visible = !settings.Visible; custom.Text = settings.Visible ? "Hide custom settings" : "Custom settings"; Height = settings.Visible ? 740 : 380; };
+            custom.Click += delegate { settings.Visible = !settings.Visible; custom.Text = settings.Visible ? "Hide custom settings" : "Custom settings"; Height = Theme.Px(settings.Visible ? 740 : 380); };
             settings.Controls.Add(Theme.Label("RESOLUTION", 9, Theme.Accent));
             foreach (int height in heights) resolution.Items.Add(height == 0 ? "Source - original pixels" : height + "p (no upscaling)");
             resolution.SelectedIndex = Math.Max(0, Array.IndexOf(heights, current.Height)); settings.Controls.Add(resolution);
@@ -125,6 +126,7 @@ namespace LumeRemote
             Button apply = Theme.Button("Apply", true); apply.Dock = DockStyle.Fill; actions.Controls.Add(apply); Controls.Add(actions);
             apply.Click += delegate { Selection = new StreamQuality { Height = heights[resolution.SelectedIndex], Fps = rates[fps.SelectedIndex], Lossless = codec.SelectedIndex == 0, Video = codec.SelectedIndex == 2, BitrateKbps = (int)bitrate.Value, JpegQuality = (int)jpeg.Value }; DialogResult = DialogResult.OK; Close(); };
             settings.Controls.Add(Theme.Label("H.264 reduces colour detail (4:2:0). Source keeps exact pixels. FPS is a limit; unchanged screens send fewer updates.", 10, Theme.Muted));
+            Theme.EndLayout(this);
         }
     }
 }
