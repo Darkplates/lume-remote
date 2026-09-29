@@ -270,7 +270,7 @@ namespace LumeRemote
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
                         Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 210; accept.Dock = DockStyle.Bottom; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
                         Button ignore = Theme.Button("Don't copy", false); ignore.Dock = DockStyle.Bottom; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore;
-                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); dialog.ShowDialog(this);
+                        dialog.Padding = new Padding(20); dialog.Controls.Add(preview); dialog.Controls.Add(accept); dialog.Controls.Add(ignore); using (LocalConsent.Begin()) dialog.ShowDialog(this);
                     }
                 }
                 finally { result.TrySetResult(false); System.Threading.Interlocked.Exchange(ref clipboardPending, 0); }
@@ -283,7 +283,7 @@ namespace LumeRemote
             if (closing || IsDisposed || current != generation) { result.TrySetResult(false); return result.Task; }
             try { BeginInvoke((Action)delegate
             {
-                bool allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
+                bool allowed; using (LocalConsent.Begin()) allowed = !closing && current == generation && MessageBox.Show(this, "The connected guest wants to hear this PC's system sound. This includes sound from other applications. Allow until the session ends?", "Lume - System audio", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) == DialogResult.Yes;
                 result.TrySetResult(allowed && !closing && current == generation);
             }); } catch { result.TrySetResult(false); }
             return result.Task;
@@ -297,7 +297,7 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) throw new OperationCanceledException();
-                    if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
+                    using (LocalConsent.Begin()) if (MessageBox.Show(this, "The connected guest wants to read your clipboard text. Allow this once?", "Lume - Clipboard request", MessageBoxButtons.YesNo, MessageBoxIcon.Question, MessageBoxDefaultButton.Button2) != DialogResult.Yes) throw new OperationCanceledException();
                     string text = await ClipboardAccess.Read();
                     if (closing || current != generation) throw new OperationCanceledException(); result.TrySetResult(text);
                 }

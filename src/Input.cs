@@ -7,6 +7,21 @@ using System.Windows.Forms;
 
 namespace LumeRemote
 {
+    // Local permission prompts appear on the streamed desktop. While one is open, remote
+    // presses, pointer moves and wheel input are dropped so a controller cannot answer it.
+    // Releases still pass, so keys and buttons held before the prompt never stick.
+    public static class LocalConsent
+    {
+        static int open;
+        public static bool Active { get { return System.Threading.Volatile.Read(ref open) > 0; } }
+        public static IDisposable Begin() { System.Threading.Interlocked.Increment(ref open); return new Scope(); }
+        sealed class Scope : IDisposable
+        {
+            int ended;
+            public void Dispose() { if (System.Threading.Interlocked.Exchange(ref ended, 1) == 0) System.Threading.Interlocked.Decrement(ref open); }
+        }
+    }
+
     public sealed class InputController : IDisposable
     {
         Rectangle bounds;
@@ -21,6 +36,7 @@ namespace LumeRemote
         {
             lock (gate)
             {
+                if (LocalConsent.Active && action != 2 && action != 5) return;
                 INPUT input = new INPUT();
                 if (action == 0)
                 {
