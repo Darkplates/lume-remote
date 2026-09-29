@@ -38,6 +38,14 @@ jobs:
           .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Render interface previews in dark and light themes
+        run: |
+          foreach ($theme in @('dark', 'light')) {
+            $env:LUME_THEME = $theme
+            & .\tests\LumeTests.exe --ui-preview "verification\ui-$theme"
+            if ($LASTEXITCODE -ne 0) { throw "Interface preview ($theme) failed." }
+          }
+          Remove-Item Env:LUME_THEME
       - name: Idle regression beyond the transport timeout
         run: |
           & .\tests\LumeTests.exe --idle-soak 45
@@ -97,7 +105,38 @@ jobs:
           path: |
             ${{ runner.temp }}/LumeRemote-0.12.1-dev-win64.zip
             verification/*.txt
+            verification/ui-*/*.png
             ports/android/app/build/outputs/apk/debug/*.apk
             ports/android/app/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
           retention-days: 14
+  screenshots:
+    # Maintainer tool: a push to a non-default branch whose head commit message contains
+    # [render-ui] commits the Windows-rendered interface previews to that same branch.
+    needs: windows
+    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && contains(github.event.head_commit.message, '[render-ui]')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.ref }}
+      - name: Commit Windows interface previews
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -n windows-development-and-test-reports -D "$RUNNER_TEMP/reports"
+          for theme in dark light; do
+            source=$(find "$RUNNER_TEMP/reports" -type d -name "ui-$theme" | head -n 1)
+            test -n "$source" || { echo "Missing ui-$theme previews"; exit 1; }
+            mkdir -p "docs/images/ui/$theme" && cp "$source"/*.png "docs/images/ui/$theme/"
+          done
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/images/ui
+          if git diff --cached --quiet; then echo "No interface changes."; exit 0; fi
+          git commit -m "Update interface previews rendered by Windows CI"
+          git push origin "HEAD:$GITHUB_REF_NAME"

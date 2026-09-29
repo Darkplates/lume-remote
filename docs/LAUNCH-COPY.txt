@@ -1,42 +1,102 @@
-LUME REMOTE - DEVELOPMENT LAUNCH DRAFTS
-Prepared copy only. These messages have not been sent.
+LUME REMOTE - 0.12.1 LAUNCH DRAFTS
+Prepared copy only. Nothing here has been posted. Post only after the two-PC test
+in LAUNCH-PLAN.md has passed, and keep every claim below true for the current build.
 
-SHORT PUBLIC POST
-I'm building Lume Remote: native remote access to your own PCs, with open source, no account and no session timer. The Windows development preview is ready for careful testing. Looking for early testers and contributors: https://github.com/Darkplates/lume-remote
+Links
+- Repository: https://github.com/Darkplates/lume-remote
+- Release:    https://github.com/Darkplates/lume-remote/releases/tag/v0.12.1-preview.1
+- Security:   https://github.com/Darkplates/lume-remote/security/advisories/GHSA-hp7w-v83m-qgx8
+- Video:      docs/media/lume-promo.mp4 (upload the file natively to each platform)
 
-LONGER PROJECT INTRODUCTION
-Lume Remote started because I wanted a simpler way to connect to my own computers.
-Pair once, reconnect from a saved PC, choose the quality, and transfer files without
-an account or an application session timer. The application source is MIT licensed;
-dependencies retain their own licenses and notices.
-
-This is an unsigned development preview. It is not a claim of feature parity or
-measured superiority. Linux and mobile have separate implementation limits; macOS
-and iOS have not been compiled or tested because I do not have Apple hardware.
-Public signaling is an external dependency, and hosted TURN bandwidth is not included.
-
-I'm looking for a small first group of Windows testers, reproducible bug reports,
-an independent security review, and help validating the portable projects. The repo
-contains a demo walkthrough, benchmark collection tools and the remaining release
-gates. If you try it, please share the exact versions on both PCs and the reproduction
-steps, without pairing codes or private desktop content.
-
+------------------------------------------------------------------------------
+SHORT POST (X / Bluesky / Mastodon, under 280 characters)
+------------------------------------------------------------------------------
+I built Lume Remote: an open-source remote desktop for your own Windows PCs.
+Pair once, connect with one click. No account, no subscription, no session timer.
+0.12.1 preview is out, looking for early testers:
 https://github.com/Darkplates/lume-remote
 
-PRIVATE MESSAGE DRAFT FOR @ELSHAYIB
-Hey bro! I've been building Lume, an open-source remote desktop app, and this is my
-first public repo. Could you give me a quick steer on launching it properly and
-finding the first testers/contributors? Even a few pointers would help a lot.
+------------------------------------------------------------------------------
+LINKEDIN
+------------------------------------------------------------------------------
+My first open-source project is public: Lume Remote, a small native remote desktop
+app for Windows.
+
+The idea is simple. You pair your own PCs once, then connect with one click. Guests
+get a one-time invitation that you approve on your screen. There is no account, no
+subscription and no session timer, and the application source is MIT licensed.
+
+What I'm proud of in 0.12.1:
+- Exact SHA-256 certificate pinning and fresh secrets for every session.
+- Permanent access is opt-in, can be revoked at once, and shows a visible
+  "connected" pill with a Disconnect button on the controlled PC.
+- A security issue found in review was fixed and disclosed through a public GitHub
+  advisory before this release.
+- A new light and dark interface that follows your Windows setting.
+
+It is an unsigned development preview, not a finished product. I'm looking for a
+few Windows testers with two PCs and for people who enjoy security reviews.
 https://github.com/Darkplates/lume-remote
 
-EARLY TESTER REQUEST
-Would you try the Windows development preview on two PCs you own? The most useful
-checks are pairing, reconnecting, a 60-minute idle session, clipboard text and a
-file transfer with matching SHA-256. Please note the versions on both PCs, connection
-route and any failed attempts. Do not post pairing codes or private screen content.
+------------------------------------------------------------------------------
+REDDIT (r/opensource, r/software; read each subreddit's self-promotion rules first)
+------------------------------------------------------------------------------
+Title: I made an open-source remote desktop for your own Windows PCs (no account, no session timer)
 
-PUBLIC CLAIMS TO KEEP OUT UNTIL MEASURED
-- Faster than TeamViewer, AnyDesk or RustDesk.
-- A guaranteed two-second connection or guaranteed source refresh rate.
-- Full cross-platform parity, audited security or production readiness.
-- Free hosted relay bandwidth or Internet wake without suitable remote equipment.
+Body:
+Hi all. Lume Remote is a small native Windows app for reaching your own computers.
+Pair two PCs once with a one-time code, then connect from a saved list with one
+click. Guests can join with a one-time invitation that you approve locally.
+
+- No account, subscription, telemetry or session-duration cap.
+- Pinned TLS (exact SHA-256) and a fresh session secret per connection.
+- Files and folders both ways with SHA-256 verification and resume for paired PCs,
+  clipboard text, chat, quality presets (lossless, H.264, low bandwidth), recording.
+- Permanent access is opt-in, revocable, and shows a visible indicator while someone
+  is connected.
+
+Honest limits: it's an unsigned 0.12.1 development preview. Linux and mobile ports
+are partial, macOS/iOS are untested (I don't have Apple hardware), and I haven't
+published performance comparisons with other tools because I haven't measured them.
+
+Feedback, bug reports and security reviews are very welcome:
+https://github.com/Darkplates/lume-remote
+
+------------------------------------------------------------------------------
+HACKER NEWS (Show HN)
+------------------------------------------------------------------------------
+Title: Show HN: Lume Remote – open-source remote desktop for your own Windows PCs
+
+Text:
+Lume is a native Windows remote desktop (C#/.NET Framework, no runtime installs)
+for connecting to machines you own. You pair PCs once and connect from a saved
+list; guests use a one-time invitation that must be approved on the host.
+
+A few design choices: exact SHA-256 pinning instead of a CA, a fresh session
+secret per connection, authorization before any capture or input, bounded parsers
+and queues, and an opt-in Windows service whose settings the SYSTEM service alone
+writes (owner changes go through an authenticated named pipe). An earlier layout
+of that service allowed local privilege escalation; it was fixed and disclosed in
+GHSA-hp7w-v83m-qgx8.
+
+It's a 0.12.1 development preview: unsigned, Windows-first, with partial Linux and
+Android ports. I'd love feedback on the protocol and the permanent-access model.
+https://github.com/Darkplates/lume-remote
+
+------------------------------------------------------------------------------
+EARLY TESTER REQUEST (direct message)
+------------------------------------------------------------------------------
+Would you try the Lume 0.12.1 Windows preview on two PCs you own? The useful checks
+are: pairing, reconnecting after a restart, a 60-minute idle session, clipboard
+text, a file transfer (compare the SHA-256), and revoking access. Please note the
+versions on both PCs and the connection route, and never post pairing codes or
+private screen content.
+
+------------------------------------------------------------------------------
+CLAIMS TO KEEP OUT UNTIL MEASURED OR TRUE
+------------------------------------------------------------------------------
+- Faster or better than TeamViewer, AnyDesk, RustDesk or Parsec.
+- "The only free alternative" (false: others offer free personal use).
+- Guaranteed connection time, frame rate or latency.
+- Audited security, production readiness or cross-platform parity.
+- Free hosted relay bandwidth, or wake over the Internet without suitable hardware.

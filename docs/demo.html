@@ -42,17 +42,19 @@
       <p class="intro">Pair once. Open a saved computer. Choose how you want to see it.</p>
       <nav class="steps" aria-label="Preview steps">
         <button type="button" aria-current="true" data-step="0"><span class="n">01</span> Computers</button>
-        <button type="button" aria-current="false" data-step="1"><span class="n">02</span> Session</button>
+        <button type="button" aria-current="false" data-step="1"><span class="n">02</span> Approval</button>
         <button type="button" aria-current="false" data-step="2"><span class="n">03</span> Quality</button>
         <button type="button" aria-current="false" data-step="3"><span class="n">04</span> Custom</button>
         <button type="button" aria-current="false" data-step="4"><span class="n">05</span> Files</button>
+        <button type="button" aria-current="false" data-step="5"><span class="n">06</span> Chat</button>
+        <button type="button" aria-current="false" data-step="6"><span class="n">07</span> Light</button>
       </nav>
       <p class="scope"><strong>Real interface. Synthetic test data.</strong><br>This walkthrough uses rendered Windows forms. It is not a live connection, WAN recording or performance benchmark.</p>
     </aside>
     <div class="stage">
       <div class="viewport">
-        <div class="viewport-top"><span class="live-label">Interface walkthrough</span><span>0.12 development · fixture images</span></div>
-        <div class="frame"><img id="preview" src="images/computers.png" alt="Lume dashboard with two synthetic saved computers, Home office and Studio PC" width="960" height="760"></div>
+        <div class="viewport-top"><span class="live-label">Interface walkthrough</span><span>0.12.1 development · Windows CI renders</span></div>
+        <div class="frame"><img id="preview" src="images/ui/dark/computers.png" alt="Lume dashboard with two synthetic saved computers, Home office and Studio PC" width="960" height="760"></div>
       </div>
       <div class="caption" aria-live="polite" aria-atomic="true">
         <h2 id="caption-title">One place for your computers.</h2>
@@ -67,17 +69,19 @@
   'use strict';
   const slides = [
     ['computers.png','Lume dashboard with two synthetic saved computers, Home office and Studio PC','One place for your computers.','Enable access on the PC you own, pair the other PC with a one-time code, then connect from your saved list. Guest access keeps local approval.'],
-    ['session.png','Lume session window displaying a synthetic desktop fixture','Keep the session. Close the dashboard.','Each remote PC opens in its own window. Closing the dashboard keeps it in the notification area; Disconnect ends only the selected session. Numbers in this fixture are not physical performance results.'],
+    ['consent.png','Lume connection request listing what the guest can do, with Decline and Allow control buttons','You approve every guest.','A guest uses a one-time invitation. You see the claimed name, the route and exactly what they can do, and the request is declined automatically after 60 seconds.'],
     ['quality.png','Lume quality dialog with Source, Smooth video and Save data presets','Quality is your choice.','Source requests original resolution and exact pixels. Smooth video targets up to 1080p at 60 FPS. Save data targets 360p at 10 FPS. Actual throughput depends on both PCs and the network.'],
     ['quality-custom.png','Lume custom quality controls for resolution, frame rate and encoding','Pick the settings that fit.','Adjust resolution, FPS and compression independently, including a source-refresh target. A selected target is not a measured delivered frame rate.'],
-    ['files.png','Lume file browser showing only synthetic sample files','Move files over the same connection.','Browse folders, send or receive files and verify transfers with SHA-256. Paired single-file retries can reuse a verified partial copy. Folder retries create a new destination.']
+    ['files.png','Lume file browser showing only synthetic sample files','Move files over the same connection.','Browse folders, send or receive files and verify transfers with SHA-256. Paired single-file retries can reuse a verified partial copy. Folder retries create a new destination.'],
+    ['chat.png','Lume chat window with message bubbles from a synthetic session','Talk without leaving the session.','Messages stay in the session. Incoming chat never takes keyboard focus from the remote desktop.'],
+    ['light/computers.png','Lume dashboard in the light theme','Light or dark, like Windows.','Lume follows the Windows app mode. High contrast keeps the system colours.']
   ];
   let current = 0;
   const buttons = Array.from(document.querySelectorAll('[data-step]'));
   function show(index) {
     current = Math.max(0, Math.min(slides.length-1, index));
     const slide = slides[current];
-    document.getElementById('preview').src = 'images/' + slide[0];
+    document.getElementById('preview').src = 'images/ui/' + (slide[0].indexOf('/') < 0 ? 'dark/' : '') + slide[0];
     document.getElementById('preview').alt = slide[1];
     document.getElementById('caption-title').textContent = slide[2];
     document.getElementById('caption-text').textContent = slide[3];

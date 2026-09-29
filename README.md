@@ -19,7 +19,13 @@ compiled or tested. We do not have Apple devices available. Source code and buil
 scripts are not evidence of working Apple applications. This limitation is explicit
 and must remain visible in releases until real Apple verification is performed.
 
-![Lume computer dashboard](docs/images/computers.png)
+<p align="center"><img src="docs/media/lume-promo.gif" alt="Lume Remote in 18 seconds: dashboard, guest approval, files, quality and chat" width="720"></p>
+
+| Dark | Light |
+| --- | --- |
+| ![Lume dashboard, dark theme](docs/images/ui/dark/computers.png) | ![Lume dashboard, light theme](docs/images/ui/light/computers.png) |
+
+Screenshots are rendered from the Windows build by CI with synthetic names. [Watch the 35-second video](docs/media/lume-promo.mp4).
 
 ## Get connected
 
