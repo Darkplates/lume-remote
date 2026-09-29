@@ -19,6 +19,40 @@ namespace LumeRemote
         public bool Control, Files;
     }
 
+    // Counts rejected invitation secrets per remote address so one misbehaving source cannot lock out everyone else.
+    internal sealed class AuthFailureTracker
+    {
+        sealed class Entry { public int Failures; public long CooldownUntil, Touched; }
+        public const int Limit = 5, Capacity = 256;
+        public static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(30);
+        readonly Dictionary<string, Entry> entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
+        public bool Blocked(string key)
+        {
+            lock (entries) { Entry entry; return entries.TryGetValue(key ?? "", out entry) && DateTime.UtcNow.Ticks < entry.CooldownUntil; }
+        }
+        public void Fail(string key)
+        {
+            key = key ?? ""; long now = DateTime.UtcNow.Ticks;
+            lock (entries)
+            {
+                Entry entry;
+                if (!entries.TryGetValue(key, out entry))
+                {
+                    if (entries.Count >= Capacity)
+                    {
+                        string oldest = null; long oldestTouched = long.MaxValue;
+                        foreach (KeyValuePair<string, Entry> item in entries) if (item.Value.Touched < oldestTouched) { oldest = item.Key; oldestTouched = item.Value.Touched; }
+                        entries.Remove(oldest);
+                    }
+                    entries.Add(key, entry = new Entry());
+                }
+                entry.Touched = now;
+                if (++entry.Failures >= Limit) { entry.CooldownUntil = now + Cooldown.Ticks; entry.Failures = 0; }
+            }
+        }
+        public int Count { get { lock (entries) return entries.Count; } }
+    }
+
     public sealed class HostService : IDisposable
     {
         readonly X509Certificate2 certificate;
@@ -43,8 +77,9 @@ namespace LumeRemote
         TcpListener listener;
         volatile bool disposed;
         int active, handshakes;
-        int failureCount;
-        long cooldownUntil;
+        readonly AuthFailureTracker failures = new AuthFailureTracker();
+        internal int PreAuthDeadlineMilliseconds = 15000;
+        const string RelayFailureKey = "relay", PeerFailureKey = "peer";
         public Invitation Invite { get; private set; }
         internal Func<Rectangle, InputController> InputFactory { get; set; }
         public event Action PeerEnded;
@@ -79,7 +114,7 @@ namespace LumeRemote
             lock (clientsGate) { if (disposed) { stream.Dispose(); return; } clients.Add(stream); }
             BackgroundWork.Run(delegate
             {
-                try { ServeStream(stream, stream.Dispose, stream.RouteSummary(), true); }
+                try { ServeStream(stream, stream.Dispose, stream.RouteSummary(), PeerFailureKey, true); }
                 finally
                 {
                     lock (clientsGate) clients.Remove(stream); stream.Dispose();
@@ -99,7 +134,7 @@ namespace LumeRemote
                 try
                 {
                     TcpClient client = listener.AcceptTcpClient();
-                    if (DateTime.UtcNow.Ticks < Interlocked.Read(ref cooldownUntil) || HasSession) { client.Close(); continue; }
+                    if (HasSession || failures.Blocked(RemoteKey(client))) { client.Close(); continue; }
                     if (Interlocked.Increment(ref handshakes) > 2) { Interlocked.Decrement(ref handshakes); client.Close(); continue; }
                     if (!Track(client)) { Interlocked.Decrement(ref handshakes); break; }
                     BackgroundWork.Run(delegate { try { Serve(client, false); } finally { Interlocked.Decrement(ref handshakes); Untrack(client); } });
@@ -114,7 +149,7 @@ namespace LumeRemote
                 TcpClient client = null;
                 try
                 {
-                    if (DateTime.UtcNow.Ticks < Interlocked.Read(ref cooldownUntil)) { if (stopped.WaitOne(1000)) break; continue; }
+                    if (failures.Blocked(RelayFailureKey)) { if (stopped.WaitOne(1000)) break; continue; }
                     status("Connecting to your relay...");
                     client = Transport.Connect(Invite.Host, Invite.Port, 8000);
                     if (!Track(client)) break;
@@ -133,12 +168,26 @@ namespace LumeRemote
         void Serve(TcpClient client, bool relay)
         {
             Transport.Configure(client);
-            ServeStream(client.GetStream(), client.Close, relay ? "Through your relay" : ((IPEndPoint)client.Client.RemoteEndPoint).Address.ToString(), relay);
+            string remote = relay ? RelayFailureKey : RemoteKey(client);
+            ServeStream(client.GetStream(), client.Close, relay ? "Through your relay" : remote, remote, relay);
         }
-        void ServeStream(Stream transport, Action closeTransport, string address, bool relay)
+        static string RemoteKey(TcpClient client)
+        {
+            try
+            {
+                IPAddress address = ((IPEndPoint)client.Client.RemoteEndPoint).Address;
+                if (address.IsIPv4MappedToIPv6) address = address.MapToIPv4();
+                return address.ToString();
+            }
+            catch (Exception) { return "unknown"; }
+        }
+        void ServeStream(Stream transport, Action closeTransport, string address, string failureKey, bool relay)
         {
             bool ownsSession = false;
             Exception sessionError = null;
+            // Absolute pre-authentication deadline: per-read timeouts alone let a slow-drip client hold a handshake slot indefinitely.
+            int preAuth = 0;
+            Timer preAuthDeadline = new Timer(delegate { if (Interlocked.CompareExchange(ref preAuth, 2, 0) == 0) try { closeTransport(); } catch (Exception) { } }, null, PreAuthDeadlineMilliseconds, Timeout.Infinite);
             try
             {
                 using (SslStream tls = new SslStream(transport, false))
@@ -153,11 +202,13 @@ namespace LumeRemote
                         version = packet.Reader.ReadInt32(); string supplied = packet.Text(128); name = packet.Text(128); packet.End();
                         if ((version < 1 || version > 4) || !Security.Equal(secret, supplied))
                         {
-                            if (Interlocked.Increment(ref failureCount) >= 5) { Interlocked.Exchange(ref cooldownUntil, DateTime.UtcNow.AddSeconds(30).Ticks); Interlocked.Exchange(ref failureCount, 0); }
+                            failures.Fail(failureKey);
                             wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "Invitation rejected. Ask for the current invitation."); }); return;
                         }
                         if (name.Length == 0 || HasControlChars(name)) throw new InvalidDataException("Invalid peer name.");
                     }
+                    if (Interlocked.CompareExchange(ref preAuth, 1, 0) != 0) throw new TimeoutException("Authentication took too long.");
+                    preAuthDeadline.Dispose();
                     if (Interlocked.CompareExchange(ref active, 1, 0) != 0) { wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "This desktop is already in a session."); }); return; }
                     ownsSession = true;
                     bool allowFiles = allowControl && version >= 3 && fileAccessFactory != null;
@@ -447,9 +498,10 @@ namespace LumeRemote
                     }
                 }
             }
-            catch (Exception error) { sessionError = error; if (!disposed) status("Connection ended: " + error.Message); }
+            catch (Exception error) { if (Volatile.Read(ref preAuth) == 2) error = new TimeoutException("Authentication took too long."); sessionError = error; if (!disposed) status("Connection ended: " + error.Message); }
             finally
             {
+                preAuthDeadline.Dispose();
                 if (ownsSession)
                 {
                     Interlocked.Exchange(ref active, 0);
