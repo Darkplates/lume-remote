@@ -14,6 +14,7 @@ static partial class Tests
         Run("Clipboard requests preserve frames while waiting for permission", ClipboardPull);
         Run("Unadvertised clipboard requests are denied without stopping video", ToolPermissions);
         Run("Live monitor selection tags frames and preserves dimensions", MonitorSelection);
+        Run("A resolution change on the same display resizes frames and keeps input authorized", DisplayResize);
         Run("Protocol 3 viewers keep their exact handshake and frame layout", VersionThreeViewer);
         Run("Nested and empty folders transfer both ways without overwriting", FolderRoundTrip);
         Run("Malformed session replies and request envelopes are bounded", ToolBounds);
@@ -90,6 +91,38 @@ static partial class Tests
             Reject(delegate { viewer.SelectMonitor("missing").GetAwaiter().GetResult(); }); Check(viewer.MonitorEpoch == 0, "Ambiguous display change left input active.");
             viewer.SelectMonitor("one").GetAwaiter().GetResult(); Spin(delegate { return epoch == 3 && width == 640; }, 5000, "Display selection did not recover.");
             Check(fault == null, "Display change killed decoder."); viewer.Dispose(); receiver.Wait(3000);
+        }
+    }
+    sealed class ResizingDisplay : IScreenSource, IDisplayRefreshSource
+    {
+        Bitmap image = new Bitmap(640, 360); bool resized; public volatile bool Resize;
+        public Rectangle Bounds { get { return resized ? new Rectangle(0, 0, 800, 450) : new Rectangle(0, 0, 640, 360); } }
+        public string Backend { get { return "Test capture"; } }
+        public Bitmap Capture() { return image; }
+        public bool RefreshBounds()
+        {
+            if (!Resize || resized) return false;
+            Bitmap next = new Bitmap(800, 450); using (Graphics g = Graphics.FromImage(next)) g.Clear(Color.Teal);
+            Bitmap old = image; image = next; resized = true; old.Dispose(); return true;
+        }
+        public void Dispose() { image.Dispose(); }
+    }
+    static void DisplayResize()
+    {
+        int injected = 0; ResizingDisplay display = new ResizingDisplay();
+        using (var host = new HostService(delegate { return display; }, Profile.All[3], true, delegate { return true; }, delegate { }, delegate { }))
+        using (var viewer = new ViewerConnection())
+        {
+            host.InputFactory = delegate(Rectangle bounds) { return new InputController(bounds, delegate { Interlocked.Increment(ref injected); }); };
+            host.Start(IPAddress.Loopback, 0, "127.0.0.1"); viewer.Connect(host.Invite, "Display resize fixture");
+            int width = 0, height = 0, epoch = 0; Exception fault = null;
+            Task receiver = Task.Run(delegate { try { using (var decoder = new FrameDecoder()) viewer.Receive(delegate(Packet p) { decoder.Apply(p); width = decoder.Image.Width; height = decoder.Image.Height; epoch = viewer.FrameEpoch; viewer.Ack(decoder.Sequence); }, delegate { }); } catch (Exception error) { fault = error; } });
+            Spin(delegate { return width == 640; }, 5000, "First display frame did not arrive.");
+            viewer.Input(0, 100, 100, 1); Spin(delegate { return injected == 1; }, 1000, "Authorized input did not arrive.");
+            display.Resize = true; Spin(delegate { return width == 800 && height == 450 && viewer.StreamWidth == 800; }, 5000, "Resized display frame did not arrive.");
+            Check(epoch == 1 && viewer.MonitorEpoch == 1, "A same-display resize changed the unannounced monitor epoch.");
+            viewer.Input(0, 200, 200, 1); Spin(delegate { return injected == 2; }, 1000, "Input stopped after the display resize.");
+            Check(fault == null, "Display resize killed the decoder."); viewer.Dispose(); receiver.Wait(3000);
         }
     }
     static void VersionThreeViewer()

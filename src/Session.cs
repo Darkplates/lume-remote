@@ -174,6 +174,7 @@ namespace LumeRemote
                     {
                         IAdaptiveScreenSource adaptive = source as IAdaptiveScreenSource;
                         IMonitorSource monitors = source as IMonitorSource;
+                        IDisplayRefreshSource display = source as IDisplayRefreshSource;
                         SessionState state = new SessionState { LastAck = Stopwatch.GetTimestamp() };
                         SessionTools tools = null; HostSessionChat chat = null; SessionAudio hostAudio = null; HostAnnotations annotations = enableChat && allowControl ? new HostAnnotations() : null;
                         HostVoiceController hostVoice = allowControl && microphonePermission != null && MediaNative.Version >= 2 ? new HostVoiceController(wire, microphonePermission) : null;
@@ -370,6 +371,13 @@ namespace LumeRemote
                                     if (WaitHandle.WaitAny(new WaitHandle[] { acknowledged, stopped }, 15000) == WaitHandle.WaitTimeout) throw new TimeoutException("The viewer stopped acknowledging frames.");
                                     continue;
                                 }
+                                if (display != null)
+                                {
+                                    // Same display, new resolution or position: normalized viewer input stays valid, so the
+                                    // monitor epoch is unchanged (a new epoch is only announced by an explicit selection).
+                                    bool resized; lock (state.InputGate) { resized = display.RefreshBounds(); if (resized) input.UpdateBounds(source.Bounds); }
+                                    if (resized) { sourceHz = adaptive == null ? 60 : adaptive.RefreshRate; encoder.Dispose(); forceFrame = true; reportQuality = true; }
+                                }
                                 StreamQuality requested = Interlocked.Exchange(ref state.Quality, null);
                                 if (requested != null) { selectedQuality = requested; forceFrame = true; reportQuality = true; }
                                 bool portableImages = Volatile.Read(ref state.PortableImages) != 0;
@@ -385,7 +393,7 @@ namespace LumeRemote
                                 double stageStart = ticks.Elapsed.TotalMilliseconds;
                                 Bitmap captured = scaler.Scale(source.Capture(), selectedQuality); checks++; captureMs += ticks.Elapsed.TotalMilliseconds - stageStart;
                                 byte[] frame = null; stageStart = ticks.Elapsed.TotalMilliseconds;
-                                if (forceFrame || changes == null || changes.FrameChanged)
+                                if (forceFrame || changes == null || changes.FrameChanged || encoder.PendingOutput)
                                 {
                                     encodeChecks++;
                                     try { frame = encoder.Encode(captured, sequenceNumber + 1, selectedQuality, forceFrame, sourceHz); }
@@ -419,13 +427,13 @@ namespace LumeRemote
                                     lastChange = ticks.ElapsedMilliseconds; intervalFrames++;
                                 }
                                 long now = ticks.ElapsedMilliseconds;
-                                bool idle = now - lastChange > 2000 && DateTime.UtcNow.Ticks - Interlocked.Read(ref state.LastInput) > TimeSpan.TicksPerSecond * 2;
+                                bool idle = !encoder.PendingOutput && now - lastChange > 2000 && DateTime.UtcNow.Ticks - Interlocked.Read(ref state.LastInput) > TimeSpan.TicksPerSecond * 2;
                                 if (now - lastReport >= 2000)
                                 {
                                     double seconds = (now - lastReport) / 1000.0;
                                     StreamMetrics metrics = new StreamMetrics { CaptureMilliseconds = captureMs / Math.Max(1, checks), EncodeMilliseconds = encodeMs / Math.Max(1, encodeChecks), WaitMilliseconds = waitMs / Math.Max(1, intervalFrames), SendMilliseconds = sendMs / Math.Max(1, intervalFrames), ChecksPerSecond = checks / seconds, Idle = idle, Hardware = encoder.Hardware, Backend = encoder.Backend };
                                     if (version >= 3) wire.Send(Kind.StreamMetrics, metrics.Write);
-                                    status(String.Format(System.Globalization.CultureInfo.InvariantCulture, "Session active | {0:0.0} updates/s{5} | {1:0.00} Mbit/s | {2} x {3} / {4} | capture {6:0.0} ms / encode {7:0.0} ms / wait {8:0.0} ms / send {9:0.0} ms | {10}", intervalFrames / seconds, (wire.Sent - bytesAtReport) * 8.0 / seconds / 1000000, captured.Width, captured.Height, selectedQuality.Description, idle ? " (idle)" : "", metrics.CaptureMilliseconds, metrics.EncodeMilliseconds, metrics.WaitMilliseconds, metrics.SendMilliseconds, metrics.Backend));
+                                    status(String.Format(System.Globalization.CultureInfo.InvariantCulture, "Session active | {0:0.0} updates/s{5} | {1:0.00} Mbit/s | {2} x {3} / {4} | capture {6:0.0} ms / encode {7:0.0} ms / wait {8:0.0} ms / send {9:0.0} ms | {10}", intervalFrames / seconds, (wire.Sent - bytesAtReport) * 8.0 / seconds / 1000000, captured.Width, captured.Height, selectedQuality.Description, idle ? " (idle)" : "", metrics.CaptureMilliseconds, metrics.EncodeMilliseconds, metrics.WaitMilliseconds, metrics.SendMilliseconds, display == null ? metrics.Backend : metrics.Backend + " | capture " + display.Backend));
                                     lastReport = now; bytesAtReport = wire.Sent; intervalFrames = 0;
                                     captureMs = encodeMs = waitMs = sendMs = 0; checks = encodeChecks = 0;
                                 }

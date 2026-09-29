@@ -15,6 +15,12 @@ on Linux only. Windows UI, native video and two-PC acceptance remain pending.
 - The relay caps connections per source address and handles Python 3.10 timeouts.
 - JPEG/PNG regions are drawn 1:1 when host and viewer use different display
   scaling; H.264 decoding accepts macroblock-padded widths such as 1366.
+- A viewer-side H.264 decoder failure no longer ends the session: the last image
+  stays, frames are still acknowledged, the viewer switches to lossless images
+  with a notice and stops saving the failing video quality for that PC.
+- Host capture retries DXGI after it is lost (UAC, lock, mode change) instead of
+  staying on GDI, follows resolution changes of the selected display, and shows
+  the capture backend. Buffered H.264 output is flushed on unchanged screens.
 - Stalled paired transfers keep their resumable partial; finished recordings are
   never deleted on a name collision; a tool backlog answers busy instead of
   ending the session.
