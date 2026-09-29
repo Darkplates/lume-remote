@@ -30,6 +30,7 @@ namespace LumeRemote
         readonly Stopwatch clock = Stopwatch.StartNew();
         volatile bool connected;
         bool ended, fullScreen;
+        Button fullscreenButton;
         bool showDetails;
         volatile bool closed;
         int frameCount, framesAtReport;
@@ -86,7 +87,7 @@ namespace LumeRemote
                     if (settings.ShowDialog(this) == DialogResult.OK) { desiredQuality = settings.Selection; StreamQuality selected = desiredQuality; Enqueue(delegate(ViewerConnection session) { session.SetQuality(selected); }); if (QualityChanged != null) QualityChanged(desiredQuality); information.Text = "Applying " + desiredQuality.Description + "..."; }
             };
             pixels.Click += delegate { originalPixels = !originalPixels; pixels.Text = originalPixels ? "Fit to window" : "1:1 pixels"; ResizeCanvas(); };
-            disconnect.Click += delegate { Close(); }; fullscreen.Click += delegate { ToggleFullscreen(); };
+            disconnect.Click += delegate { Close(); }; fullscreenButton = fullscreen; fullscreen.Click += delegate { ToggleFullscreen(); };
             release.Click += delegate { pendingMouse = null; Enqueue(delegate(ViewerConnection session) { session.Release(); }); canvas.Parent.Focus(); };
             clip.Click += delegate
             {
@@ -478,6 +479,7 @@ namespace LumeRemote
         {
             if (!fullScreen) { previousBounds = Bounds; previousState = WindowState; WindowState = FormWindowState.Normal; FormBorderStyle = FormBorderStyle.None; Bounds = Screen.FromControl(this).Bounds; fullScreen = true; }
             else { FormBorderStyle = FormBorderStyle.Sizable; Bounds = previousBounds; WindowState = previousState; fullScreen = false; }
+            if (fullscreenButton != null) fullscreenButton.Text = fullScreen ? "Exit full screen" : "Full screen";
         }
         protected override bool ProcessCmdKey(ref Message message, Keys keyData)
         {

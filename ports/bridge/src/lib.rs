@@ -21,10 +21,16 @@ fn sessions() -> &'static Mutex<HashMap<u64, Session>> {
     static SESSIONS: OnceLock<Mutex<HashMap<u64, Session>>> = OnceLock::new();
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
-fn session(handle: u64) -> Result<Session> {
+/// The map is only mutated by single insert/remove calls, so a panic caught while it was
+/// locked (e.g. thread creation failing in `Viewer::open`) cannot leave it inconsistent.
+/// Recovering the guard keeps existing sessions cancellable and closable.
+fn registry() -> std::sync::MutexGuard<'static, HashMap<u64, Session>> {
     sessions()
         .lock()
-        .map_err(|_| anyhow::anyhow!("Session registry unavailable"))?
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+fn session(handle: u64) -> Result<Session> {
+    registry()
         .get(&handle)
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("Session is closed"))
@@ -87,9 +93,7 @@ pub unsafe extern "C" fn lume_open(
     protect(|| {
         let invite = unsafe { text(invite, size, 65536) }?;
         let library = unsafe { text(library, library_size, 4096) }?;
-        let mut registry = sessions()
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Session registry unavailable"))?;
+        let mut registry = registry();
         ensure!(
             registry.len() < 16,
             "Close a session before opening another"
@@ -125,10 +129,7 @@ pub extern "C" fn lume_cancel(handle: u64) -> bool {
 #[unsafe(no_mangle)]
 pub extern "C" fn lume_close(handle: u64) -> bool {
     protect(|| {
-        let value = sessions()
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Session registry unavailable"))?
-            .remove(&handle);
+        let value = registry().remove(&handle);
         if let Some(value) = value {
             value
                 .lock()
