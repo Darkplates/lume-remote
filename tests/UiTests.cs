@@ -1,3 +1,4 @@
+using System.Reflection;
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
@@ -141,6 +142,7 @@ static partial class Tests
             quality.Close();
         }
     }
+    static System.Collections.Generic.IEnumerable<Control> AllControls(Control parent) { foreach (Control child in parent.Controls) { yield return child; foreach (Control nested in AllControls(child)) yield return nested; } }
     static void PreviewUi(string directory)
     {
         Directory.CreateDirectory(directory);
@@ -152,11 +154,27 @@ static partial class Tests
             ListBox saved = (ListBox)Field(home, "computers"); saved.Items.Clear();
             saved.Items.Add(new SavedComputer { Name = "Home office", HostId = "preview-home" });
             saved.Items.Add(new SavedComputer { Name = "Studio PC", HostId = "preview-studio" }); saved.SelectedIndex = 0;
+            home.GetType().GetMethod("UpdateEmptyState", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(home, null);
             ((Label)Field(home, "deviceName")).Text = "This laptop";
-            ((Label)Field(home, "hostSummary")).Text = "Access on - paired computers can connect";
+            StatusPill pill = (StatusPill)Field(home, "hostSummary"); pill.Text = "Access on"; pill.On = true;
+            ((Label)Field(home, "hostDetail")).Text = "Paired computers can connect.";
+            ((LinkLabel)Field(home, "trustedSummary")).Text = "2 computers can connect - Manage";
             ((Label)Field(home, "progress")).Text = "Double-click a PC to connect. Each session opens in its own window.";
             ((Label)Field(dashboard, "status")).Text = "Ready";
-            Application.DoEvents(); SaveUi(dashboard, Path.Combine(directory, "computers.png")); dashboard.ExitDashboard();
+            Application.DoEvents(); SaveUi(dashboard, Path.Combine(directory, "computers.png"));
+            saved.Items.Clear(); home.GetType().GetMethod("UpdateEmptyState", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(home, null);
+            Application.DoEvents(); SaveUi(dashboard, Path.Combine(directory, "computers-empty.png"));
+            foreach (Control control in AllControls(dashboard)) { TabButton tab = control as TabButton; if (tab != null && tab.Text == "Guest access") tab.PerformClick(); }
+            Application.DoEvents(); SaveUi(dashboard, Path.Combine(directory, "guest.png"));
+            dashboard.ExitDashboard();
+        }
+        using (ConsentForm consent = new ConsentForm(new PeerRequest { Name = "Maria's laptop", Address = "P2P Internet", Control = true, Files = true }))
+        { consent.Show(); Application.DoEvents(); SaveUi(consent, Path.Combine(directory, "consent.png")); consent.Close(); }
+        using (SessionChatForm chat = new SessionChatForm("Studio PC", delegate { return System.Threading.Tasks.Task.FromResult(0); }))
+        {
+            chat.Show(); chat.Add("Studio PC", "Hi! Can you see my screen?");
+            typeof(SessionChatForm).GetMethod("AddEntry", BindingFlags.NonPublic | BindingFlags.Instance).Invoke(chat, new object[] { "You", "Yes, it looks good. Sending the file now.", true });
+            chat.Add("Studio PC", "Great, thanks."); Application.DoEvents(); SaveUi(chat, Path.Combine(directory, "chat.png")); chat.Close();
         }
         using (StreamQualityForm quality = new StreamQualityForm(StreamQuality.Source, 1920, 1080, 60))
         {

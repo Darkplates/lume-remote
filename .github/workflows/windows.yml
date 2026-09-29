@@ -38,6 +38,14 @@ jobs:
           .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Render interface previews in dark and light themes
+        run: |
+          foreach ($theme in @('dark', 'light')) {
+            $env:LUME_THEME = $theme
+            & .\tests\LumeTests.exe --ui-preview "verification\ui-$theme"
+            if ($LASTEXITCODE -ne 0) { throw "Interface preview ($theme) failed." }
+          }
+          Remove-Item Env:LUME_THEME
       - name: Idle regression beyond the transport timeout
         run: |
           & .\tests\LumeTests.exe --idle-soak 45
@@ -97,6 +105,7 @@ jobs:
           path: |
             ${{ runner.temp }}/LumeRemote-0.12.1-dev-win64.zip
             verification/*.txt
+            verification/ui-*/*.png
             ports/android/app/build/outputs/apk/debug/*.apk
             ports/android/app/build/outputs/apk/androidTest/debug/*.apk
           if-no-files-found: error
