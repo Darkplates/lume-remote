@@ -23,6 +23,7 @@ static partial class Tests
         Run("New viewer negotiates and decodes a legacy protocol 2 host", LegacyHost);
         Run("Unsupported video dimensions fall back to full lossless frames", VideoFallback);
         Run("A local H.264 decoder failure keeps the image, acknowledges the frame and recovers with image frames", VideoDecodeFailure);
+        Run("A buffered H.264 picture is flushed even when the next capture is unchanged", VideoPendingOutput);
     }
     static void VideoQuality()
     {
@@ -228,6 +229,34 @@ static partial class Tests
         using(var decoder=new FrameDecoder(delegate(int w,int h){ throw new DllNotFoundException("LumeVideo.dll"); })) {
             using(Packet packet=new Packet(VideoFrame(1,640,360,keyframe,true))) decoder.Apply(packet);
             Check(!decoder.FrameReady && decoder.Sequence==1 && decoder.TakeVideoFailure(),"Missing decoder ended the session.");
+        }
+    }
+    // Mimics a synchronous MFT that answers one delta input with NEED_MORE_INPUT.
+    sealed class BufferingVideoEncoder : IVideoFrameEncoder
+    {
+        public int Calls;
+        public bool Hardware { get { return false; } }
+        public string Name { get { return "Buffering test encoder"; } }
+        public byte[] Encode(Bitmap image,bool keyframe) { Calls++; return Calls==2 ? null : Join(Sps640,PpsIdr); }
+        public void Dispose() { }
+    }
+    static void VideoPendingOutput()
+    {
+        var fake=new BufferingVideoEncoder();
+        using(var encoder=new AdaptiveFrameEncoder(delegate(int w,int h,int fps,int kbps){ return fake; }))
+        using(var decoder=new FrameDecoder(delegate(int w,int h){ return new FailingVideoDecoder(); }))
+        using(var source=new Bitmap(640,360,PixelFormat.Format32bppRgb)) {
+            StreamQuality quality=new StreamQuality {Video=true,Lossless=false,Fps=30,BitrateKbps=4000};
+            DrawVideo(source,1); byte[] first=encoder.Encode(source,1,quality,false,60);
+            Check(first!=null && !encoder.PendingOutput,"Initial keyframe missing.");
+            using(Packet packet=new Packet(first)) decoder.Apply(packet);
+            DrawVideo(source,2);
+            Check(encoder.Encode(source,2,quality,false,60)==null && encoder.PendingOutput,"Buffered input was not tracked.");
+            byte[] flushed=encoder.Encode(source,2,quality,false,60);
+            Check(flushed!=null && fake.Calls==3 && !encoder.PendingOutput,"An unchanged capture did not flush the buffered picture.");
+            using(Packet packet=new Packet(flushed)) decoder.Apply(packet);
+            Check(decoder.FrameReady && decoder.Sequence==2,"Flushed picture was not delivered in order.");
+            Check(encoder.Encode(source,3,quality,false,60)==null && fake.Calls==3,"Unchanged frames were encoded after the flush.");
         }
     }
     static void VideoBenchmark()

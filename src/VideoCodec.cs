@@ -7,7 +7,10 @@ using System.Text;
 
 namespace LumeRemote
 {
-    public sealed class VideoEncoder : IDisposable
+    // Encodes one BGRA frame; returns null while a synchronous transform needs more input before producing output.
+    public interface IVideoFrameEncoder : IDisposable { bool Hardware { get; } string Name { get; } byte[] Encode(Bitmap image, bool keyframe); }
+
+    public sealed class VideoEncoder : IVideoFrameEncoder
     {
         IntPtr handle;
         readonly int width, height;

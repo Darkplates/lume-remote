@@ -385,7 +385,7 @@ namespace LumeRemote
                                 double stageStart = ticks.Elapsed.TotalMilliseconds;
                                 Bitmap captured = scaler.Scale(source.Capture(), selectedQuality); checks++; captureMs += ticks.Elapsed.TotalMilliseconds - stageStart;
                                 byte[] frame = null; stageStart = ticks.Elapsed.TotalMilliseconds;
-                                if (forceFrame || changes == null || changes.FrameChanged)
+                                if (forceFrame || changes == null || changes.FrameChanged || encoder.PendingOutput)
                                 {
                                     encodeChecks++;
                                     try { frame = encoder.Encode(captured, sequenceNumber + 1, selectedQuality, forceFrame, sourceHz); }
@@ -419,7 +419,7 @@ namespace LumeRemote
                                     lastChange = ticks.ElapsedMilliseconds; intervalFrames++;
                                 }
                                 long now = ticks.ElapsedMilliseconds;
-                                bool idle = now - lastChange > 2000 && DateTime.UtcNow.Ticks - Interlocked.Read(ref state.LastInput) > TimeSpan.TicksPerSecond * 2;
+                                bool idle = !encoder.PendingOutput && now - lastChange > 2000 && DateTime.UtcNow.Ticks - Interlocked.Read(ref state.LastInput) > TimeSpan.TicksPerSecond * 2;
                                 if (now - lastReport >= 2000)
                                 {
                                     double seconds = (now - lastReport) / 1000.0;
