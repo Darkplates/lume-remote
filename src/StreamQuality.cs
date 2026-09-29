@@ -94,7 +94,7 @@ namespace LumeRemote
             Theme.BeginLayout(this);
             Text = "Lume - Quality"; Size = new Size(560, 380); MinimumSize = new Size(520, 360); BackColor = Theme.Background; StartPosition = FormStartPosition.CenterParent; Icon = Brand.Icon;
             FlowLayoutPanel content = Theme.Column(); content.AutoSize = false; content.Dock = DockStyle.Fill; content.AutoScroll = true; Controls.Add(content);
-            content.Controls.Add(Theme.Label("Quality", 22, Theme.Text));
+            content.Controls.Add(Theme.Label("Quality", 16, Theme.Text));
             FlowLayoutPanel presets = new FlowLayoutPanel { AutoSize = true, Width = 480, WrapContents = true, Margin = new Padding(0) };
             Button textPreset = Theme.Button("Source", false), videoPreset = Theme.Button("Smooth video", false), ecoPreset = Theme.Button("Save data", false); textPreset.Width = videoPreset.Width = ecoPreset.Width = 144; videoPreset.Enabled = videoAvailable;
             presets.Controls.Add(textPreset); presets.Controls.Add(videoPreset); presets.Controls.Add(ecoPreset); content.Controls.Add(presets);
@@ -102,15 +102,15 @@ namespace LumeRemote
             Button custom = Theme.Button("Custom settings", false); custom.Width = 210; content.Controls.Add(custom);
             FlowLayoutPanel settings = Theme.Column(); settings.Dock = DockStyle.None; settings.Padding = new Padding(0); settings.Width = 460; settings.Visible = false; content.Controls.Add(settings);
             custom.Click += delegate { settings.Visible = !settings.Visible; custom.Text = settings.Visible ? "Hide custom settings" : "Custom settings"; Height = Theme.Px(settings.Visible ? 740 : 380); };
-            settings.Controls.Add(Theme.Label("RESOLUTION", 9, Theme.Accent));
+            settings.Controls.Add(Theme.Label("Resolution", 9, Theme.Muted));
             foreach (int height in heights) resolution.Items.Add(height == 0 ? "Source - original pixels" : height + "p (no upscaling)");
             resolution.SelectedIndex = Math.Max(0, Array.IndexOf(heights, current.Height)); settings.Controls.Add(resolution);
-            settings.Controls.Add(Theme.Label("FRAME RATE LIMIT", 9, Theme.Accent));
+            settings.Controls.Add(Theme.Label("Frame rate limit", 9, Theme.Muted));
             foreach (int rate in rates) fps.Items.Add(rate == 0 ? "Source refresh - " + sourceHz + " Hz" : rate < 0 ? "Uncapped" : rate + " FPS");
             fps.SelectedIndex = Math.Max(0, Array.IndexOf(rates, current.Fps)); settings.Controls.Add(fps);
-            settings.Controls.Add(Theme.Label("IMAGE COMPRESSION", 9, Theme.Accent)); codec.Items.AddRange(new object[] { "Lossless - exact pixels", "JPEG - smaller image updates" }); if (videoAvailable) codec.Items.Add("H.264 - hardware when available"); codec.SelectedIndex = current.Video && videoAvailable ? 2 : current.Lossless ? 0 : 1; settings.Controls.Add(codec);
-            settings.Controls.Add(Theme.Label("JPEG QUALITY (10-100)", 9, Theme.Muted)); jpeg.Value = current.JpegQuality; jpeg.Enabled = codec.SelectedIndex == 1; settings.Controls.Add(jpeg);
-            settings.Controls.Add(Theme.Label("VIDEO BITRATE (kbit/s)", 9, Theme.Muted)); bitrate.Value = current.BitrateKbps; bitrate.Enabled = codec.SelectedIndex == 2; settings.Controls.Add(bitrate);
+            settings.Controls.Add(Theme.Label("Image compression", 9, Theme.Muted)); codec.Items.AddRange(new object[] { "Lossless - exact pixels", "JPEG - smaller image updates" }); if (videoAvailable) codec.Items.Add("H.264 - hardware when available"); codec.SelectedIndex = current.Video && videoAvailable ? 2 : current.Lossless ? 0 : 1; settings.Controls.Add(codec);
+            settings.Controls.Add(Theme.Label("JPEG quality (10-100)", 9, Theme.Muted)); jpeg.Value = current.JpegQuality; jpeg.Enabled = codec.SelectedIndex == 1; settings.Controls.Add(jpeg);
+            settings.Controls.Add(Theme.Label("Video bitrate (kbit/s)", 9, Theme.Muted)); bitrate.Value = current.BitrateKbps; bitrate.Enabled = codec.SelectedIndex == 2; settings.Controls.Add(bitrate);
             codec.SelectedIndexChanged += delegate { jpeg.Enabled = codec.SelectedIndex == 1; bitrate.Enabled = codec.SelectedIndex == 2; };
             textPreset.Click += delegate { resolution.SelectedIndex = 0; fps.SelectedIndex = 0; codec.SelectedIndex = 0; };
             videoPreset.Click += delegate { resolution.SelectedIndex = Array.IndexOf(heights, 1080); fps.SelectedIndex = Array.IndexOf(rates, 60); codec.SelectedIndex = 2; bitrate.Value = 8000; };
@@ -119,11 +119,15 @@ namespace LumeRemote
             {
                 StreamQuality selected = new StreamQuality { Height = heights[resolution.SelectedIndex], Fps = rates[fps.SelectedIndex], Lossless = codec.SelectedIndex == 0, Video = codec.SelectedIndex == 2, BitrateKbps = (int)bitrate.Value, JpegQuality = (int)jpeg.Value };
                 Size dimensions = selected.Dimensions(new Size(sourceWidth, sourceHeight));
+                // The preset that matches the current settings is shown as selected.
+                ((ReadableButton)textPreset).Kind = selected.Height == 0 && selected.Fps == 0 && selected.Lossless ? ButtonKind.Primary : ButtonKind.Secondary;
+                ((ReadableButton)videoPreset).Kind = selected.Height == 1080 && selected.Fps == 60 && selected.Video ? ButtonKind.Primary : ButtonKind.Secondary;
+                ((ReadableButton)ecoPreset).Kind = selected.Height == 360 && selected.Fps == 10 && !selected.Video && !selected.Lossless ? ButtonKind.Primary : ButtonKind.Secondary;
                 summary.Text = dimensions.Width + " x " + dimensions.Height + "  /  " + (selected.Fps < 0 ? "uncapped" : (selected.Fps == 0 ? sourceHz : selected.Fps) + " FPS target") + "\n" + (selected.Video ? "H.264 video" : selected.Lossless ? "Exact pixels" : "JPEG " + selected.JpegQuality);
             };
             resolution.SelectedIndexChanged += delegate { describe(); }; fps.SelectedIndexChanged += delegate { describe(); }; codec.SelectedIndexChanged += delegate { describe(); }; jpeg.ValueChanged += delegate { describe(); }; bitrate.ValueChanged += delegate { describe(); }; describe();
-            Panel actions = new Panel { Dock = DockStyle.Bottom, Height = 68, Padding = new Padding(26, 8, 26, 8), BackColor = Theme.Card };
-            Button apply = Theme.Button("Apply", true); apply.Dock = DockStyle.Fill; actions.Controls.Add(apply); Controls.Add(actions);
+            FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 60, Padding = new Padding(20, 10, 20, 8), BackColor = Theme.Card, FlowDirection = FlowDirection.RightToLeft, WrapContents = false };
+            Button apply = Theme.Button("Apply", true), cancel = Theme.Button("Cancel", false); apply.Width = cancel.Width = 120; cancel.DialogResult = DialogResult.Cancel; actions.Controls.Add(apply); actions.Controls.Add(cancel); Controls.Add(actions); CancelButton = cancel;
             apply.Click += delegate { Selection = new StreamQuality { Height = heights[resolution.SelectedIndex], Fps = rates[fps.SelectedIndex], Lossless = codec.SelectedIndex == 0, Video = codec.SelectedIndex == 2, BitrateKbps = (int)bitrate.Value, JpegQuality = (int)jpeg.Value }; DialogResult = DialogResult.OK; Close(); };
             settings.Controls.Add(Theme.Label("H.264 reduces colour detail (4:2:0). Source keeps exact pixels. FPS is a limit; unchanged screens send fewer updates.", 10, Theme.Muted));
             Theme.EndLayout(this);

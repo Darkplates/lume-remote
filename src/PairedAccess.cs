@@ -351,6 +351,8 @@ namespace LumeRemote
                     delegate { HostPreferences current = store.ReadHost(); return !session.Disposed && current.Enabled && current.Controllers.Any(p => !p.WakeOnly && p.Id == session.Controller.Id && Security.Equal(p.Key, session.Controller.Key)); },
                     delegate { }, Status, delegate(string text) { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return ClipboardAccess.Write(text); }, delegate { return new RemoteFileAccess(preferences.OwnerSid, session.Controller.Key, delegate { return store.ReadHost().NetworkFolders.ToArray(); }); }, async delegate { var access = new RemoteFileAccess(preferences.OwnerSid); access.Run(delegate { }); string text = await ClipboardAccess.Read().ConfigureAwait(false); access.Run(delegate { }); return text; }, true, delegate { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return Task.FromResult(true); }, delegate(PowerAction action) { new RemoteFileAccess(preferences.OwnerSid).Run(delegate { }); return RemotePower.Request(action); }, true, async delegate(Action stop, CancellationToken cancellation) { var access = new RemoteFileAccess(preferences.OwnerSid); access.Run(delegate { }); IDisposable grant = await HostVoiceConsent.Request(stop, cancellation).ConfigureAwait(false); try { access.Run(delegate { }); return grant; } catch { if (grant != null) grant.Dispose(); throw; } });
                 if (!session.Attach(createdHost)) return;
+                createdHost.SessionStarted += delegate(string name, bool withControl) { session.AttachIndicator(SessionIndicator.Show(session.Controller.Name, withControl, session.Dispose)); };
+                createdHost.SessionEnded += delegate { session.ClearIndicator(); };
                 createdHost.SessionEnded += delegate(Exception error) { SessionLog.Write(store.DirectoryPath, "host", SessionLog.Reason(error), error); };
                 SessionLog.Write(store.DirectoryPath, "host", "paired_connection_requested");
                 session.Host.StartPeer(); if (!session.Attach(new PeerTransport())) return;
@@ -383,7 +385,10 @@ namespace LumeRemote
             public bool Disposed { get { return Volatile.Read(ref disposed) != 0; } }
             public bool Attach(HostService host) { lock (ownership) { if (Disposed) { host.Dispose(); return false; } Host = host; return true; } }
             public bool Attach(PeerTransport peer) { lock (ownership) { if (Disposed) { peer.Dispose(); return false; } Peer = peer; return true; } }
-            public void Dispose() { lock (ownership) { if (Interlocked.Exchange(ref disposed, 1) != 0) return; Answer.TrySetCanceled(); if (Host != null) Host.Dispose(); if (Peer != null) Peer.Dispose(); Stopped.TrySetResult(true); } }
+            IDisposable indicator;
+            public void ClearIndicator() { lock (ownership) { if (indicator != null) indicator.Dispose(); indicator = null; } }
+            public void AttachIndicator(IDisposable value) { lock (ownership) { if (Disposed) { value.Dispose(); return; } if (indicator != null) indicator.Dispose(); indicator = value; } }
+            public void Dispose() { lock (ownership) { if (Interlocked.Exchange(ref disposed, 1) != 0) return; Answer.TrySetCanceled(); if (indicator != null) indicator.Dispose(); if (Host != null) Host.Dispose(); if (Peer != null) Peer.Dispose(); Stopped.TrySetResult(true); } }
         }
     }
 }

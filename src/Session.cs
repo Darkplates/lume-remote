@@ -84,6 +84,8 @@ namespace LumeRemote
         internal Func<Rectangle, InputController> InputFactory { get; set; }
         public event Action PeerEnded;
         public event Action<Exception> SessionEnded;
+        // Raised on a session thread once a viewer is approved and accepted (name, keyboard and mouse allowed).
+        public event Action<string, bool> SessionStarted;
         public bool HasSession { get { return Interlocked.CompareExchange(ref active, 0, 0) != 0; } }
         public HostService(Func<IScreenSource> sourceFactory, Profile profile, bool allowControl, Func<PeerRequest, bool> approve, Action<string> clipboard, Action<string> status,
             Func<string, Task<bool>> clipboardRequest = null, Func<RemoteFileAccess> fileAccessFactory = null, Func<Task<string>> clipboardRead = null, bool enableChat = false, Func<Task<bool>> audioPermission = null, Func<PowerAction, Task> powerRequest = null, bool allowClipboardSync = false, Func<Action, CancellationToken, Task<IDisposable>> microphonePermission = null)
@@ -325,6 +327,7 @@ namespace LumeRemote
                         StreamQuality selectedQuality = StreamQuality.FromProfile(profile, source.Bounds);
                         wire.Send(Kind.Accepted, delegate(BinaryWriter w) { w.Write(allowControl); Wire.Text(w, Environment.MachineName); w.Write(source.Bounds.Width); w.Write(source.Bounds.Height); if (version >= 2) { w.Write(version); w.Write(sourceHz); } if (version >= 3) w.Write(allowFiles); if (version >= 4) w.Write((ulong)capabilities); });
                         status("Connected to " + name + (allowControl ? " - keyboard and mouse enabled." : " - view only."));
+                        Action<string, bool> started = SessionStarted; if (started != null) try { started(name, allowControl); } catch (Exception) { }
                         Task receiver = BackgroundWork.Run(delegate
                         {
                             try

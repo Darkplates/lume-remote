@@ -15,6 +15,21 @@ WAN, second-Windows-user and 125-200 % display checks remain pending.
   screen with no other user signed in. Existing installations must open the new
   copy and choose Settings, then Update installed host.
 
+- New visual design: light and dark themes that follow the Windows app mode,
+  rounded buttons with hover/pressed/focus states and a distinct danger style,
+  a two-card dashboard (Your computers / This PC) with a status pill and an
+  empty-state guide, underline tabs, a capability list in connection requests,
+  pairing and first-time Enable access dialogs that list what a paired PC can
+  do, sectioned computer settings with a danger zone, chat bubbles, a quality
+  dialog that highlights the active preset, and a quieter session toolbar.
+- The host now shows a small always-on-top "... is connected" pill with a
+  Disconnect button during guest and paired sessions.
+- Portable (Rust) hosts authenticate direct guests off the accept thread with one
+  12-second deadline and at most four pending handshakes; a direct invitation is
+  single-use; signaling is rate-limited per sender; transfers fall back to an
+  exclusive copy where hard links are unsupported; crash leftovers no longer block
+  resume. The relay closes streams idle in both directions (default 10 minutes)
+  and bounds how long an unpaired host waits (default 24 hours).
 - Guest connections must authenticate within 15 seconds of connecting, and the
   30-second cooldown after five rejected invitations applies only to the
   offending address. Permanent-host signaling is rate-limited per sender.

@@ -15,10 +15,10 @@ namespace LumeRemote
         readonly ListView entries = new ListView { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, HideSelection = false, MultiSelect = true, BorderStyle = BorderStyle.None, Font = new Font("Segoe UI", 10), BackColor = Theme.Background, ForeColor = Theme.Text };
         readonly Label status = Theme.Label("Choose a remote folder.", 10, Theme.Muted);
         readonly ProgressBar progress = new ProgressBar { Dock = DockStyle.Bottom, Height = 6, Maximum = 1000 };
-        readonly Button send = Theme.Button("Send files", true), receive = Theme.Button("Receive selected", false), cancel = Theme.Button("Cancel transfer", false);
+        readonly Button send = Theme.Button("Send files", true), receive = Theme.Button("Receive selected", false), cancel = Theme.DangerButton("Cancel transfer");
         readonly Button sendFolder = Theme.Button("Send folder", false);
-        readonly Button print = Theme.Button("Print PDF locally", false);
-        readonly Button previous = Theme.Button("Previous", false), next = Theme.Button("Next", false);
+        readonly Button print = Theme.Button("Print PDF locally", ButtonKind.Ghost);
+        readonly Button previous = Theme.Button("Previous", ButtonKind.Ghost), next = Theme.Button("Next", ButtonKind.Ghost);
         readonly System.Windows.Forms.Timer timer = new System.Windows.Forms.Timer { Interval = 250 };
         CancellationTokenSource transfer;
         string directory = "";

@@ -44,6 +44,7 @@ namespace LumeRemote
             Canvas = Pick(Hex(0x0A0D12), Hex(0x0A0D12), SystemColors.Window);
         public static readonly string FontName = InstalledFont("Segoe UI Variable Text", "Segoe UI");
         public static readonly string FontNameStrong = InstalledFont("Segoe UI Variable Display Semib", "Segoe UI Semibold");
+        public static string InstalledFontName(string preferred, string fallback) { return InstalledFont(preferred, fallback); }
         static string InstalledFont(string preferred, string fallback)
         {
             try { using (System.Drawing.Text.InstalledFontCollection fonts = new System.Drawing.Text.InstalledFontCollection()) foreach (FontFamily family in fonts.Families) if (String.Equals(family.Name, preferred, StringComparison.OrdinalIgnoreCase)) return preferred; }

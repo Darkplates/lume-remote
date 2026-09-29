@@ -89,7 +89,7 @@ namespace LumeRemote
             cancel.Click += delegate { if (connecting != null) connecting.Cancel(); };
             add.Click += async delegate
             {
-                string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Paste its one-time code here.", "", true); if (code == null) return;
+                string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Paste its one-time code here.", "", true, delegate(string text) { try { PairingCode.Parse(text); return null; } catch (Exception) { return "This code is not valid. Check that you copied all of it."; } }, "Add computer"); if (code == null) return;
                 add.Enabled = false;
                 try { using (CancellationTokenSource timeout = new CancellationTokenSource(40000)) { progress.Text = "Pairing securely..."; SavedComputer computer = await PairedClient.Pair(PairingCode.Parse(code), Environment.MachineName, timeout.Token); saved.Computers.RemoveAll(c => c.HostId == computer.HostId && c.WakeOnly == computer.WakeOnly && (!c.WakeOnly || c.WakeMac == computer.WakeMac)); saved.Computers.Add(computer); Save(); ReloadSaved(); computers.SelectedItem = computer; progress.Text = "Saved. Use Connect whenever you need this PC."; } }
                 catch (Exception error) { ShowError(error); } finally { add.Enabled = true; }
@@ -100,7 +100,7 @@ namespace LumeRemote
                 enable.Enabled = false;
                 try
                 {
-                    if (!PermanentAccess.Installed) { state.Text = "Approve the Windows administrator prompt to install automatic access."; await PermanentAccess.Install(false); }
+                    if (!PermanentAccess.Installed) { if (!ConfirmEnable()) return; progress.Text = "Approve the Windows administrator prompt to install automatic access."; await PermanentAccess.Install(false); }
                     else TrustedStore.Machine.Change(new HostRequest { Op = "enable", Flag = !TrustedStore.Machine.ReadHost().Enabled });
                     RefreshHost();
                 }
@@ -250,15 +250,43 @@ namespace LumeRemote
                 dialog.ShowDialog(this);
             }
         }
+        static readonly string[] PairedCapabilities = { "See this screen and use its keyboard and mouse", "Transfer files and configured network folders", "Use the clipboard in both directions", "Hear this PC's system sound", "Lock, restart or shut down this PC" };
+        static Font CodeFont() { return new Font(Theme.InstalledFontName("Cascadia Mono", "Consolas"), 10); }
         void ShowPairing(PairingCode code)
         {
-            using (Form dialog = Dialog("One-time pairing", 580, 385))
+            using (Form dialog = Dialog("Pair another PC", 580, 520))
             {
-                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background;
-                panel.Controls.Add(Theme.Label("Pair once. Connect anytime.", 22, Theme.Text)); panel.Controls.Add(Theme.Label("Copy this code to Add a computer on your other PC. It expires in 15 minutes and works once. Anyone holding it can receive the access shown below.", 10, Theme.Muted));
-                panel.Controls.Add(Theme.Label(code.wake ? "WAKE PACKETS ONLY / " + code.mac : "PERMANENT SCREEN, KEYBOARD AND MOUSE ACCESS", 10, Theme.Accent));
-                TextBox value = Theme.Box(true); value.ReadOnly = true; value.Text = code.ToString(); panel.Controls.Add(value);
-                Button copy = Theme.Button("Copy pairing code", true); copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy); dialog.Controls.Add(panel); Theme.EndLayout(dialog); dialog.ShowDialog(this);
+                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
+                panel.Controls.Add(Theme.Label("Pair another PC", 16, Theme.Text));
+                panel.Controls.Add(Theme.Label("On your other PC, choose Add a computer and paste this one-time code. It works once and expires in 15 minutes.", 10, Theme.Muted));
+                TextBox value = Theme.Box(true); value.ReadOnly = true; value.Text = code.ToString(); value.Font = CodeFont(); value.Height = 96; value.Width = 520; value.AccessibleName = "One-time pairing code"; value.TabStop = false; panel.Controls.Add(value);
+                Button copy = Theme.Button("Copy code", true); copy.Width = 140; copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy);
+                Label heading = Theme.Label(code.wake ? "The paired PC will only be able to:" : "The paired PC will be able to:", 10, Theme.Text); heading.Margin = new Padding(0, 10, 0, 4); panel.Controls.Add(heading);
+                if (code.wake) panel.Controls.Add(new CapabilityRow("Send wake packets to " + code.mac, true));
+                else foreach (string capability in PairedCapabilities) panel.Controls.Add(new CapabilityRow(capability, true));
+                FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 12, 0, 0) };
+                Button revokeCode = Theme.Button("Cancel pairing code", false), done = Theme.Button("Done", false); revokeCode.Width = 180; done.Width = 110; done.DialogResult = DialogResult.OK;
+                revokeCode.Click += delegate { try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); dialog.Close(); progress.Text = "Pairing code cancelled. It can no longer be used."; } catch (Exception error) { MessageBox.Show(dialog, error.Message, "Lume"); } };
+                buttons.Controls.Add(revokeCode); buttons.Controls.Add(done); panel.Controls.Add(buttons);
+                dialog.Controls.Add(panel); dialog.AcceptButton = done; dialog.CancelButton = done; dialog.ActiveControl = copy; dialog.Shown += delegate { value.SelectionLength = 0; }; Theme.EndLayout(dialog); dialog.ShowDialog(this);
+            }
+        }
+        // Explains permanent access before the Windows administrator prompt appears.
+        bool ConfirmEnable()
+        {
+            using (Form dialog = Dialog("Enable access", 560, 470))
+            {
+                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
+                panel.Controls.Add(Theme.Label("Enable access on this PC", 16, Theme.Text));
+                panel.Controls.Add(Theme.Label("Lume will install a Windows service that starts with Windows, so your paired PCs can connect even after a restart. Paired computers will be able to:", 10, Theme.Muted));
+                foreach (string capability in PairedCapabilities) panel.Controls.Add(new CapabilityRow(capability, true));
+                Label off = Theme.Label("You can disable access at any time from Lume, the tray icon or Ctrl + Alt + Shift + F12.", 10, Theme.Text); off.Margin = new Padding(0, 10, 0, 4); panel.Controls.Add(off);
+                panel.Controls.Add(Theme.Label("Windows will ask for administrator permission.", 9, Theme.Muted));
+                FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
+                Button cancel = Theme.Button("Cancel", false), accept = Theme.Button("Enable access", true); cancel.Width = 120; accept.Width = 150; cancel.DialogResult = DialogResult.Cancel; accept.DialogResult = DialogResult.OK;
+                buttons.Controls.Add(cancel); buttons.Controls.Add(accept); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
+                dialog.CancelButton = cancel; dialog.ActiveControl = cancel; Theme.EndLayout(dialog);
+                return dialog.ShowDialog(this) == DialogResult.OK;
             }
         }
         // Callers add their controls, then call Theme.EndLayout before showing the dialog.
@@ -267,13 +295,24 @@ namespace LumeRemote
             Form dialog = new Form { Text = "Lume - " + title, Icon = Brand.Icon, BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterParent };
             Theme.BeginLayout(dialog); dialog.ClientSize = new Size(width, height); dialog.MinimumSize = new Size(width, height); return dialog;
         }
-        string Prompt(string title, string text, string initial, bool multiline)
+        string Prompt(string title, string text, string initial, bool multiline, Func<string, string> validate = null, string action = "Continue")
         {
             using (Form dialog = Dialog(title, 580, 340))
             {
-                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Controls.Add(Theme.Label(text, 11, Theme.Text));
-                TextBox value = Theme.Box(multiline); value.MaxLength = 4096; value.Text = initial; panel.Controls.Add(value); FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
-                Button apply = Theme.Button("Continue", true), cancel = Theme.Button("Cancel", false); apply.DialogResult = DialogResult.OK; cancel.DialogResult = DialogResult.Cancel; buttons.Controls.Add(apply); buttons.Controls.Add(cancel); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
+                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
+                panel.Controls.Add(Theme.Label(title, 16, Theme.Text)); panel.Controls.Add(Theme.Label(text, 10, Theme.Muted));
+                TextBox value = Theme.Box(multiline); value.MaxLength = 4096; value.Text = initial; value.Width = 520; value.AccessibleName = title; if (validate != null) value.Font = CodeFont(); panel.Controls.Add(value);
+                Label error = Theme.Label("", 9, Theme.Danger); error.Visible = false; panel.Controls.Add(error);
+                FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 4, 0, 0) };
+                Button cancel = Theme.Button("Cancel", false), apply = Theme.Button(action, true); cancel.Width = 120; apply.Width = 160; cancel.DialogResult = DialogResult.Cancel;
+                apply.Click += delegate
+                {
+                    string problem = validate == null ? null : validate(value.Text.Trim());
+                    if (problem == null) { dialog.DialogResult = DialogResult.OK; return; }
+                    error.Text = problem; error.Visible = true; value.Focus();
+                };
+                value.TextChanged += delegate { error.Visible = false; };
+                buttons.Controls.Add(cancel); buttons.Controls.Add(apply); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
                 dialog.AcceptButton = apply; dialog.CancelButton = cancel; Theme.EndLayout(dialog);
                 return dialog.ShowDialog(this) == DialogResult.OK ? value.Text : null;
             }
