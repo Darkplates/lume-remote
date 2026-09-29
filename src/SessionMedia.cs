@@ -177,8 +177,8 @@ namespace LumeRemote
                 }
                 if (last == null) throw new IOException("No frames were recorded.");
                 if (includeAudio) { int remaining = (int)Math.Max(0, Math.Min(2400, (long)(clock.Elapsed.TotalSeconds * 48000) - audioPosition)); if (remaining > 0) { byte[] pcm = audio.Read(audioPosition, remaining); MediaNative.Check(MediaNative.LumeRecordAudio(handle, pcm, (uint)pcm.Length, audioPosition * 10000000L / 48000)); } }
-                IntPtr closing = handle; handle = IntPtr.Zero; MediaNative.Check(MediaNative.LumeRecordClose(closing));
-                File.Move(temporary, destination); finalized = true;
+                IntPtr closing = handle; handle = IntPtr.Zero; MediaNative.Check(MediaNative.LumeRecordClose(closing)); finalized = true;
+                Publish(temporary, destination);
             }
             catch (Exception error) { started.TrySetException(error); throw; }
             finally
@@ -187,6 +187,20 @@ namespace LumeRemote
                 if (handle != IntPtr.Zero) MediaNative.LumeRecordClose(handle);
                 if (!finalized) try { File.Delete(temporary); } catch (IOException) { } catch (UnauthorizedAccessException) { }
             }
+        }
+        // A finished recording is never deleted: a name taken meanwhile gets a numbered suffix,
+        // and any other failure leaves the complete temporary file in place.
+        static void Publish(string temporary, string destination)
+        {
+            string folder = Path.GetDirectoryName(destination), name = Path.GetFileNameWithoutExtension(destination), extension = Path.GetExtension(destination);
+            for (int attempt = 0; attempt < 100; attempt++)
+            {
+                string target = attempt == 0 ? destination : Path.Combine(folder, name + " (" + attempt + ")" + extension);
+                if (File.Exists(target)) continue;
+                try { File.Move(temporary, target); return; }
+                catch (IOException) { if (!File.Exists(target)) throw new IOException("The recording was kept as " + temporary + " because it could not be renamed."); }
+            }
+            throw new IOException("The recording was kept as " + temporary + ". Choose a folder with a free file name.");
         }
         public Task Stop() { lock (lifetime) { stopping = true; if (!signalClosed) signal.Set(); } return worker; }
         public void Dispose() { Stop(); worker.ContinueWith(delegate(Task done) { var observed = done.Exception; }, TaskContinuationOptions.OnlyOnFaulted); }
