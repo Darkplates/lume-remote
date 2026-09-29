@@ -26,8 +26,8 @@ static partial class Tests
             ComputersPanel home = (ComputersPanel)Field(dashboard, "home");
             ((System.Windows.Forms.Timer)Field(home, "refresh")).Stop();
             InspectLayout(dashboard, "Dashboard", issues);
-            Button update = (Button)Field(home, "update"); if (Math.Abs(update.Height - Theme.Px(42)) > 1) issues.Add("Computer settings column: button height " + update.Height + ", expected " + Theme.Px(42) + " (scaled zero or two times).");
-            if (((ListBox)Field(home, "computers")).ItemHeight != Theme.Px(64)) issues.Add("Saved computers row height was not scaled.");
+            Button update = (Button)Field(home, "update"); if (Math.Abs(update.Height - Theme.Px(Theme.ButtonHeight)) > 1) issues.Add("Computer settings column: button height " + update.Height + ", expected " + Theme.Px(Theme.ButtonHeight) + " (scaled zero or two times).");
+            if (((ListBox)Field(home, "computers")).ItemHeight != Theme.Px(Theme.RowHeight)) issues.Add("Saved computers row height was not scaled.");
             FindButton(dashboard, "Guest access").PerformClick(); Application.DoEvents(); InspectLayout(dashboard, "Guest access", issues);
             dashboard.ExitDashboard(); Application.DoEvents();
         }
@@ -47,9 +47,9 @@ static partial class Tests
             Button button = control as Button;
             if (button != null && button.Visible)
             {
-                // Theme buttons are 42 px at 96 DPI; docked Fill/Left/Right buttons take their container's height.
-                if (button is ReadableButton && (button.Dock == DockStyle.None || button.Dock == DockStyle.Top || button.Dock == DockStyle.Bottom) && Math.Abs(button.Height - Theme.Px(42)) > 1)
-                    issues.Add(where + ": \"" + button.Text + "\" is " + button.Height + " px high, expected " + Theme.Px(42) + ".");
+                // Theme buttons are Theme.ButtonHeight px at 96 DPI; docked Fill/Left/Right buttons take their container's height.
+                if (button is ReadableButton && (button.Dock == DockStyle.None || button.Dock == DockStyle.Top || button.Dock == DockStyle.Bottom) && Math.Abs(button.Height - Theme.Px(Theme.ButtonHeight)) > 1)
+                    issues.Add(where + ": \"" + button.Text + "\" is " + button.Height + " px high, expected " + Theme.Px(Theme.ButtonHeight) + ".");
                 Size text = TextRenderer.MeasureText(button.Text, button.Font);
                 if (text.Width > button.Width || text.Height > button.Height) issues.Add(where + ": \"" + button.Text + "\" needs " + text.Width + " x " + text.Height + " px, button is " + button.Width + " x " + button.Height + ".");
             }
