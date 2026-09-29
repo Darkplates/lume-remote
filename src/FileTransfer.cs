@@ -70,6 +70,19 @@ namespace LumeRemote
             try { wire.Send(Kind.Files, delegate(BinaryWriter w) { w.Write((byte)op); Wire.Text(w, id); if (write != null) write(w); }); }
             catch (Exception error) { transportLost = true; failed(error); throw; }
         }
+        // Wire.Send blocks for up to its write timeout, so requests started from the UI are sent
+        // on a pool thread. They are chained so a Cancel can never overtake the request it cancels.
+        readonly object backgroundGate = new object();
+        Task backgroundTail = Task.FromResult(true);
+        Task SendInBackground(FileOp op, string id, Action<BinaryWriter> write = null)
+        {
+            lock (backgroundGate)
+            {
+                Task next = backgroundTail.ContinueWith(delegate { Send(op, id, write); }, CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default);
+                backgroundTail = next.ContinueWith(delegate(Task sent) { var observed = sent.Exception; }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                return next;
+            }
+        }
         void SendResult(string id, bool success, string message)
         { Send(FileOp.Result, id, delegate(BinaryWriter w) { w.Write(success); Wire.Text(w, message.Length > 480 ? message.Substring(0, 480) : message); }); }
         void Queue(string id, Action action)
@@ -94,7 +107,7 @@ namespace LumeRemote
             lock (gate) { if (disposed) throw new OperationCanceledException(); if (lists.Count >= 4) throw new InvalidOperationException("Wait for the current folder to load."); lists.Add(id, completion); }
             try
             {
-                Send(NetworkFolders && path.Length == 0 ? FileOp.Roots : FileOp.List, id, delegate(BinaryWriter w) { Wire.Text(w, path); w.Write(page); });
+                await SendInBackground(NetworkFolders && path.Length == 0 ? FileOp.Roots : FileOp.List, id, delegate(BinaryWriter w) { Wire.Text(w, path); w.Write(page); }).ConfigureAwait(false);
                 if (await Task.WhenAny(completion.Task, Task.Delay(30000)).ConfigureAwait(false) != completion.Task) throw new TimeoutException("The remote folder did not respond.");
                 return await completion.Task.ConfigureAwait(false);
             }
@@ -108,7 +121,7 @@ namespace LumeRemote
             lock (gate) { if (disposed) throw new OperationCanceledException(); if (operations.Count >= 4) throw new InvalidOperationException("Wait for the current folder action."); operations.Add(id, result); }
             try
             {
-                await Task.Run(delegate { Send(FileOp.MakeDirectory, id, delegate(BinaryWriter w) { Wire.Text(w, parent); Wire.Text(w, name); w.Write(unique); }); }).ConfigureAwait(false);
+                await SendInBackground(FileOp.MakeDirectory, id, delegate(BinaryWriter w) { Wire.Text(w, parent); Wire.Text(w, name); w.Write(unique); }).ConfigureAwait(false);
                 if (await Task.WhenAny(result.Task, Task.Delay(30000)).ConfigureAwait(false) != result.Task) throw new TimeoutException("The remote folder did not respond.");
                 return RemoteFileAccess.CheckRemotePath(await result.Task.ConfigureAwait(false), NetworkFolders);
             }
@@ -169,7 +182,7 @@ namespace LumeRemote
             try
             {
                 using (cancel.Register(delegate { Cancel(transfer.Id); }))
-                { cancel.ThrowIfCancellationRequested(); Send(Resume ? FileOp.GetResume : FileOp.Get, transfer.Id, delegate(BinaryWriter w) { Wire.Text(w, remotePath); }); return await transfer.Done.Task.ConfigureAwait(false); }
+                { cancel.ThrowIfCancellationRequested(); await SendInBackground(Resume ? FileOp.GetResume : FileOp.Get, transfer.Id, delegate(BinaryWriter w) { Wire.Text(w, remotePath); }).ConfigureAwait(false); return await transfer.Done.Task.ConfigureAwait(false); }
             }
             finally { if (!disposed) Queue(transfer.Id, delegate { EndIncoming(transfer.Id, new OperationCanceledException()); }); }
         }
@@ -257,7 +270,7 @@ namespace LumeRemote
             if (disposed || transportLost) return;
             lock (gate) { if (sending != null && sending.Id == id) sending.Cancelled = true; if (receiving != null && receiving.Id == id) { receiving.Cancelled = true; receiving.Done.TrySetCanceled(); } Monitor.PulseAll(gate); }
             Queue(id, delegate { EndIncoming(id, new OperationCanceledException()); });
-            if (!disposed) try { Send(FileOp.Cancel, id); } catch { }
+            if (!disposed) try { SendInBackground(FileOp.Cancel, id); } catch { }
         }
         // A locally detected stall looks like a network loss, so a paired resumable partial is
         // kept (Suspend is a no-op otherwise); retry verifies its prefix. A failure result from
