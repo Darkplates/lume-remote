@@ -32,6 +32,11 @@ namespace LumeRemote
         Bitmap bitmap;
         Graphics graphics;
         IntPtr duplication;
+        // DXGI duplication is lost on secure-desktop switches, UAC, lock and display mode changes. While GDI is in use,
+        // retry it with backoff (1 s doubling to 8 s); a missing or incompatible bridge DLL stays on GDI.
+        readonly System.Diagnostics.Stopwatch clock = System.Diagnostics.Stopwatch.StartNew();
+        long retryAt, retryDelay = 1000;
+        bool bridgeUnavailable;
         public string Backend { get { return duplication != IntPtr.Zero ? "DXGI" : "GDI fallback"; } }
         public bool FrameChanged { get; private set; }
         public Rectangle Bounds { get { return bounds; } }
@@ -40,11 +45,17 @@ namespace LumeRemote
         {
             this.bounds = bounds;
             Configure(StreamQuality.FromProfile(profile, bounds));
-            try { if (LumeCreate(bounds.X, bounds.Y, out duplication) < 0) duplication = IntPtr.Zero; }
-            catch (DllNotFoundException) { duplication = IntPtr.Zero; }
-            catch (EntryPointNotFoundException) { duplication = IntPtr.Zero; }
-            catch (BadImageFormatException) { duplication = IntPtr.Zero; }
+            CreateDuplication();
         }
+        void CreateDuplication()
+        {
+            try { if (LumeCreate(bounds.X, bounds.Y, out duplication) < 0) duplication = IntPtr.Zero; }
+            catch (DllNotFoundException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            catch (EntryPointNotFoundException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            catch (BadImageFormatException) { duplication = IntPtr.Zero; bridgeUnavailable = true; }
+            if (duplication == IntPtr.Zero) DuplicationFailed();
+        }
+        void DuplicationFailed() { retryAt = clock.ElapsedMilliseconds + retryDelay; retryDelay = Math.Min(8000, retryDelay * 2); }
         public void Configure(StreamQuality quality)
         {
             Size size = quality.Dimensions(bounds.Size); if (bitmap != null && bitmap.Size == size) return;
@@ -56,6 +67,7 @@ namespace LumeRemote
         Bitmap CaptureDesktop()
         {
             FrameChanged = true;
+            if (duplication == IntPtr.Zero && !bridgeUnavailable && clock.ElapsedMilliseconds >= retryAt) CreateDuplication();
             if (duplication != IntPtr.Zero)
             {
                 BitmapData pixels = bitmap.LockBits(new Rectangle(0, 0, bitmap.Width, bitmap.Height), ImageLockMode.WriteOnly, PixelFormat.Format32bppRgb);
@@ -63,7 +75,8 @@ namespace LumeRemote
                 {
                     int hr = LumeCapture(duplication, pixels.Scan0, bitmap.Width, bitmap.Height, pixels.Stride);
                     FrameChanged = hr != 1;
-                    if (hr < 0) { LumeDestroy(duplication); duplication = IntPtr.Zero; }
+                    if (hr < 0) { LumeDestroy(duplication); duplication = IntPtr.Zero; FrameChanged = true; DuplicationFailed(); }
+                    else retryDelay = 1000;
                 }
                 finally { bitmap.UnlockBits(pixels); }
             }
