@@ -172,7 +172,16 @@ namespace LumeRemote
 
     public sealed class FrameDecoder : IDisposable
     {
-        VideoDecoder video;
+        IVideoFrameDecoder video;
+        readonly Func<int, int, IVideoFrameDecoder> videoFactory;
+        bool videoFailurePending;
+        public FrameDecoder() : this(null) { }
+        public FrameDecoder(Func<int, int, IVideoFrameDecoder> videoFactory) { this.videoFactory = videoFactory; }
+        // Set after a local H.264 create/decode failure. Later video frames are still validated and acknowledged, but not
+        // decoded, until the host resumes image frames. The last completed image is kept.
+        public bool VideoFailed { get; private set; }
+        // Returns true once per failure so the viewer can request an image quality without involving the UI thread.
+        public bool TakeVideoFailure() { bool pending = videoFailurePending; videoFailurePending = false; return pending; }
         public bool FrameReady { get; private set; }
         public Bitmap Image { get; private set; }
         public int Sequence { get; private set; }
@@ -202,12 +211,25 @@ namespace LumeRemote
                         if (count != 1 || x != 0 || y != 0 || pw != w || ph != h || bytes.Length < 6 || bytes[0] != 1 || bytes[1] > 1)
                             throw new InvalidDataException("Invalid video frame envelope.");
                         byte[] encoded = new byte[bytes.Length - 2]; Buffer.BlockCopy(bytes, 2, encoded, 0, encoded.Length);
-                        H264Bounds.Validate(encoded, w, h, bytes[1] == 1 || video == null);
-                        if (bytes[1] == 1 && video != null) { video.Dispose(); video = null; }
-                        if (video == null) video = new VideoDecoder(w, h);
-                        FrameReady = video.Decode(encoded, Image); continue;
+                        H264Bounds.Validate(encoded, w, h, bytes[1] == 1 || (video == null && !VideoFailed));
+                        if (VideoFailed) { FrameReady = false; continue; }
+                        try
+                        {
+                            if (bytes[1] == 1 && video != null) { video.Dispose(); video = null; }
+                            if (video == null) video = videoFactory != null ? videoFactory(w, h) : new VideoDecoder(w, h);
+                            FrameReady = video.Decode(encoded, Image);
+                        }
+                        catch (Exception error)
+                        {
+                            // A Windows decoder failure is local and recoverable; malformed envelopes/headers were rejected above.
+                            if (error is OutOfMemoryException) throw;
+                            if (video != null) { video.Dispose(); video = null; }
+                            FrameReady = false; VideoFailed = true; videoFailurePending = true;
+                        }
+                        continue;
                     }
                     if (video != null) { video.Dispose(); video = null; }
+                    VideoFailed = false;
                     if (codec == 1) { FastCodec.Decode(bytes, Image, new Rectangle(x, y, pw, ph)); continue; }
                     if (codec != 0 && codec != 3) throw new InvalidDataException("Unknown image codec.");
                     if (codec == 3) ValidatePng(bytes, pw, ph); else ValidateJpeg(bytes, pw, ph);

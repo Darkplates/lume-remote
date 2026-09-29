@@ -22,6 +22,7 @@ static partial class Tests
         Run("Protocol 2 clients still receive the exact legacy quality layout", LegacyViewer);
         Run("New viewer negotiates and decodes a legacy protocol 2 host", LegacyHost);
         Run("Unsupported video dimensions fall back to full lossless frames", VideoFallback);
+        Run("A local H.264 decoder failure keeps the image, acknowledges the frame and recovers with image frames", VideoDecodeFailure);
     }
     static void VideoQuality()
     {
@@ -187,6 +188,46 @@ static partial class Tests
             viewer.SetQuality(new StreamQuality{Video=true,Lossless=false,Fps=60});bool notice=false,complete=false;
             Task receive=Task.Run(delegate{using(var decoder=new FrameDecoder())try{viewer.Receive(delegate(Packet packet){decoder.Apply(packet);viewer.Ack(decoder.Sequence);if(notice && viewer.CurrentQuality!=null && viewer.CurrentQuality.Lossless){Check(decoder.Image.Width==641 && decoder.Image.Height==361,"Fallback changed source dimensions.");complete=true;viewer.Dispose();}},delegate(string message){notice=message.Contains("Using lossless");});}catch{if(!complete)throw;}});
             if(!receive.Wait(15000)){viewer.Dispose();throw new Exception("No fallback frame.");}Check(notice && complete,"Codec fallback was not visible and usable.");
+        }
+    }
+    sealed class FailingVideoDecoder : IVideoFrameDecoder
+    {
+        public bool Fail, Disposed;
+        public bool Decode(byte[] bytes,Bitmap image){ if(Disposed) throw new ObjectDisposedException("decoder"); if(Fail) throw new InvalidOperationException("Windows video codec failed (0xC00D36B4). Try Lossless or JPEG."); return true; }
+        public void Dispose(){ Disposed=true; }
+    }
+    // Header-valid 640 x 360 baseline access units whose slice data is not decodable.
+    static readonly byte[] Sps640={0,0,0,1,0x67,0x42,0xC0,0x1E,0xDA,0x02,0x80,0xBF,0xE5,0x40}, Sps1280={0,0,0,1,0x67,0x42,0xC0,0x1E,0xDA,0x01,0x40,0x16,0xE4};
+    static readonly byte[] PpsIdr={0,0,0,1,0x68,0xCE,0x38,0x80,0,0,0,1,0x65,0x88,0x84,0x21,0xA0,0x13}, Delta={0,0,0,1,0x41,0x9A,0x24,0x6C,0x42};
+    static byte[] Join(byte[] a,byte[] b){ byte[] r=new byte[a.Length+b.Length]; Buffer.BlockCopy(a,0,r,0,a.Length); Buffer.BlockCopy(b,0,r,a.Length,b.Length); return r; }
+    static byte[] VideoFrame(int sequence,int w,int h,byte[] unit,bool reset)
+    {
+        return Wire.Message(Kind.Frame,delegate(BinaryWriter writer){ writer.Write(sequence);writer.Write(w);writer.Write(h);writer.Write(1);writer.Write(0);writer.Write(0);writer.Write(w);writer.Write(h);writer.Write((byte)2);writer.Write(unit.Length+2);writer.Write((byte)1);writer.Write((byte)(reset?1:0));writer.Write(unit); });
+    }
+    static void VideoDecodeFailure()
+    {
+        byte[] keyframe=Join(Sps640,PpsIdr); H264Bounds.Validate(keyframe,640,360,true); H264Bounds.Validate(Delta,640,360,false);
+        var created=new System.Collections.Generic.List<FailingVideoDecoder>();
+        using(var decoder=new FrameDecoder(delegate(int w,int h){ var next=new FailingVideoDecoder{Fail=created.Count==0}; created.Add(next); return next; }))
+        using(var source=new Bitmap(640,360,PixelFormat.Format32bppRgb)) {
+            DrawVideo(source,3); var images=new FrameEncoder();
+            using(Packet packet=new Packet(images.Encode(source,1,85,true,true))) decoder.Apply(packet);
+            int orange=decoder.Image.GetPixel(100,60).ToArgb(); Check(decoder.FrameReady && orange==Color.Orange.ToArgb(),"Image frame was not decoded.");
+            using(Packet packet=new Packet(VideoFrame(2,640,360,keyframe,true))) decoder.Apply(packet);
+            Check(!decoder.FrameReady && decoder.Sequence==2 && decoder.VideoFailed,"Failed video frame was not acknowledged without presentation.");
+            Check(decoder.TakeVideoFailure() && !decoder.TakeVideoFailure(),"Decoder failure was not reported exactly once.");
+            Check(created.Count==1 && created[0].Disposed && decoder.Image.GetPixel(100,60).ToArgb()==orange,"Failed decoder was kept or the last image was lost.");
+            using(Packet packet=new Packet(VideoFrame(3,640,360,Delta,false))) decoder.Apply(packet);
+            Check(!decoder.FrameReady && decoder.Sequence==3 && created.Count==1 && !decoder.TakeVideoFailure(),"In-flight video after a failure stalled or retried decoding.");
+            Reject(delegate { using(Packet packet=new Packet(VideoFrame(4,640,360,Join(Sps1280,PpsIdr),true))) decoder.Apply(packet); });
+            using(Packet packet=new Packet(images.Encode(source,5,85,true,true))) decoder.Apply(packet);
+            Check(decoder.FrameReady && decoder.Sequence==5 && !decoder.VideoFailed,"Image frames did not resume after the fallback.");
+            using(Packet packet=new Packet(VideoFrame(6,640,360,keyframe,true))) decoder.Apply(packet);
+            Check(decoder.FrameReady && decoder.Sequence==6 && created.Count==2 && !created[1].Disposed,"An explicit new H.264 request did not create a fresh decoder.");
+        }
+        using(var decoder=new FrameDecoder(delegate(int w,int h){ throw new DllNotFoundException("LumeVideo.dll"); })) {
+            using(Packet packet=new Packet(VideoFrame(1,640,360,keyframe,true))) decoder.Apply(packet);
+            Check(!decoder.FrameReady && decoder.Sequence==1 && decoder.TakeVideoFailure(),"Missing decoder ended the session.");
         }
     }
     static void VideoBenchmark()

@@ -39,7 +39,10 @@ namespace LumeRemote
         public void Dispose() { if (handle != IntPtr.Zero) { VideoNative.Destroy(handle); handle = IntPtr.Zero; } }
     }
 
-    public sealed class VideoDecoder : IDisposable
+    // Decodes one Annex B access unit into a 32-bit image; returns false while the decoder buffers.
+    public interface IVideoFrameDecoder : IDisposable { bool Decode(byte[] bytes, Bitmap image); }
+
+    public sealed class VideoDecoder : IVideoFrameDecoder
     {
         IntPtr handle;
         readonly int width, height;

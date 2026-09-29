@@ -290,6 +290,7 @@ namespace LumeRemote
                             {
                                 if (closed) return;
                                 long started = Stopwatch.GetTimestamp(); decoder.Apply(packet);
+                                if (decoder.TakeVideoFailure() && !closed) VideoDecodeFailed(current);
                                 if (decoder.FrameReady && !closed)
                                 {
                                     SessionRecording capture = Volatile.Read(ref recording); if (capture != null) capture.Publish(decoder.Image);
@@ -326,6 +327,15 @@ namespace LumeRemote
         }
         void OnUi(Action action)
         { if (closed || IsDisposed) return; try { BeginInvoke((Action)delegate { if (!closed && !IsDisposed) action(); }); } catch (InvalidOperationException) { } }
+        // Called on the receive worker. The frame is still acknowledged by the caller, and the host sends a complete image
+        // after the quality change. The fallback also replaces a saved video quality so reconnects do not repeat the failure.
+        void VideoDecodeFailed(ViewerConnection current)
+        {
+            StreamQuality fallback = (desiredQuality ?? current.CurrentQuality ?? StreamQuality.Source).Copy(); fallback.Video = false; fallback.Lossless = true;
+            desiredQuality = fallback; current.SetQuality(fallback.Copy());
+            SessionLog.Write(SessionLog.UserDirectory, "viewer", "video_decode_fallback");
+            OnUi(delegate { if (QualityChanged != null) QualityChanged(fallback); ShowNotice("H.264 decoding failed on this PC. Switched to lossless images."); });
+        }
         void ReconnectProgress(string message) { OnUi(delegate { information.Text = canvas.StatusMessage = message; canvas.Invalidate(); }); }
         void PowerChanged(object sender, Microsoft.Win32.PowerModeChangedEventArgs args)
         {
