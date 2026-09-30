@@ -106,6 +106,7 @@ namespace LumeRemote
         public static HostLock Acquire(string path, int timeoutMs)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
+            TrustedStore.CheckNoReparse(path);
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             for (;;)
             {
@@ -141,6 +142,9 @@ namespace LumeRemote
         readonly DataProtectionScope scope;
         readonly bool machine;
         public string HostFile { get { return Path.Combine(DirectoryPath, "host.dat"); } }
+        internal string DisableFile { get { return Path.Combine(DirectoryPath, "host-disabled.dat"); } }
+        internal string ControlFile { get { return Path.Combine(DirectoryPath, "host-control.dat"); } }
+        string StateLockFile { get { return Path.Combine(DirectoryPath, "host-state.lock"); } }
         public TrustedStore(string directory, bool machine) { DirectoryPath = Path.GetFullPath(directory); this.machine = machine; scope = machine ? DataProtectionScope.LocalMachine : DataProtectionScope.CurrentUser; }
         public static TrustedStore Machine { get { return new TrustedStore(MachineDirectory, true); } }
         public static TrustedStore User { get { return new TrustedStore(UserDirectory, false); } }
@@ -169,11 +173,34 @@ namespace LumeRemote
             byte[] plain = ProtectedData.Unprotect(encrypted, Entropy, scope);
             try { return JsonData.Decode<T>(new UTF8Encoding(false, true).GetString(plain)); } finally { Array.Clear(plain, 0, plain.Length); }
         }
-        // The SYSTEM-only serialization lock and the owner control pipe both live
-        // in / are named from the protected Host directory, so only SYSTEM and
-        // Administrators can contend for them.
+        // Lock files and endpoint discovery are in the protected Host directory.
+        // A pipe name alone is not protected by the directory's ACL.
         public string LockFile { get { return Path.Combine(DirectoryPath, "host.lock"); } }
-        public string ControlPipeName { get { using (SHA256 hash = SHA256.Create()) return "LumeRemoteHostControl-" + BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(DirectoryPath.ToUpperInvariant()))).Replace("-", ""); } }
+        string ControlPipePrefix { get { using (SHA256 hash = SHA256.Create()) return "LumeRemoteHostControl-" + BitConverter.ToString(hash.ComputeHash(Encoding.UTF8.GetBytes(DirectoryPath.ToUpperInvariant()))).Replace("-", ""); } }
+        public string ControlPipeName
+        {
+            get
+            {
+                CheckNoReparse(ControlFile);
+                if (!File.Exists(ControlFile)) return ControlPipePrefix; // Older installed workers.
+                Dictionary<string, string> endpoint = Read<Dictionary<string, string>>(ControlFile); string name;
+                if (endpoint.Count != 1 || !endpoint.TryGetValue("Name", out name) || !ValidControlPipeName(name)) throw new InvalidDataException("Invalid host settings channel. Restart or update the Lume host service.");
+                return name;
+            }
+        }
+        bool ValidControlPipeName(string name) { string prefix = ControlPipePrefix + "-"; return name != null && name.StartsWith(prefix, StringComparison.Ordinal) && Invitation.IsHex(name.Substring(prefix.Length), 32); }
+        internal string NewControlPipeName() { return ControlPipePrefix + "-" + Guid.NewGuid().ToString("N"); }
+        // Publish only after the service owns the listener; no request secrets are stored here.
+        internal void PublishControlPipe(string name)
+        {
+            if (!ValidControlPipeName(name)) throw new InvalidDataException("Invalid host settings channel.");
+            using (HostLock.Acquire(StateLockFile, 3000)) Write(ControlFile, new Dictionary<string, string> { { "Name", name } });
+        }
+        internal void RemoveControlPipe(string name)
+        {
+            using (HostLock.Acquire(StateLockFile, 3000))
+            { if (File.Exists(ControlFile) && ControlPipeName == name) { CheckNoReparse(ControlFile); File.Delete(ControlFile); } }
+        }
         // Refuse to write through a reparse point. The owner can no longer create
         // objects in the protected directory, but this stays as defence in depth.
         public static void CheckNoReparse(string path)
@@ -193,7 +220,20 @@ namespace LumeRemote
             try { File.WriteAllBytes(temporary, protectedBytes); if (File.Exists(path)) File.Replace(temporary, path, null); else File.Move(temporary, path); }
             finally { if (File.Exists(temporary)) File.Delete(temporary); }
         }
-        public HostPreferences ReadHost() { HostPreferences preferences = Read<HostPreferences>(HostFile); preferences.Validate(); return preferences; }
+        static void ForceDisabled(HostPreferences preferences) { preferences.Enabled = false; preferences.PairId = preferences.PairKey = preferences.PairMac = null; preferences.PairExpires = 0; }
+        public HostPreferences ReadHost()
+        {
+            HostPreferences preferences = Read<HostPreferences>(HostFile); preferences.Validate(); CheckNoReparse(DisableFile);
+            if (File.Exists(DisableFile)) ForceDisabled(preferences);
+            return preferences;
+        }
+        string DisableToken()
+        {
+            CheckNoReparse(DisableFile); if (!File.Exists(DisableFile)) return null;
+            Dictionary<string, string> state = Read<Dictionary<string, string>>(DisableFile); string token;
+            if (state.Count != 1 || !state.TryGetValue("Token", out token) || !Invitation.IsHex(token, 32)) throw new InvalidDataException("Invalid disabled-host state. Permanent access remains disabled.");
+            return token;
+        }
         static bool CanWriteHost()
         {
             using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) return identity.IsSystem || new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator);
@@ -203,7 +243,26 @@ namespace LumeRemote
         public void ApplyDirect(Action<HostPreferences> change) { ApplyDirect(change, 10000); }
         public void ApplyDirect(Action<HostPreferences> change, int lockTimeoutMs)
         {
-            using (HostLock.Acquire(LockFile, lockTimeoutMs)) { HostPreferences preferences = ReadHost(); change(preferences); preferences.Validate(); Write(HostFile, preferences); }
+            ApplyDirect(change, lockTimeoutMs, false);
+        }
+        void ApplyDirect(Action<HostPreferences> change, int lockTimeoutMs, bool enableRequested)
+        {
+            using (HostLock.Acquire(LockFile, lockTimeoutMs))
+            {
+                string observed; using (HostLock.Acquire(StateLockFile, 3000)) observed = DisableToken();
+                HostPreferences preferences = ReadHost(); bool enabledBefore = preferences.Enabled;
+                change(preferences); bool enabling = enableRequested || (!enabledBefore && preferences.Enabled);
+                // Arbitrary mutations can run for a long time. Only publication holds
+                // the short state lock, so Disable can independently revoke access.
+                using (HostLock.Acquire(StateLockFile, 3000))
+                {
+                    string current = DisableToken();
+                    if (enabling && current != observed) throw new InvalidOperationException("Permanent access was disabled during this change. Enable it again explicitly.");
+                    if (current != null && !enabling) ForceDisabled(preferences);
+                    preferences.Validate(); Write(HostFile, preferences);
+                    if (enabling && current != null) { CheckNoReparse(DisableFile); File.Delete(DisableFile); }
+                }
+            }
         }
         // Translate a validated owner request into a host.dat mutation. OwnerSid,
         // HostId and BrokerToken are never assigned here.
@@ -229,7 +288,12 @@ namespace LumeRemote
         // through Change/Disable and the control pipe instead.
         public void ChangeHost(Action<HostPreferences> change) { ApplyDirect(change); }
         // SYSTEM side: validate and apply an owner request.
-        public void ApplyRequest(HostRequest request) { request.Validate(); ApplyDirect(Mutation(request)); }
+        public void ApplyRequest(HostRequest request)
+        {
+            request.Validate();
+            if (request.Op == "enable" && !request.Flag) { DisableDirect(); return; }
+            ApplyDirect(Mutation(request), 10000, request.Op == "enable" && request.Flag);
+        }
         // Owner-facing change. Privileged callers apply directly; the non-elevated
         // owner dashboard sends the request to the SYSTEM worker's control pipe and
         // gets a synchronous success/error result.
@@ -285,19 +349,20 @@ namespace LumeRemote
         {
             HostRequest request = JsonData.Decode<HostRequest>(new UTF8Encoding(false, true).GetString(payload)); if (request == null) throw new InvalidDataException("Empty settings request."); request.Validate(); return request;
         }
-        // Robust, privilege-aware disable. Owner sends it over the pipe; a
-        // privileged caller (the elevated --disable-host uninstall path) writes
-        // directly and, if the lock is momentarily unavailable, still forces the
-        // host off so revocation is never blocked.
+        // A separate protected disable generation overrides stale host.dat writers.
+        // Only an explicit enable that observed this generation may remove it.
         public void Disable()
         {
             HostRequest request = new HostRequest { Op = "enable", Flag = false };
             if (machine && !CanWriteHost()) { SendControl(request); return; }
-            try { request.Validate(); ApplyDirect(Mutation(request), 3000); }
-            catch (IOException)
-            {
-                HostPreferences host = ReadHost(); host.Enabled = false; host.PairId = host.PairKey = host.PairMac = null; host.PairExpires = 0; host.Validate(); Write(HostFile, host);
-            }
+            DisableDirect();
+        }
+        void DisableDirect()
+        {
+            using (HostLock.Acquire(StateLockFile, 3000)) Write(DisableFile, new Dictionary<string, string> { { "Token", Guid.NewGuid().ToString("N") } });
+            // Compact ordinary settings when possible. Failure cannot undo the
+            // already-published revocation and no unlocked host.dat write is made.
+            try { ApplyDirect(ForceDisabled, 3000); } catch (IOException) { }
         }
         public SavedPreferences ReadSaved()
         {

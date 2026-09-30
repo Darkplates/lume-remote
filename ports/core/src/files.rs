@@ -19,6 +19,8 @@ use std::{
 
 const CHUNK: usize = 65536;
 const WINDOW: u64 = 8 * CHUNK as u64;
+const COMPLETION_HEARTBEAT: Duration = Duration::from_secs(5);
+const COMPLETION_DEADLINE: Duration = Duration::from_secs(10 * 60);
 #[path = "file_jobs.rs"]
 mod jobs;
 use jobs::FolderJob;
@@ -183,6 +185,41 @@ pub(crate) fn local_path(path: &Path) -> Result<()> {
     }
     Ok(())
 }
+/// Refuse special files before open, and close the check/open race on POSIX:
+/// nonblocking prevents a substituted FIFO from waiting for a writer; no-follow
+/// prevents a substituted final symlink, and metadata validates the descriptor.
+fn open_regular(path: &Path) -> Result<File> {
+    local_path(path)?;
+    let expected = fs::symlink_metadata(path)?;
+    ensure!(expected.is_file(), "Choose a regular file");
+    open_regular_descriptor(path, &expected)
+}
+fn open_regular_descriptor(path: &Path, expected: &fs::Metadata) -> Result<File> {
+    #[cfg(not(unix))]
+    let _ = expected;
+    let mut options = OpenOptions::new();
+    options.read(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.custom_flags(libc::O_NONBLOCK | libc::O_NOFOLLOW);
+    }
+    let file = options.open(path)?;
+    let metadata = file.metadata()?;
+    ensure!(
+        metadata.is_file() && metadata.len() <= i64::MAX as u64,
+        "Choose a regular file"
+    );
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::MetadataExt;
+        ensure!(
+            metadata.dev() == expected.dev() && metadata.ino() == expected.ino(),
+            "The source file changed before it could be opened"
+        );
+    }
+    Ok(file)
+}
 fn identifier() -> Result<String> {
     let token = crate::paired::token(16)?;
     use base64::Engine;
@@ -266,6 +303,7 @@ impl FileClient {
                 resume_key,
                 state: shared,
                 transfer: None,
+                completion: None,
                 lists: HashMap::new(),
                 network_roots,
                 server_root,
@@ -446,7 +484,12 @@ impl Incoming {
         self.position += bytes.len() as u64;
         Ok(())
     }
+    #[cfg(test)]
     fn complete(&mut self, digest: &[u8]) -> Result<PathBuf> {
+        self.complete_with(digest, &|| Ok(()))
+    }
+    fn complete_with(&mut self, digest: &[u8], check: &dyn Fn() -> Result<()>) -> Result<PathBuf> {
+        check()?;
         self.check_identity(digest)?;
         ensure!(
             self.position == self.length
@@ -457,25 +500,41 @@ impl Incoming {
             .as_mut()
             .context("Download is closed")?
             .sync_all()?;
+        check()?;
         self.file.take();
         local_path(&self.folder)?;
-        publish(&self.temp, &self.folder, &self.name, |from, to| {
-            fs::hard_link(from, to)
-        })
+        publish_with(
+            &self.temp,
+            &self.folder,
+            &self.name,
+            |from, to| fs::hard_link(from, to),
+            check,
+        )
     }
 }
 /// Publishes a verified temporary file under the first free name, never replacing
 /// an existing file or link. A hard link publishes atomically; file systems that
 /// cannot link (FAT/exFAT, some SMB shares) use an exclusive-create copy instead.
+#[cfg(test)]
 fn publish(
     temp: &Path,
     folder: &Path,
     name: &str,
     link: impl Fn(&Path, &Path) -> std::io::Result<()>,
 ) -> Result<PathBuf> {
+    publish_with(temp, folder, name, link, &|| Ok(()))
+}
+fn publish_with(
+    temp: &Path,
+    folder: &Path,
+    name: &str,
+    link: impl Fn(&Path, &Path) -> std::io::Result<()>,
+    check: &dyn Fn() -> Result<()>,
+) -> Result<PathBuf> {
     use std::io::ErrorKind;
     let mut linkable = true;
     for n in 0..10000 {
+        check()?;
         let candidate = if n == 0 {
             name.to_owned()
         } else {
@@ -505,7 +564,7 @@ fn publish(
                 Err(_) => linkable = false,
             }
         }
-        match copy_new(temp, &target) {
+        match copy_new(temp, &target, check) {
             Ok(()) => {
                 fs::remove_file(temp)?;
                 return Ok(target);
@@ -517,7 +576,7 @@ fn publish(
     bail!("Choose a different destination file name")
 }
 /// Copies `temp` into a newly created `target`; fails if `target` exists.
-fn copy_new(temp: &Path, target: &Path) -> std::io::Result<()> {
+fn copy_new(temp: &Path, target: &Path, check: &dyn Fn() -> Result<()>) -> std::io::Result<()> {
     let mut options = OpenOptions::new();
     options.write(true).create_new(true);
     #[cfg(unix)]
@@ -529,11 +588,22 @@ fn copy_new(temp: &Path, target: &Path) -> std::io::Result<()> {
     let result = (|| {
         let mut input = File::open(temp)?;
         let expected = input.metadata()?.len();
-        let copied = std::io::copy(&mut input, &mut out)?;
+        let mut copied = 0;
+        let mut buffer = [0; CHUNK];
+        loop {
+            check().map_err(std::io::Error::other)?;
+            let size = input.read(&mut buffer)?;
+            if size == 0 {
+                break;
+            }
+            out.write_all(&buffer[..size])?;
+            copied += size as u64;
+        }
         if copied != expected {
             return Err(std::io::Error::other("Published copy is incomplete"));
         }
-        out.sync_all()
+        out.sync_all()?;
+        check().map_err(std::io::Error::other)
     })();
     if result.is_err() {
         // Only the file created exclusively above is removed.
@@ -553,6 +623,7 @@ struct Worker {
     stop: Arc<AtomicBool>,
     state: Arc<Mutex<FileState>>,
     transfer: Option<Transfer>,
+    completion: Option<Completion>,
     lists: HashMap<String, PendingList>,
     network_roots: bool,
     cancel: Arc<AtomicBool>,
@@ -562,7 +633,157 @@ struct Worker {
     job: Option<FolderJob>,
     retired: VecDeque<String>,
 }
+/// At most one disk publication runs per worker. It never owns the network or
+/// waits on the UI, and closing the worker does not join a blocked disk syscall.
+struct Completion {
+    id: String,
+    length: u64,
+    started: Instant,
+    acknowledged: Instant,
+    cancel: Arc<AtomicBool>,
+    result: Receiver<(Incoming, Result<PathBuf>)>,
+}
 impl Worker {
+    fn start_completion(&mut self, id: &str, file: Incoming, digest: &[u8]) -> Result<()> {
+        self.start_completion_with(id, file, digest, |file, digest, check| {
+            file.complete_with(digest, check)
+        })
+    }
+    fn start_completion_with(
+        &mut self,
+        id: &str,
+        mut file: Incoming,
+        digest: &[u8],
+        complete: impl FnOnce(&mut Incoming, &[u8], &dyn Fn() -> Result<()>) -> Result<PathBuf>
+        + Send
+        + 'static,
+    ) -> Result<()> {
+        ensure!(
+            self.completion.is_none(),
+            "Wait for the previous file publication to finish"
+        );
+        // Reject invalid finishes before starting liveness or expensive disk work.
+        file.check_identity(digest)?;
+        ensure!(
+            file.position == file.length
+                && crate::wire::equal(&file.hash.clone().finalize(), digest),
+            "File length or SHA-256 did not match"
+        );
+        let digest = digest.to_vec();
+        let length = file.length;
+        let cancel = Arc::new(AtomicBool::new(false));
+        let (completion_cancel, stop, local_cancel) =
+            (cancel.clone(), self.stop.clone(), self.cancel.clone());
+        let started = Instant::now();
+        let (out, result) = mpsc::sync_channel(1);
+        thread::Builder::new()
+            .name("lume-file-publication".into())
+            .spawn(move || {
+                let check = || {
+                    ensure!(
+                        !stop.load(Ordering::Acquire)
+                            && !local_cancel.load(Ordering::Acquire)
+                            && !completion_cancel.load(Ordering::Acquire),
+                        "File publication cancelled"
+                    );
+                    ensure!(
+                        started.elapsed() < COMPLETION_DEADLINE,
+                        "File publication timed out"
+                    );
+                    Ok(())
+                };
+                let published = complete(&mut file, &digest, &check);
+                if published.is_err()
+                    && stop.load(Ordering::Acquire)
+                    && !local_cancel.load(Ordering::Acquire)
+                    && !completion_cancel.load(Ordering::Acquire)
+                {
+                    file.preserve();
+                }
+                // Dropping a receiver never blocks this thread, including on close.
+                let _ = out.send((file, published));
+            })?;
+        self.completion = Some(Completion {
+            id: id.into(),
+            length,
+            started,
+            acknowledged: started,
+            cancel,
+            result,
+        });
+        Ok(())
+    }
+    fn pump_completion(&mut self) -> Result<()> {
+        let Some(completion) = &self.completion else {
+            return Ok(());
+        };
+        let outcome = match completion.result.try_recv() {
+            Ok(outcome) => Some(outcome),
+            Err(mpsc::TryRecvError::Empty) => None,
+            Err(mpsc::TryRecvError::Disconnected) => {
+                self.completion.take();
+                return self.fail("File publication worker stopped");
+            }
+        };
+        if let Some((file, result)) = outcome {
+            let completion = self.completion.take().unwrap();
+            if !self
+                .transfer
+                .as_ref()
+                .is_some_and(|t| t.id() == completion.id)
+            {
+                return Ok(()); // Cancelled transfers never publish a late success receipt.
+            }
+            if completion.cancel.load(Ordering::Acquire) || self.cancel.load(Ordering::Acquire) {
+                return self.fail("Transfer cancelled. Completed items kept.");
+            }
+            match result {
+                Ok(path) => {
+                    let response = if self.server_root.is_some() {
+                        self.virtual_path(&path)?
+                    } else {
+                        path.to_string_lossy().into()
+                    };
+                    self.send(packet(10, &completion.id).byte(1).text(&response))?;
+                    self.transfer.take();
+                    self.progress(&file.name, "Receiving", file.length, file.length, false);
+                    self.state.lock().unwrap().completed = Some(path.to_string_lossy().into());
+                    self.job_file_done(file.length)?;
+                }
+                Err(e) => {
+                    self.send(
+                        packet(10, &completion.id)
+                            .byte(0)
+                            .text("File verification or publication failed"),
+                    )?;
+                    self.fail(&format!("Download failed: {e}"))?;
+                }
+            }
+        } else if completion.started.elapsed() >= COMPLETION_DEADLINE {
+            if !completion.cancel.load(Ordering::Acquire) {
+                self.fail("File publication timed out. Completed items kept.")?;
+            }
+        } else if !completion.cancel.load(Ordering::Acquire)
+            && !self.cancel.load(Ordering::Acquire)
+            && completion.acknowledged.elapsed() >= COMPLETION_HEARTBEAT
+        {
+            // Every existing sender accepts a repeated final Ack as liveness.
+            // A full outbox must not block cancellation; retry on the next tick.
+            let acknowledgement = packet(8, &completion.id).long(completion.length as i64);
+            match self.out.try_send(Event::Send(acknowledgement)) {
+                Ok(()) => {
+                    let now = Instant::now();
+                    self.completion.as_mut().unwrap().acknowledged = now;
+                    if let Some(Transfer::Receive { activity, .. }) = &mut self.transfer {
+                        *activity = now;
+                    }
+                }
+                Err(mpsc::TrySendError::Full(_)) => {}
+                Err(_) => bail!("File channel closed"),
+            }
+        }
+        Ok(())
+    }
     fn resolve(&self, path: &str) -> Result<PathBuf> {
         let root = self.server_root.as_ref().context("This is a viewer")?;
         let tail = path
@@ -681,7 +902,10 @@ impl Worker {
                 let path = r.text(4096)?;
                 r.end()?;
                 let result = (|| -> Result<Transfer> {
-                    ensure!(self.transfer.is_none(), "Another transfer is active");
+                    ensure!(
+                        self.transfer.is_none() && self.completion.is_none(),
+                        "Another transfer is active"
+                    );
                     let local = self.resolve(&path)?;
                     let name = local
                         .file_name()
@@ -690,12 +914,7 @@ impl Worker {
                         .context("Invalid file name")?
                         .to_owned();
                     safe_name(&name)?;
-                    // Refuse FIFOs and devices before open(), which could block this worker forever.
-                    ensure!(
-                        fs::symlink_metadata(&local)?.is_file(),
-                        "Choose a regular file"
-                    );
-                    let mut file = File::open(local)?;
+                    let mut file = open_regular(&local)?;
                     let metadata = file.metadata()?;
                     ensure!(
                         metadata.is_file() && metadata.len() <= i64::MAX as u64,
@@ -749,7 +968,10 @@ impl Worker {
                 };
                 r.end()?;
                 let result = (|| -> Result<Transfer> {
-                    ensure!(self.transfer.is_none(), "Another transfer is active");
+                    ensure!(
+                        self.transfer.is_none() && self.completion.is_none(),
+                        "Another transfer is active"
+                    );
                     let folder = self.resolve(&folder)?;
                     let incoming = self.incoming(&folder, &name, length as u64, digest, id)?;
                     self.send(if op == 13 {
@@ -830,6 +1052,9 @@ impl Worker {
         self.emit(Event::Send(p))
     }
     fn fail(&mut self, message: &str) -> Result<()> {
+        if let Some(completion) = &self.completion {
+            completion.cancel.store(true, Ordering::Release);
+        }
         if let Some(t) = self.transfer.take() {
             self.retire(t.id().into());
             self.send(packet(9, t.id()))?;
@@ -888,6 +1113,11 @@ impl Worker {
     }
     fn command(&mut self, command: FileCommand) -> Result<()> {
         command.validate()?;
+        ensure!(
+            matches!(command, FileCommand::List { .. } | FileCommand::Cancel)
+                || self.completion.is_none(),
+            "Wait for the previous file publication to finish"
+        );
         match command {
             FileCommand::Cancel => self.fail("Transfer cancelled")?,
             FileCommand::List { path, page } => {
@@ -921,11 +1151,10 @@ impl Worker {
                 name,
             } => {
                 ensure!(
-                    self.transfer.is_none() && self.job.is_none(),
+                    self.transfer.is_none() && self.job.is_none() && self.completion.is_none(),
                     "Finish or cancel the current transfer first"
                 );
-                local_path(&local)?;
-                let mut file = File::open(local)?;
+                let mut file = open_regular(&local)?;
                 let metadata = file.metadata()?;
                 ensure!(
                     metadata.is_file() && metadata.len() <= i64::MAX as u64,
@@ -963,7 +1192,7 @@ impl Worker {
                 name,
             } => {
                 ensure!(
-                    self.transfer.is_none() && self.job.is_none(),
+                    self.transfer.is_none() && self.job.is_none() && self.completion.is_none(),
                     "Finish or cancel the current transfer first"
                 );
                 local_path(&folder)?;
@@ -1020,6 +1249,7 @@ impl Worker {
         }
     }
     fn pump(&mut self) -> Result<()> {
+        self.pump_completion()?;
         for _ in 0..8 {
             let p = match &mut self.transfer {
                 Some(Transfer::Send {
@@ -1255,25 +1485,15 @@ impl Worker {
                 r.end()?;
                 if self.transfer.as_ref().is_some_and(|t| t.id() == id) {
                     let Some(Transfer::Receive {
-                        incoming: Some(mut file),
-                        ..
-                    }) = self.transfer.take()
+                        incoming, activity, ..
+                    }) = &mut self.transfer
                     else {
                         bail!("Unexpected transfer finish")
                     };
-                    match file.complete(digest) {
-                        Ok(path) => {
-                            let response = if self.server_root.is_some() {
-                                self.virtual_path(&path)?
-                            } else {
-                                path.to_string_lossy().into()
-                            };
-                            self.send(packet(10, &id).byte(1).text(&response))?;
-                            self.progress(&file.name, "Receiving", file.length, file.length, false);
-                            self.state.lock().unwrap().completed =
-                                Some(path.to_string_lossy().into());
-                            self.job_file_done(file.length)?;
-                        }
+                    let file = incoming.take().context("Unexpected transfer finish")?;
+                    *activity = Instant::now();
+                    match self.start_completion(&id, file, digest) {
+                        Ok(()) => {}
                         Err(e) => {
                             self.send(
                                 packet(10, &id)
@@ -1373,6 +1593,7 @@ mod tests {
                 stop: Arc::new(AtomicBool::new(false)),
                 state: Default::default(),
                 transfer: None,
+                completion: None,
                 lists: HashMap::new(),
                 network_roots: false,
                 cancel: Arc::new(AtomicBool::new(false)),
@@ -1384,6 +1605,390 @@ mod tests {
             },
             rx,
         )
+    }
+    fn fixture_root() -> PathBuf {
+        let root =
+            std::env::temp_dir().join(format!("lume-completion-test-{}", identifier().unwrap()));
+        fs::create_dir(&root).unwrap();
+        root
+    }
+    fn completing(worker: &mut Worker, folder: &Path) -> (String, Incoming) {
+        let id = identifier().unwrap();
+        let mut file = Incoming::create(folder, "verified.txt", 4).unwrap();
+        file.append(0, b"data").unwrap();
+        worker.transfer = Some(Transfer::Receive {
+            id: id.clone(),
+            name: file.name.clone(),
+            folder: folder.into(),
+            incoming: None,
+            resumable: false,
+            activity: Instant::now(),
+        });
+        (id, file)
+    }
+    fn wait_completion(worker: &mut Worker) {
+        let started = Instant::now();
+        while worker.completion.is_some() {
+            worker.pump().unwrap();
+            assert!(
+                started.elapsed() < Duration::from_secs(3),
+                "Publication did not finish"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+    }
+    #[test]
+    fn completion_heartbeats_outlive_the_legacy_sender_timeout_in_both_roles() {
+        // Both roles use real worker/packet handling and the production five-second
+        // interval. The only fake is a controlled delay before the real flush/link.
+        thread::scope(|scope| {
+            for serving in [false, true] {
+                scope.spawn(move || {
+                    let root = fixture_root();
+                    let (mut receiver, replies) = worker(serving.then(|| root.clone()));
+                    let (id, file) = completing(&mut receiver, &root);
+                    let (mut sender, _) = worker(None);
+                    sender.transfer = Some(Transfer::Send {
+                        id: id.clone(),
+                        name: "verified.txt".into(),
+                        file: File::open(&file.temp).unwrap(),
+                        length: 4,
+                        sent: 4,
+                        ack: 4,
+                        ready: true,
+                        finished: true,
+                        resumable: false,
+                        hash: file.hash.clone(),
+                        activity: Instant::now(),
+                    });
+                    let (release, blocked) = mpsc::channel();
+                    receiver
+                        .start_completion_with(
+                            &id,
+                            file,
+                            &Sha256::digest(b"data"),
+                            move |file, digest, check| {
+                                blocked.recv_timeout(Duration::from_secs(40))?;
+                                file.complete_with(digest, check)
+                            },
+                        )
+                        .unwrap();
+                    let started = Instant::now();
+                    let mut acknowledgements = 0;
+                    while started.elapsed() < Duration::from_secs(31) {
+                        receiver.pump().unwrap();
+                        while let Ok(Event::Send(p)) = replies.try_recv() {
+                            assert_eq!(p.0.get(1), Some(&8));
+                            acknowledgements += 1;
+                            sender.handle(p).unwrap();
+                        }
+                        assert!(
+                            sender.transfer.as_ref().unwrap().activity().elapsed()
+                                < Duration::from_secs(30),
+                            "Legacy sender would have stalled"
+                        );
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    assert!(acknowledgements >= 6);
+                    assert!(!root.join("verified.txt").exists());
+                    release.send(()).unwrap();
+                    wait_completion(&mut receiver);
+                    while let Ok(Event::Send(p)) = replies.try_recv() {
+                        sender.handle(p).unwrap();
+                    }
+                    assert!(sender.transfer.is_none());
+                    assert_eq!(fs::read(root.join("verified.txt")).unwrap(), b"data");
+                    assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+                    assert!(receiver.state.lock().unwrap().completed.is_some());
+                    drop((sender, receiver));
+                    fs::remove_dir_all(root).unwrap();
+                });
+            }
+        });
+    }
+    #[test]
+    fn cancel_and_deadline_stop_completion_liveness_without_starting_another_publication() {
+        for timeout in [false, true] {
+            let root = fixture_root();
+            let (mut worker, replies) = worker(None);
+            let (id, file) = completing(&mut worker, &root);
+            let (release, blocked) = mpsc::channel();
+            worker
+                .start_completion_with(
+                    &id,
+                    file,
+                    &Sha256::digest(b"data"),
+                    move |file, digest, check| {
+                        blocked.recv_timeout(Duration::from_secs(5))?;
+                        file.complete_with(digest, check)
+                    },
+                )
+                .unwrap();
+            if timeout {
+                worker.completion.as_mut().unwrap().started = Instant::now() - COMPLETION_DEADLINE;
+                worker.pump().unwrap();
+                assert!(worker.state.lock().unwrap().status.contains("timed out"));
+            } else {
+                worker.command(FileCommand::Cancel).unwrap();
+            }
+            assert!(worker.transfer.is_none());
+            assert!(
+                worker
+                    .completion
+                    .as_ref()
+                    .unwrap()
+                    .cancel
+                    .load(Ordering::Acquire)
+            );
+            assert!(
+                worker
+                    .command(FileCommand::Download {
+                        remote: "R:\\verified.txt".into(),
+                        folder: root.clone(),
+                        name: "verified.txt".into(),
+                    })
+                    .is_err()
+            );
+            while replies.try_recv().is_ok() {}
+            worker.completion.as_mut().unwrap().acknowledged =
+                Instant::now() - COMPLETION_HEARTBEAT;
+            worker.pump().unwrap();
+            assert!(
+                replies.try_recv().is_err(),
+                "Cancellation must stop heartbeat packets"
+            );
+            release.send(()).unwrap();
+            wait_completion(&mut worker);
+            assert_eq!(fs::read_dir(&root).unwrap().count(), 0);
+            assert!(
+                replies.try_recv().is_err(),
+                "Cancellation must not send a late success"
+            );
+            fs::remove_dir(root).unwrap();
+        }
+    }
+    #[test]
+    fn closing_a_worker_does_not_join_a_blocked_disk_publication() {
+        let root = fixture_root();
+        let (mut worker, events) = worker(None);
+        let (id, file) = completing(&mut worker, &root);
+        let (release, blocked) = mpsc::channel();
+        worker
+            .start_completion_with(
+                &id,
+                file,
+                &Sha256::digest(b"data"),
+                move |file, digest, check| {
+                    blocked.recv_timeout(Duration::from_secs(5))?;
+                    file.complete_with(digest, check)
+                },
+            )
+            .unwrap();
+        let (tx, rx) = mpsc::sync_channel(32);
+        let stop = worker.stop.clone();
+        let client = FileClient {
+            tx,
+            events,
+            state: worker.state.clone(),
+            stop,
+            cancel: worker.cancel.clone(),
+            worker: Some(thread::spawn(move || worker.run(rx).unwrap())),
+        };
+        let started = Instant::now();
+        drop(client);
+        assert!(started.elapsed() < Duration::from_secs(1));
+        release.send(()).unwrap();
+        let started = Instant::now();
+        while fs::read_dir(&root).unwrap().count() != 0 {
+            assert!(
+                started.elapsed() < Duration::from_secs(3),
+                "Cancelled partial was retained"
+            );
+            thread::sleep(Duration::from_millis(1));
+        }
+        assert!(!root.join("verified.txt").exists());
+        fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn cancellation_before_the_worker_consumes_a_result_does_not_send_late_success() {
+        let root = fixture_root();
+        let (mut worker, replies) = worker(None);
+        let (id, file) = completing(&mut worker, &root);
+        let (ready, published) = mpsc::channel();
+        worker
+            .start_completion_with(
+                &id,
+                file,
+                &Sha256::digest(b"data"),
+                move |file, digest, check| {
+                    let path = file.complete_with(digest, check)?;
+                    ready.send(())?;
+                    Ok(path)
+                },
+            )
+            .unwrap();
+        published.recv_timeout(Duration::from_secs(3)).unwrap();
+        // FileClient::command(Cancel) sets this before the queued command is
+        // processed. A completion result may become ready in the same interval.
+        worker.cancel.store(true, Ordering::Release);
+        wait_completion(&mut worker);
+        assert!(worker.transfer.is_none());
+        assert!(worker.state.lock().unwrap().status.contains("cancelled"));
+        assert!(worker.state.lock().unwrap().completed.is_none());
+        while let Ok(Event::Send(packet)) = replies.try_recv() {
+            assert_eq!(
+                packet.0.get(1),
+                Some(&9),
+                "A cancelled operation sent a late result"
+            );
+        }
+        // Cancellation after atomic publication keeps that completed item, as
+        // cancellation does for earlier completed files in a folder operation.
+        assert_eq!(fs::read(root.join("verified.txt")).unwrap(), b"data");
+        assert_eq!(fs::read_dir(&root).unwrap().count(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn completion_heartbeat_does_not_wait_for_a_full_outbox() {
+        let root = fixture_root();
+        let (mut worker, replies) = worker(None);
+        let (id, file) = completing(&mut worker, &root);
+        let (release, blocked) = mpsc::channel();
+        worker
+            .start_completion_with(
+                &id,
+                file,
+                &Sha256::digest(b"data"),
+                move |file, digest, check| {
+                    blocked.recv_timeout(Duration::from_secs(5))?;
+                    file.complete_with(digest, check)
+                },
+            )
+            .unwrap();
+        while worker
+            .out
+            .try_send(Event::Send(packet(8, &id).long(4)))
+            .is_ok()
+        {}
+        worker.completion.as_mut().unwrap().acknowledged = Instant::now() - COMPLETION_HEARTBEAT;
+        let started = Instant::now();
+        worker.pump().unwrap();
+        assert!(started.elapsed() < Duration::from_millis(100));
+        while replies.try_recv().is_ok() {}
+        worker.command(FileCommand::Cancel).unwrap();
+        release.send(()).unwrap();
+        wait_completion(&mut worker);
+        fs::remove_dir(root).unwrap();
+    }
+    #[test]
+    fn cancelling_copy_publication_removes_only_its_exclusive_output() {
+        let root = fixture_root();
+        let temp = root.join(".lume-copy.partial");
+        fs::write(&temp, vec![1; CHUNK * 4]).unwrap();
+        fs::write(root.join("report.bin"), b"existing").unwrap();
+        let checks = std::cell::Cell::new(0);
+        let result = publish_with(
+            &temp,
+            &root,
+            "report.bin",
+            |_, _| Err(std::io::Error::from(std::io::ErrorKind::Unsupported)),
+            &|| {
+                checks.set(checks.get() + 1);
+                ensure!(checks.get() < 5, "Cancelled test copy");
+                Ok(())
+            },
+        );
+        assert!(result.is_err());
+        assert_eq!(fs::read(root.join("report.bin")).unwrap(), b"existing");
+        assert!(!root.join("report (1).bin").exists());
+        assert!(temp.exists());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn upload_fifo_without_a_writer_is_rejected_and_closes_promptly() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = fixture_root();
+        let fifo = root.join("no-writer.fifo");
+        let name = std::ffi::CString::new(fifo.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let state = Arc::new(Mutex::new(FileState::default()));
+        let client = FileClient::new(state.clone(), false);
+        client
+            .command(FileCommand::Upload {
+                local: fifo.clone(),
+                folder: "R:\\".into(),
+                name: "fifo.txt".into(),
+            })
+            .unwrap();
+        let started = Instant::now();
+        while state.lock().unwrap().active && started.elapsed() < Duration::from_secs(2) {
+            thread::sleep(Duration::from_millis(1));
+        }
+        let rejected = !state.lock().unwrap().active;
+        if !rejected {
+            // Rescue an unfixed implementation before asserting, so CI never hangs.
+            use std::os::unix::fs::OpenOptionsExt;
+            let _rescue = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&fifo)
+                .unwrap();
+        }
+        let closed = Instant::now();
+        drop(client);
+        assert!(
+            rejected,
+            "FIFO selection blocked before regular-file validation"
+        );
+        assert!(closed.elapsed() < Duration::from_secs(1));
+        assert!(state.lock().unwrap().status.contains("regular file"));
+        fs::remove_file(fifo).unwrap();
+        fs::remove_dir(root).unwrap();
+    }
+    #[cfg(unix)]
+    #[test]
+    fn descriptor_open_rejects_fifo_symlink_and_file_substitution_after_the_precheck() {
+        use std::os::unix::ffi::OsStrExt;
+        let root = fixture_root();
+        let source = root.join("source.bin");
+        fs::write(&source, b"original").unwrap();
+        let expected = fs::symlink_metadata(&source).unwrap();
+        // Keep the original inode alive while replacing its name.
+        fs::rename(&source, root.join("original.bin")).unwrap();
+        let name = std::ffi::CString::new(source.as_os_str().as_bytes()).unwrap();
+        assert_eq!(unsafe { libc::mkfifo(name.as_ptr(), 0o600) }, 0);
+        let (out, result) = mpsc::channel();
+        let (path, metadata) = (source.clone(), expected.clone());
+        let opened = thread::spawn(move || {
+            out.send(open_regular_descriptor(&path, &metadata).is_err())
+                .unwrap()
+        });
+        let rejected = result.recv_timeout(Duration::from_secs(2));
+        if rejected.is_err() {
+            use std::os::unix::fs::OpenOptionsExt;
+            let _rescue = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(libc::O_NONBLOCK)
+                .open(&source)
+                .unwrap();
+        }
+        opened.join().unwrap();
+        assert!(rejected.unwrap(), "Substituted FIFO was accepted");
+        fs::remove_file(&source).unwrap();
+        std::os::unix::fs::symlink(root.join("original.bin"), &source).unwrap();
+        assert!(open_regular_descriptor(&source, &expected).is_err());
+        fs::remove_file(&source).unwrap();
+        fs::write(&source, b"substituted regular file").unwrap();
+        assert!(open_regular_descriptor(&source, &expected).is_err());
+        assert!(open_regular(&source).is_ok());
+        let socket = root.join("socket");
+        let listener = std::os::unix::net::UnixListener::bind(&socket).unwrap();
+        assert!(open_regular(&socket).is_err());
+        drop(listener);
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn publish_falls_back_to_exclusive_copy_without_overwriting() {

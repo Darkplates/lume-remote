@@ -30,7 +30,7 @@ if ($SourceOnly) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw ('Missing portable source file: ' + $relative) }
         $files += Get-Item -LiteralPath $path
     }
-    foreach ($folder in @('ports/core/src','ports/core/examples','ports/desktop/src','ports/desktop/tests','ports/bridge/src','ports/android/app/src/main/java','ports/android/app/src/main/res','ports/android/app/src/androidTest','ports/ios/Lume','ports/macos')) {
+    foreach ($folder in @('ports/core/src','ports/core/examples','ports/desktop/src','ports/desktop/tests','ports/bridge/src','ports/android/app/src/main/java','ports/android/app/src/main/res','ports/android/app/src/androidTest','ports/android/app/src/test','ports/ios/Lume','ports/macos')) {
         foreach ($file in Get-ChildItem -LiteralPath (Join-Path $projectRoot $folder) -File -Recurse) {
             if ($file.Extension -in @('.rs','.java','.xml','.png','.swift','.h')) { $files += $file }
         }

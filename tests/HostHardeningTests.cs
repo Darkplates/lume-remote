@@ -17,6 +17,9 @@ static partial class Tests
         Run("Owner requests never change ownership or identity", RequestPolicy);
         Run("Settings lock is a protected file, not a global object", SettingsFileLockSerializes);
         Run("Disable survives a held settings lock", DisableSurvivesHeldLock);
+        Run("Disable remains effective after a delayed settings writer", DisableOutlivesSettingsWriter);
+        Run("A pending enable cannot undo a later disable", DisableOutlivesPendingEnable);
+        Run("Owner control listener persists across legitimate requests", ControlListenerLifetime);
         Run("Owner control-pipe framing is bounded and validated", ControlWireFraming);
         Run("Reparse-point guard passes normal paths", ReparseGuardAllowsNormalPaths);
         Run("Permanent-host signaling rate limit is per source and bounded", SignalingRatePerSource);
@@ -106,6 +109,77 @@ static partial class Tests
         finally { CleanupDir(directory); }
     }
 
+    static void DisableOutlivesSettingsWriter()
+    {
+        string directory = HardeningDir(); Task writer = null;
+        using (ManualResetEvent loaded = new ManualResetEvent(false))
+        using (ManualResetEvent publish = new ManualResetEvent(false))
+        {
+            try
+            {
+                TrustedStore store = new TrustedStore(directory, false);
+                store.ChangeHost(delegate(HostPreferences host) { host.Enabled = true; });
+                writer = Task.Run(delegate { store.ChangeHost(delegate(HostPreferences host) { loaded.Set(); if (!publish.WaitOne(15000)) throw new TimeoutException(); host.KeepAwake = false; }); });
+                Check(loaded.WaitOne(5000), "The settings writer did not read its snapshot.");
+                store.Disable(); Check(!store.ReadHost().Enabled, "Disable was blocked by another mutation.");
+                publish.Set(); Check(writer.Wait(5000), "The settings writer did not finish.");
+                HostPreferences final = store.ReadHost(); Check(!final.Enabled && !final.KeepAwake, "A stale snapshot undid disable or lost the unrelated change.");
+                store.ApplyRequest(new HostRequest { Op = "enable", Flag = true });
+                Check(store.ReadHost().Enabled && !File.Exists(store.DisableFile), "Explicit enable did not clear the observed disable generation.");
+            }
+            finally { publish.Set(); if (writer != null) try { writer.Wait(5000); } catch { } CleanupDir(directory); }
+        }
+    }
+    static void DisableOutlivesPendingEnable()
+    {
+        string directory = HardeningDir(); Task writer = null; bool rejected = false;
+        using (ManualResetEvent loaded = new ManualResetEvent(false))
+        using (ManualResetEvent publish = new ManualResetEvent(false))
+        {
+            try
+            {
+                TrustedStore store = new TrustedStore(directory, false);
+                store.ChangeHost(delegate(HostPreferences host) { host.Enabled = true; }); store.Disable();
+                writer = Task.Run(delegate
+                {
+                    try { store.ChangeHost(delegate(HostPreferences host) { host.Enabled = true; loaded.Set(); if (!publish.WaitOne(15000)) throw new TimeoutException(); }); }
+                    catch (InvalidOperationException) { rejected = true; }
+                });
+                Check(loaded.WaitOne(5000), "The pending enable did not start."); store.Disable();
+                publish.Set(); Check(writer.Wait(5000), "The pending enable did not finish.");
+                Check(rejected && !store.ReadHost().Enabled, "An enable started before a newer disable restored access.");
+                store.ApplyRequest(new HostRequest { Op = "enable", Flag = true }); Check(store.ReadHost().Enabled, "Fresh explicit enable was rejected.");
+            }
+            finally { publish.Set(); if (writer != null) try { writer.Wait(5000); } catch { } CleanupDir(directory); }
+        }
+    }
+    static void ControlListenerLifetime()
+    {
+        string directory = HardeningDir();
+        try
+        {
+            TrustedStore store = new TrustedStore(directory, false); store.ChangeHost(delegate(HostPreferences host) { host.Enabled = false; });
+            using (PersistentHost host = new PersistentHost(store, delegate { return new Synthetic(); }, delegate { }))
+            {
+                Task running = host.Run(); Spin(delegate { return File.Exists(store.ControlFile); }, 10000, "The isolated control listener did not publish its endpoint.");
+                string name = store.ControlPipeName; Check(name != store.NewControlPipeName(), "The endpoint is not per-listener.");
+                for (int i = 0; i < 3; i++)
+                {
+                    using (var client = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.None, System.Security.Principal.TokenImpersonationLevel.Impersonation))
+                    {
+                        client.Connect(5000);
+                        TrustedStore.WriteFrame(client, Encoding.UTF8.GetBytes(JsonData.Encode(new HostRequest { Op = "keepawake", Flag = i % 2 == 0 })));
+                        string reply = Encoding.UTF8.GetString(TrustedStore.ReadFrame(client, 8192)); Check(reply.StartsWith("ok\n", StringComparison.Ordinal), "A legitimate isolated owner request failed: " + reply);
+                    }
+                    Check(store.ControlPipeName == name, "The service replaced its endpoint between requests.");
+                }
+                Check(store.ReadHost().KeepAwake, "The final legitimate request was not applied.");
+                host.Dispose(); Check(running.Wait(5000), "Stopping the isolated listener did not finish.");
+                Check(!File.Exists(store.ControlFile), "The stopped listener left discovery pointing at itself.");
+            }
+        }
+        finally { CleanupDir(directory); }
+    }
     static void ControlWireFraming()
     {
         // Round-trip the length-prefixed frame used by the owner control pipe.

@@ -14,6 +14,7 @@ namespace LumeRemote
 {
     public sealed class MainForm : Form
     {
+        readonly int uiThread = System.Threading.Thread.CurrentThread.ManagedThreadId;
         readonly ComboBox mode = Theme.Combo(), address = Theme.Combo(), screen = Theme.Combo(), profile = Theme.Combo();
         readonly TextBox port = Theme.Box(false), relay = Theme.Box(false), invitation = Theme.Box(true), remote = Theme.Box(true);
         readonly CheckBox control = new CheckBox { Text = "Allow control and files after approval", Checked = true, AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 4, 0, 12) };
@@ -107,6 +108,7 @@ namespace LumeRemote
             FormClosing += delegate(object sender, FormClosingEventArgs args)
             {
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested) { args.Cancel = true; HideDashboard(); return; }
+                if (!exitRequested) { args.Cancel = true; BeginInvoke((Action)delegate { ExitDashboard(); }); return; }
                 closing = true; statistics.Stop(); StopSharing();
                 foreach (Form window in Application.OpenForms.Cast<Form>().ToArray())
                     if (window is ViewerForm || window is PeerViewerForm) window.Close();
@@ -130,7 +132,35 @@ namespace LumeRemote
         }
         void HideDashboard() { ShowInTaskbar = false; Hide(); }
         void ShowDashboard() { ShowInTaskbar = true; Show(); WindowState = FormWindowState.Normal; Activate(); }
-        internal async void ExitDashboard() { if (exitPreparing || exitRequested) return; exitPreparing = true; foreach (ViewerForm viewer in Application.OpenForms.OfType<ViewerForm>().ToArray()) await viewer.FinishRecording(); exitRequested = true; Close(); }
+        internal async void ExitDashboard(int timeoutMilliseconds = ViewerForm.RecordingFinishTimeoutMilliseconds)
+        {
+            if (exitPreparing || exitRequested) return;
+            exitPreparing = true; RecordingFinalizationJobs.BeginExit(); Stopwatch elapsed = Stopwatch.StartNew();
+            int released = 0;
+            Action release = delegate { if (System.Threading.Interlocked.Exchange(ref released, 1) == 0) { RecordingFinalizationJobs.EndExit(); exitPreparing = false; } };
+            try
+            {
+                bool ready = false; string failure = null;
+                try
+                {
+                    Task<bool>[] finishing = Application.OpenForms.OfType<ViewerForm>().ToArray().Select(viewer => viewer.FinishRecording(timeoutMilliseconds)).ToArray();
+                    bool[] finished = await Task.WhenAll(finishing).ConfigureAwait(false);
+                    int remaining = Math.Max(0, timeoutMilliseconds - (int)Math.Min(Int32.MaxValue, elapsed.ElapsedMilliseconds));
+                    ready = !finished.Any(done => !done) && await RecordingFinalizationJobs.WaitForPending(remaining).ConfigureAwait(false);
+                }
+                catch (Exception error) { failure = "Lume could not finish closing: " + error.Message; }
+                await RecordingUi.Run(this, uiThread, delegate
+                {
+                    try
+                    {
+                        if (!ready) { SetStatus(failure ?? "A recording is still being saved. Lume will stay open; try Exit again shortly."); ShowDashboard(); }
+                        else { exitRequested = true; Close(); }
+                    }
+                    finally { release(); }
+                }).ConfigureAwait(false);
+            }
+            finally { release(); }
+        }
         static void AddField(FlowLayoutPanel parent, string label, Control field) { parent.Controls.Add(Theme.Label(label, 9, Theme.Muted)); parent.Controls.Add(field); }
         static void FitColumn(FlowLayoutPanel column, Panel scroll)
         {

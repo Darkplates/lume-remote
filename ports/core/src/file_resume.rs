@@ -331,6 +331,9 @@ mod tests {
         v.pump().unwrap();
         h.pump().unwrap();
         bytes += relay(vr, h) + relay(hr, v);
+        if v.completion.is_some() || h.completion.is_some() {
+            thread::sleep(Duration::from_millis(2));
+        }
         bytes
     }
     fn preserve(worker: &mut Worker) -> u64 {
@@ -383,7 +386,8 @@ mod tests {
             let (mut v, vr, mut h, hr) = pair(&host_root);
             v.command(command()).unwrap();
             let mut sent = 0;
-            for _ in 0..50 {
+            let started = Instant::now();
+            while started.elapsed() < Duration::from_secs(10) {
                 sent += step(&mut v, &vr, &mut h, &hr);
                 if v.transfer.is_none() && h.transfer.is_none() {
                     break;
@@ -510,7 +514,8 @@ mod tests {
         assert!(v.state.lock().unwrap().status.contains("prefix changed"));
         assert_eq!(fs::read_dir(&host_root).unwrap().count(), 0);
         v.command(command()).unwrap();
-        for _ in 0..50 {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(10) {
             step(&mut v, &vr, &mut h, &hr);
             if v.transfer.is_none() && h.transfer.is_none() {
                 break;

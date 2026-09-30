@@ -1028,7 +1028,10 @@ fn viewer_attempt(
                         }
                         annotations.insert(request, Instant::now());
                         net.send(Packet::new(7))?;
-                        net.send(crate::annotations::packet(request, epoch, &points)?)?;
+                        // Commands carry the viewer's presentation generation; the host
+                        // validates its own display epoch, which can differ after a
+                        // monitor change or a recovered connection (as for input).
+                        net.send(crate::annotations::packet(request, decoder.epoch, &points)?)?;
                         request += 1;
                     }
                 }
@@ -1874,6 +1877,225 @@ fn display_reply(id: i64, result: Result<Packet>) -> Packet {
 mod tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+    /// A test-only TLS peer implementing Windows' annotation epoch check. It
+    /// never calls a desktop adapter, creates an overlay, or emits native input.
+    struct AnnotationPeer {
+        invitation: Invitation,
+        annotations: Receiver<(i32, Vec<[i32; 2]>)>,
+        stop: Arc<AtomicBool>,
+        worker: Option<thread::JoinHandle<Result<()>>>,
+    }
+    impl AnnotationPeer {
+        fn start() -> Self {
+            let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.set_nonblocking(true).unwrap();
+            let identity =
+                tls::identity("127.0.0.1".into(), listener.local_addr().unwrap().port()).unwrap();
+            let invitation = identity.invite.clone();
+            let stop = Arc::new(AtomicBool::new(false));
+            let worker_stop = stop.clone();
+            let (received, annotations) = mpsc::sync_channel(16);
+            let worker = thread::spawn(move || {
+                let socket = loop {
+                    if worker_stop.load(Ordering::Acquire) {
+                        return Ok(());
+                    }
+                    match listener.accept() {
+                        Ok((socket, _)) => break socket,
+                        Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                            thread::sleep(Duration::from_millis(2))
+                        }
+                        Err(e) => return Err(e.into()),
+                    }
+                };
+                let guest = authenticate(
+                    Stream::Tcp(socket),
+                    &identity,
+                    &|| worker_stop.load(Ordering::Acquire),
+                    Instant::now() + PRE_AUTH_DEADLINE,
+                )?;
+                let (mut net, version) = (guest.net, guest.version);
+                net.send(
+                    Packet::new(2)
+                        .byte(1)
+                        .text("Synthetic annotation peer")
+                        .int(64)
+                        .int(48)
+                        .int(version)
+                        .int(60)
+                        .byte(0)
+                        .ulong(
+                            PORTABLE_IMAGES
+                                | crate::monitors::CAPABILITY
+                                | crate::annotations::CAPABILITY,
+                        ),
+                )?;
+                let image = RgbaImage::from_pixel(64, 48, image::Rgba([70, 120, 190, 255]));
+                let (mut epoch, mut sequence) = (1, 1);
+                net.send(frame::encode(&image, sequence, epoch, version, true, 85)?)?;
+                while !worker_stop.load(Ordering::Acquire) {
+                    let packets = match net.tick() {
+                        Ok(packets) => packets,
+                        Err(_) => return Ok(()),
+                    };
+                    for packet in packets {
+                        let mut r = Reader::new(&packet.0[1..]);
+                        match packet.0[0] {
+                            18 => {
+                                let id = r.long()?;
+                                let tool = r.byte()?;
+                                let (ok, error, body) = match tool {
+                                    3 => {
+                                        ensure!(
+                                            r.text(256)? == "two",
+                                            "Unexpected fixture display"
+                                        );
+                                        r.end()?;
+                                        epoch += 1;
+                                        sequence += 1;
+                                        net.send(frame::encode(
+                                            &image, sequence, epoch, version, true, 85,
+                                        )?)?;
+                                        (
+                                            true,
+                                            "",
+                                            Packet::new(18).int(epoch).int(64).int(48).int(60),
+                                        )
+                                    }
+                                    7 => {
+                                        let (wire_epoch, points) =
+                                            crate::annotations::read(&mut r)?;
+                                        received.try_send((wire_epoch, points))?;
+                                        (
+                                            wire_epoch == epoch,
+                                            "Wrong remote annotation epoch",
+                                            Packet::new(18),
+                                        )
+                                    }
+                                    10 => {
+                                        r.boolean()?;
+                                        r.end()?;
+                                        (true, "", Packet::new(18))
+                                    }
+                                    _ => bail!("Unexpected fixture tool"),
+                                };
+                                net.send(
+                                    Packet::new(19)
+                                        .long(id)
+                                        .byte(ok as u8)
+                                        .text(if ok { "" } else { error })
+                                        .int(body.0.len() as i32)
+                                        .bytes(&body.0),
+                                )?;
+                            }
+                            9 => net.send(Packet::new(10).long(r.long()?))?,
+                            11 => return Ok(()),
+                            5 | 7 | 14 => {}
+                            _ => bail!("Unexpected synthetic annotation packet"),
+                        }
+                    }
+                    thread::sleep(Duration::from_millis(2));
+                }
+                Ok(())
+            });
+            Self {
+                invitation,
+                annotations,
+                stop,
+                worker: Some(worker),
+            }
+        }
+    }
+    impl Drop for AnnotationPeer {
+        fn drop(&mut self) {
+            self.stop.store(true, Ordering::Release);
+            if let Some(worker) = self.worker.take() {
+                worker.join().unwrap().unwrap();
+            }
+        }
+    }
+    fn draw_and_clear(viewer: &Viewer, peer: &AnnotationPeer, wire_epoch: i32) {
+        let local = viewer.state.lock().unwrap().epoch;
+        for points in [vec![[10, 20], [30, 40]], vec![]] {
+            viewer
+                .command(Command::Annotation(local, points.clone()))
+                .unwrap();
+            assert_eq!(
+                peer.annotations
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap(),
+                (wire_epoch, points)
+            );
+        }
+        assert!(
+            viewer
+                .command(Command::Annotation(local - 1, vec![]))
+                .is_err()
+        );
+        // A command validated before invalidation may already be queued. Its
+        // worker-side local gate must still reject it instead of translating it.
+        viewer
+            .commands
+            .try_send(Command::Annotation(local - 1, vec![]))
+            .unwrap();
+        viewer.command(Command::Annotation(local, vec![])).unwrap();
+        assert_eq!(
+            peer.annotations
+                .recv_timeout(Duration::from_secs(5))
+                .unwrap(),
+            (wire_epoch, vec![])
+        );
+        assert!(
+            peer.annotations
+                .recv_timeout(Duration::from_millis(100))
+                .is_err()
+        );
+        assert!(
+            !viewer
+                .state
+                .lock()
+                .unwrap()
+                .status
+                .contains("Wrong remote annotation epoch")
+        );
+    }
+    #[test]
+    fn annotations_translate_local_generation_after_monitor_selection_and_saved_recovery() {
+        let first = AnnotationPeer::start();
+        let destination = Arc::new(Mutex::new(first.invitation.clone()));
+        let mut viewer =
+            Viewer::start(Endpoint::TestSaved(destination.clone()), Quality::default());
+        wait(|| viewer.state.lock().unwrap().frame.is_some());
+        draw_and_clear(&viewer, &first, 1);
+        let old_local = viewer.state.lock().unwrap().epoch;
+        viewer
+            .command(Command::SelectMonitor("two".into()))
+            .unwrap();
+        wait(|| {
+            let state = viewer.state.lock().unwrap();
+            state.frame.is_some()
+                && !state.monitor_pending
+                && !state.input_suspended
+                && state.epoch > old_local
+        });
+        assert_eq!(viewer.state.lock().unwrap().epoch, old_local + 2);
+        draw_and_clear(&viewer, &first, 2);
+        let selected_local = viewer.state.lock().unwrap().epoch;
+        let second = AnnotationPeer::start();
+        assert_ne!(first.invitation.pin, second.invitation.pin);
+        *destination.lock().unwrap() = second.invitation.clone();
+        drop(first);
+        wait(|| {
+            let state = viewer.state.lock().unwrap();
+            state.connected
+                && !state.reconnecting
+                && state.frame.is_some()
+                && state.epoch > selected_local
+        });
+        assert!(viewer.state.lock().unwrap().epoch > 2);
+        draw_and_clear(&viewer, &second, 1);
+        viewer.close_and_wait();
+    }
     #[test]
     fn stalled_presentation_does_not_block_frames_or_acknowledgements() {
         let (mut host, _) = fixture();
