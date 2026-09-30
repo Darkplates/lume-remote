@@ -45,6 +45,14 @@ jobs:
           $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'
           & .\tests\LumeTests.exe --p2p-signaling-delay *> verification/ci-p2p-signaling-delay.txt
           if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-p2p-signaling-delay.txt; throw 'Native manual-signaling delay regression failed.' }
+      - name: Verify automatic guest reply delivery through the public broker
+        # Contacts the third-party PeerJS broker, so an outage there is reported without blocking the build.
+        continue-on-error: true
+        timeout-minutes: 4
+        run: |
+          & .\tests\LumeTests.exe --signal *> verification/ci-public-signaling.txt
+          $code = $LASTEXITCODE; Get-Content verification/ci-public-signaling.txt
+          if ($code -ne 0) { throw 'Public signaling or automatic guest reply delivery failed.' }
       - name: Render interface previews in dark and light themes
         run: |
           foreach ($theme in @('dark', 'light')) {

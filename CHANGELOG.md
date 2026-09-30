@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+- Guest P2P over the Internet: the controlling PC now returns its reply to the
+  sharing PC automatically, as an encrypted and authenticated message through the
+  public broker, so both PCs check routes at the same time instead of waiting for a
+  hand-copied reply. The invitation format is unchanged; older versions and
+  `LUME_MANUAL_GUEST_REPLY=1` keep the manual copy-back. Real two-network (WAN)
+  success has not been demonstrated yet.
+- P2P setup windows show the current phase (checking routes, route found, securing
+  the connection) with the time left, and failures name the phase that failed
+  instead of a generic TURN message. Native peer cleanup no longer runs on the UI
+  thread. The manual-exchange budget on the controlling PC is 10 minutes, matching
+  the patched native ICE deadline.
+- Audit remediation and native manual-signaling timer patches: see
+  `docs/AUDIT-REMEDIATION.md` and `docs/NATIVE-PEER-PATCHES.md`.
+
 ## 0.12.1 development preview
 
 Security and review fixes. Windows CI (build, native, `verify.ps1 -Safe`, portable

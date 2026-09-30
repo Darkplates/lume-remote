@@ -33,13 +33,13 @@ network, an established product will serve you better today.
 | Step | What happens | Who runs it |
 | --- | --- | --- |
 | Introduction of saved PCs | The two PCs exchange a small encrypted, authenticated message to find each other. | Public [PeerJS](https://peerjs.com) broker (`0.peerjs.com`), a third party. It sees which IDs talk and when, **not** the content. |
-| Introduction of guests | The invitation and reply are copied and pasted by the people involved. | Nobody. No server is involved. |
+| Introduction of guests | You send the invitation privately. The guest's reply comes back automatically as an encrypted, authenticated message through the same broker; if that fails, the guest copies it back by hand. | The same public PeerJS broker, which sees only random IDs and timing. Set `LUME_MANUAL_GUEST_REPLY=1` to keep the exchange fully manual. |
 | Address discovery | Each PC learns its public address. | Cloudflare STUN (`stun.cloudflare.com`). It carries no desktop data. |
 | The session itself | Screen, input, clipboard and files over a direct WebRTC data channel, with Lume's own pinned TLS inside. | Your two PCs. |
 | When a direct route is impossible | Some NAT/firewall combinations block direct connections. There is no automatic TURN relay. | You: use LAN/VPN or run the included [TCP relay](relay/relay.py), which only forwards encrypted bytes. |
 
-If the public broker is unavailable, saved-PC reconnection waits. Guest invitations,
-LAN/VPN and your own relay still work.
+If the public broker is unavailable, saved-PC reconnection waits. Guest invitations
+(with a hand-copied reply), LAN/VPN and your own relay still work.
 
 ## Security model
 

@@ -14,18 +14,28 @@ namespace LumeRemote
     {
         readonly object nativeGate = new object(), stateGate = new object(), receiveGate = new object();
         readonly Queue<byte[]> incoming = new Queue<byte[]>();
-        readonly Rtc.StateCallback stateCallback, gatheringCallback, channelCallback;
+        readonly Rtc.StateCallback stateCallback, iceCallback, gatheringCallback, channelCallback;
         readonly Rtc.SimpleCallback openCallback, closedCallback, bufferCallback;
         readonly Rtc.MessageCallback messageCallback;
         readonly Rtc.ErrorCallback errorCallback;
         int peer = -1, channel = -1, disposed, queued, offset;
         bool gathered, opened;
-        volatile bool ended;
+        volatile bool ended, checking, routed, secured;
         string failure;
         int readTimeout = 30000, writeTimeout = 15000;
         public PeerTransport(bool useStun = true)
         {
-            stateCallback = delegate(int id, int state, IntPtr pointer) { if (state == 4 || state == 5) End("P2P connection failed or closed. Some networks need a TURN relay."); };
+            // Phase-only diagnostics: which layer failed, never addresses, credentials or SDP.
+            stateCallback = delegate(int id, int state, IntPtr pointer)
+            {
+                if (state == 2) secured = true;
+                else if (state == 4 || state == 5) End(routed ? (secured ? "The P2P connection was lost." : "A network route was found, but the encrypted WebRTC handshake did not finish.") : NoRoute);
+            };
+            iceCallback = delegate(int id, int state, IntPtr pointer)
+            {
+                if (state == 1) checking = true; else if (state == 2 || state == 3) routed = true;
+                else if (state == 4 && !routed) End(NoRoute);
+            };
             gatheringCallback = delegate(int id, int state, IntPtr pointer) { if (state == 2) lock (stateGate) { gathered = true; Monitor.PulseAll(stateGate); } };
             channelCallback = delegate(int id, int dataChannel, IntPtr pointer) { try { Attach(dataChannel); } catch (Exception error) { End(error.Message); } };
             openCallback = delegate { lock (stateGate) { opened = true; Monitor.PulseAll(stateGate); } };
@@ -46,11 +56,25 @@ namespace LumeRemote
                 }
                 peer = Checked(Rtc.rtcCreatePeerConnection(ref config));
                 Checked(Rtc.rtcSetStateChangeCallback(peer, stateCallback));
+                Checked(Rtc.rtcSetIceStateChangeCallback(peer, iceCallback));
                 Checked(Rtc.rtcSetGatheringStateChangeCallback(peer, gatheringCallback));
                 Checked(Rtc.rtcSetDataChannelCallback(peer, channelCallback));
             }
             catch { Dispose(); throw; }
             finally { if (servers != IntPtr.Zero) Marshal.FreeHGlobal(servers); if (server != IntPtr.Zero) Marshal.FreeHGlobal(server); }
+        }
+        const string NoRoute = "No direct network route was found between the two PCs. Some routers block direct connections; a shared VPN or your own relay avoids this.";
+        // Current setup phase for status text; safe to read from any thread.
+        public string Phase
+        {
+            get
+            {
+                if (opened && !ended) return "Connected.";
+                if (secured) return "Secure link ready. Opening the data channel...";
+                if (routed) return "Network route found. Securing the connection...";
+                if (checking) return "Checking network routes between the two PCs...";
+                return "Waiting for the other PC...";
+            }
         }
         static int Checked(int code) { if (code < 0) throw new IOException("The native WebRTC operation failed (" + code + ")."); return code; }
         void CheckOpen() { if (ended || disposed != 0) throw new IOException(failure ?? "The P2P connection was closed."); }
@@ -103,7 +127,8 @@ namespace LumeRemote
                 while (!opened && !ended)
                 {
                     int left = milliseconds - (int)clock.ElapsedMilliseconds;
-                    if (left <= 0) throw new TimeoutException("P2P did not connect. Paste the reply on the sharing PC. If both codes were exchanged, the routers may require a TURN relay.");
+                    if (left <= 0) throw new TimeoutException(routed ? "A network route was found, but the secure P2P channel did not open in time." :
+                        "No direct network route was found in time. Check that the reply was applied on the sharing PC. If it was, the routers may block direct connections; a shared VPN or your own relay avoids this.");
                     Monitor.Wait(stateGate, left);
                 }
             }
@@ -230,6 +255,7 @@ namespace LumeRemote
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcCreatePeerConnection(ref Configuration config);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcDeletePeerConnection(int id);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcSetStateChangeCallback(int id, StateCallback callback);
+        [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcSetIceStateChangeCallback(int id, StateCallback callback);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcSetGatheringStateChangeCallback(int id, StateCallback callback);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl)] internal static extern int rtcSetDataChannelCallback(int id, StateCallback callback);
         [DllImport(Library, CallingConvention = CallingConvention.Cdecl, CharSet = CharSet.Ansi)] internal static extern int rtcSetLocalDescription(int id, string type);

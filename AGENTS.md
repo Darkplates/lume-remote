@@ -149,3 +149,26 @@ native logging: it can expose SDP, credentials and addresses.
    blocked, document measured constraints and design an explicit authenticated
    relay fallback; do not invent a deployed public relay or promise universal
    P2P reachability.
+
+### Continuation (second agent, 2026-09-30)
+
+- Hosted Windows CI on `c0fda8c` built the integrated patched `datachannel.dll`
+  through `build-all.ps1`, then passed `verify.ps1 -Safe` and
+  `--p2p-signaling-delay`. Linux, Android build and Android emulator jobs passed.
+  This is hosted-runner evidence, not WAN evidence.
+- Root cause addressed at the application level: in manual guest P2P the
+  controlling PC starts ICE when it creates the reply, while the sharing PC starts
+  only after a human copies the reply back. `src/GuestRendezvous.cs` now returns the
+  reply automatically through the existing public broker. The broker ID and route
+  are HMAC-derived from the invitation secret (no invitation format change); the
+  reply is sealed with `SignalCrypto` under that secret, verified with
+  `VerifyReply`, and only the first matching reply is accepted and acknowledged.
+  Older peers, broker outages and `LUME_MANUAL_GUEST_REPLY=1` keep the manual path.
+- `PeerTransport.Phase` and phase-specific failures distinguish no route (ICE),
+  route without secure link (DTLS), and data channel. The viewer waits up to 10
+  minutes with a visible countdown; native disposal runs off the UI thread.
+- Tests: `GuestRendezvousIdentities` (offline, main suite) and
+  `GuestRendezvousPublic` (`--signal`, public broker; a non-blocking CI step).
+- Still unproven: a real two-network guest connection. Next WAN attempt: fresh
+  codes, note whether the viewer says the reply was received automatically, and
+  the phase shown at failure. Then clipboard, files both ways and 35 minutes idle.

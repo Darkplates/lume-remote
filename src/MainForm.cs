@@ -97,7 +97,7 @@ namespace LumeRemote
             AddField(right, "Private invitation", remote); remote.Height = 132; remote.MaxLength = 65536; remote.ScrollBars = ScrollBars.Vertical;
             connect.Width = 240; right.Controls.Add(connect); connect.Click += delegate { ConnectRemote(); };
             Button checkRemote = Theme.Button("Check connection", false); checkRemote.Width = 240; right.Controls.Add(checkRemote);
-            checkRemote.Click += delegate { try { if (remote.Text.Trim().StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) { PeerSignal.Parse(remote.Text); SetStatus("Valid P2P invitation. Use Connect to computer, then send the reply back to the sharing PC."); } else new ConnectionDiagnosticsForm(Invitation.Parse(remote.Text), false).Show(this); } catch (Exception error) { SetStatus(error.Message); } };
+            checkRemote.Click += delegate { try { if (remote.Text.Trim().StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) { PeerSignal.Parse(remote.Text); SetStatus("Valid P2P invitation. Use Connect to computer; its reply returns to the sharing PC automatically."); } else new ConnectionDiagnosticsForm(Invitation.Parse(remote.Text), false).Show(this); } catch (Exception error) { SetStatus(error.Message); } };
             Button guide = Theme.Button("Open quick start", false); right.Controls.Add(guide);
             guide.Click += delegate { try { Process.Start(new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "START-HERE.txt")) { UseShellExecute = true }); } catch (Exception e) { SetStatus(e.Message); } };
             FlowLayoutPanel footer = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
@@ -230,7 +230,7 @@ namespace LumeRemote
                     if (closing || current != generation) { createdPeer.Dispose(); return; }
                     invitation.Text = offer.ToString(); copy.Enabled = true;
                     endpoint.Text = "P2P Internet / invitation and reply\nNo inbound TCP port or VPN is required.";
-                    SetStatus("P2P invitation ready. Send it privately and paste the returned reply in the P2P window.");
+                    SetStatus("P2P invitation ready. Send it privately. The reply returns to the P2P window automatically, or can be pasted there.");
                     new PeerHostForm(offer, createdPeer, delegate { if (current == generation && host == created) { SetStatus(createdPeer.RouteSummary() + " connected. Local approval is next."); created.AcceptPeer(createdPeer); } },
                         delegate { if (current == generation) StopSharing(); }).Show(this);
                     return;

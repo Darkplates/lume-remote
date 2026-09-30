@@ -10,7 +10,7 @@ Permanent access requires normal Windows administrator setup and explicit pairin
 
 Sessions use fresh secrets and TLS 1.2 or newer with exact SHA-256 certificate pinning. The pin also authenticates the protocol capability marker. No trusted root certificate is installed. WebRTC transports the pinned TLS stream over its encrypted data channel; the optional TCP relay only forwards opaque bytes.
 
-Automatic signaling encrypts/authenticates SDP and session credentials before sending through the public broker. The broker can observe random IDs, network addresses, timing and ciphertext sizes. It can deny service. Saved-key signaling envelopes do not provide a forward-secrecy guarantee. STUN observes address-discovery metadata. No automatic TURN fallback is bundled.
+Automatic signaling encrypts/authenticates SDP and session credentials before sending through the public broker. A guest's P2P reply also returns through it: the broker identity and route are derived from the private invitation secret by HMAC, the reply is encrypted and authenticated with that secret, and the sharing PC accepts only the first reply that matches its invitation signature. Older viewers, or `LUME_MANUAL_GUEST_REPLY=1`, keep the manual copy-back. The broker can observe random IDs, network addresses, timing and ciphertext sizes. It can deny service. Saved-key signaling envelopes do not provide a forward-secrecy guarantee. STUN observes address-discovery metadata. No automatic TURN fallback is bundled.
 
 ## Clipboard and files
 

@@ -37,6 +37,17 @@ File access follows the signed-in owner's Windows permissions. It supports ordin
 
 Saved access uses encrypted messages through the public PeerJS signaling service, and Cloudflare STUN for address discovery. The desktop travels through the peer connection. These external services have their own availability and policies. Some network combinations require a reachable relay; no automatic TURN service or free hosted relay bandwidth is supplied. Manual P2P signaling, LAN/VPN connections and a self-hosted TCP relay are available.
 
+### Guest access over the Internet (P2P)
+
+1. On the PC you share, choose **Guest access → Start sharing** and send the invitation privately.
+2. On the other PC, paste the invitation and choose **Connect to computer**. Lume sends its reply back to the sharing PC automatically through the encrypted broker, so nobody has to copy it back in a hurry.
+3. If the P2P window says automatic delivery did not reach the sharing PC (for example an older Lume version there), copy the reply and paste it on the sharing PC.
+4. Approve the request on the sharing PC.
+
+The windows show which step the connection is in: checking network routes, route found, securing the connection. If it fails, the message says which step failed. "No direct network route was found" means the routers did not let the two PCs reach each other; a shared VPN or your own relay avoids this. Codes work once: after a failure, stop sharing and start again for fresh codes.
+
+Set the environment variable `LUME_MANUAL_GUEST_REPLY=1` on both PCs to keep the reply exchange fully manual, without contacting the broker.
+
 An always-on helper in the remote network or suitable router support is needed for Internet wake. The sleeping PC also needs compatible hardware, firmware, standby power and network configuration. Physical wake and secure-desktop behaviour are separate acceptance checks.
 
 This is an unsigned Windows development build. System audio, consented voice, AAC recording and PDF print forwarding are implemented; physical audio devices, real SMB shares and a physical printer still need commissioning. PDF printing uses the Windows renderer and a local printer dialog; it is not a virtual Lume printer driver for arbitrary remote applications. Export other formats to PDF first. An automatic updater is not included. Portable implementations are partial and have separate acceptance gates; macOS is explicitly untested. Feature parity or performance superiority over other remote desktop products has not been established. The owner authorized this public development source checkpoint; stable binary release criteria remain open. See [release contract](PARITY-CONTRACT.md), [validation](VALIDATION.md), [feature status](FEATURES.md) and [security](SECURITY.md).
