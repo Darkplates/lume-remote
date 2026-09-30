@@ -181,3 +181,5 @@ native logging: it can expose SDP, credentials and addresses.
   host.dat when the disable-state lock is held (the owner can read that
   directory) and reports success once revocation is published. The unused
   in-place `scripts/apply-peer-patches.ps1` was removed.
+- Next step for the owner's local agent: follow `docs/TWO-PC-TEST-PLAN.md`
+  (two home PCs over WinRM; LAN flow first, then one PC on a different network).
