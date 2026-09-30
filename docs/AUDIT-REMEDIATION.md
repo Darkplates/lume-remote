@@ -74,7 +74,88 @@ owner; see the [Microsoft PipeAccessRights contract](https://learn.microsoft.com
 | Windows/Rust interoperability | Six fixture invocations passed | Both viewer/host directions, source/JPEG switching, pairing/revocation, files/folders and monitors; synthetic capture and isolated credentials/files |
 | Actual Windows annotation gate | Three positive receipts observed for host epochs 1/2/3 after monitor changes; stale local generations rejected | Empty clears only, synthetic monitors, injected input sink, owned TLS observer; no overlay, real input or clipboard |
 | Long idle soak | 1,800.3 seconds completed, exit 0, no timeout; 7,792 heartbeat bytes | Current-source copied executable and native libraries; static synthetic local P2P/TLS, minimized viewer and no UI message pump; separate from WAN |
-| Two-PC WAN | User confirmed second-PC availability; pending candidate test | Use the [candidate checklist](TEST-CANDIDATE.md) with the existing access kept available |
+| Manual third-PC connection | Two fresh invitation/reply attempts failed during P2P negotiation, before desktop acceptance | WAN acceptance, clipboard, file transfer and WAN idle remain unverified; the generic native error does not establish that TURN is required |
+
+## Additional manual P2P finding
+
+The manual third-PC test exposed a connection failure that is not covered by the
+immediate local invitation/reply fixtures. No private invitation, reply, SDP,
+address or screen content is included in this report. The first invitation and
+reply parsed successfully in the candidate application and their signature
+matched; both contained reflexive candidates. The installed host was preserved.
+
+The pinned libjuice implementation arms a 39.5-second connectivity-check deadline
+after the viewer applies the offer and finishes gathering. This happens before
+the reply is returned to the sharing computer. The viewer's separate 180-second
+application wait does not extend that native deadline. An isolated pair of owned
+UDP proxies reproduced the viewer entering the failed state at about 40 seconds
+when traffic was withheld until the reply was applied at 45 seconds. Immediate
+forwarding connected successfully. This models delayed NAT permission, not the
+actual routers used in the third-PC test.
+
+When ICE connects early, the viewer can begin DTLS before the sharing computer
+has received the reply. A second owned-proxy fixture established ICE within five
+seconds, forwarded the DTLS traffic, and withheld application of the reply until
+150 seconds. The stock viewer became terminal after 123.877 seconds, before that
+reply was applied. A longer ICE deadline alone therefore does not cover this
+manual exchange.
+
+The correction keeps the libjuice PAC deadline alive for 600,000 ms and sets
+MbedTLS's handshake retransmission interval range to 1,000–600,000 ms. The latter
+maximum is an interval, not a ten-minute total handshake deadline. Application
+waits remain 180 seconds for the viewer and 90 seconds after the host applies a
+reply. DTLS roles, consent freshness, STUN retransmission settings, the public
+native ABI, invitation format, TLS pinning and local approval are unchanged.
+Neither timer is a session-duration cap.
+
+Controlled compatibility tests used an original host and a corrected viewer.
+Immediate exchange and replies delayed by 2, 45 and 90 seconds passed, with both
+directions delivering exactly eight bytes and no UDP-proxy errors. The early-ICE
+case also passed with a reply at 150 seconds, connecting at 150.1 seconds within
+the viewer's existing wait. These are owned loopback proxies and synthetic
+streams; they do not establish reachability through the third PC's routers.
+The cause of the two real attempts and successful third-PC acceptance remain
+unconfirmed. A third attempt used the corrected experimental viewer against the
+unchanged stock host. The reply was applied at approximately 254 seconds, beyond
+the existing 180-second viewer wait; the host still showed negotiation. The
+local P2P window continued to show its copied-reply status, and a later OS query
+reported zero preview UDP endpoints. The stale UI/deadline path remains
+unexplained, and no real connection was accepted. See `AGENTS.md` for the repair
+handoff requested when the owner stopped this round.
+
+The dedicated public Windows fixture `--p2p-signaling-delay` passed all three
+cases against the experimental corrected library: immediate 0.3 seconds,
+blocked-route reply at 45 seconds connected at 45.2 seconds, and early-route
+reply at 150 seconds connected at 150.1 seconds. It checks the loaded native
+module identity, exact duplex bytes, UDP errors and joined/disposed resources.
+The ordinary `--safe` suite also passed 115 checks against that library; this
+invocation did not include the optional local-relay fixture. Physical capture,
+input and clipboard were excluded. The initial corrected DLL has SHA-256
+`1c5d118bf2b03093ab2c9bd924f7dcc908ce51a41cace19fd0a259521e581acb`.
+
+A current compiled Rust core run passed 61 of 62 checks, including every native
+peer check, but the recursive-folder fixture hit its 30-second drive deadline.
+Standalone retries also hit that deadline. The fixture drives file workers
+directly and does not use WebRTC; its cause is being investigated separately.
+The bridge run passed both checks. An unchanged standalone folder run without
+the peer library passed in 33.82 seconds. An ignored instrumented copy with only
+a larger test drive budget and progress reporting passed every real assertion
+in 117.95 seconds: upload 84.134 seconds, download 31.931 seconds, 412 successful
+publications. Instrumentation output can add backpressure. No Rust production
+or test source was changed, and the full new Rust suite is not a passing result.
+
+The final source preparer verified 8,839 overlay files; correct provenance,
+altered-overlay preservation, corrupt-patch rejection and unknown-pin rejection
+guards passed. The initial preparation attempts failed on Windows long paths
+and CRLF rewriting; extended-path I/O and canonical patch output resolved those
+failures. The integrated builder DLL and other patched platform binaries were
+not compiled before the owner requested the handoff.
+
+A pending-DTLS cleanup probe failed its three-second readiness-task guard; it
+did not verify the intended two-second readiness timeout. Cleanup itself
+completed (viewer disposal 1 ms, host 0 ms, all owned tasks/proxy threads joined).
+That probe is a failed test with successful cleanup, not a passing cancellation
+acceptance or evidence of a native disposal deadlock.
 
 The Windows and Android hosted jobs passed for production-code commit
 `56fdb3d6ce837dd290b93c0154b0f0b544f60c15`. The Android CI job executed isolated
@@ -89,8 +170,10 @@ emulator on this Windows host did not boot successfully; that attempt is not a p
 Commit `25067148a0e6f0f8488aa852692cf9c83225e896` adds the actual Windows annotation
 gate fixture, its hosted invocation and the PowerShell 5 harness correction. Those
 fixtures passed locally on Windows PowerShell 5 and PowerShell 7. Production source
-and the candidate application remain unchanged; that commit's fresh hosted rerun
-must be assessed by its own result.
+and the initial candidate application remain unchanged by that fixture commit.
+The Windows/Android and Linux reruns at integration commit
+`1bf0cc2d8bf4dc250bd18e99ed00b54a6344ac0d` passed; those results precede the
+additional native timing correction and do not validate it.
 
 The initial local access-files harness run under Windows PowerShell 5 decoded a
 Unicode fixture filename using the local ANSI code page. The test script now

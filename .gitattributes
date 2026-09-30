@@ -7,6 +7,8 @@ gradlew text eol=lf
 *.swift text eol=lf
 *.md text eol=lf
 *.yml text eol=lf
+# Unified patches contain intentional context prefixes and upstream indentation.
+native/peer/patches/*.patch text eol=lf -whitespace
 # Upstream notices have byte-specific provenance hashes. Never normalize them.
 third-party/** -text
 *.png -text

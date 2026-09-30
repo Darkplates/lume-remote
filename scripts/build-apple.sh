@@ -20,6 +20,8 @@ fetch() {
 }
 fetch libdatachannel https://github.com/paullouisageneau/libdatachannel.git v0.24.6 6b1e2e620f1e37f0eafeee702eaea0043cb305fd
 fetch mbedtls https://github.com/Mbed-TLS/mbedtls.git mbedtls-3.6.7 068ff080b369adfac81509f9b57b2afabaf82dc5
+patched_source="$build_root/patched-source"
+python3 "$project/scripts/prepare-peer-source.py" --source-root "$source_root" --output "$patched_source"
 if [ "$mode" != macos ]; then
 rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
 for target in aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios; do
@@ -31,13 +33,13 @@ for platform in iphoneos iphonesimulator; do
   archs=arm64; supported=iPhoneOS
   if [ "$platform" = iphonesimulator ]; then archs='arm64;x86_64'; supported=iPhoneSimulator; fi
   native="$build_root/$platform"
-  cmake -S "$project/native/peer" -B "$native" -G Ninja -DCMAKE_SYSTEM_NAME=iOS "-DCMAKE_OSX_SYSROOT=$platform" "-DCMAKE_OSX_ARCHITECTURES=$archs" -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$source_root"
+  cmake -S "$project/native/peer" -B "$native" -G Ninja -DCMAKE_SYSTEM_NAME=iOS "-DCMAKE_OSX_SYSROOT=$platform" "-DCMAKE_OSX_ARCHITECTURES=$archs" -DCMAKE_OSX_DEPLOYMENT_TARGET=16.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$patched_source"
   cmake --build "$native" --target datachannel --parallel 2
   framework="$native/LumePeer.framework"
   mkdir -p "$framework/Headers" "$framework/Modules"
   cp "$native/libdatachannel/libdatachannel.dylib" "$framework/LumePeer"
-  cp "$source_root/libdatachannel/include/rtc/rtc.h" "$framework/Headers/rtc.h"
-  cp "$source_root/libdatachannel/include/rtc/version.h" "$framework/Headers/version.h"
+  cp "$patched_source/libdatachannel/include/rtc/rtc.h" "$framework/Headers/rtc.h"
+  cp "$patched_source/libdatachannel/include/rtc/version.h" "$framework/Headers/version.h"
   xcrun install_name_tool -id '@rpath/LumePeer.framework/LumePeer' "$framework/LumePeer"
   printf 'framework module LumePeer { umbrella header "rtc.h" export * }\n' > "$framework/Modules/module.modulemap"
   cat > "$framework/Info.plist" <<EOF
@@ -60,7 +62,7 @@ for target in aarch64-apple-darwin x86_64-apple-darwin; do
   MACOSX_DEPLOYMENT_TARGET=13.0 cargo build --manifest-path "$project/ports/Cargo.toml" -p lume-desktop --release --target "$target" --locked -j 2
 done
 native="$build_root/macos"
-cmake -S "$project/native/peer" -B "$native" -G Ninja '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$source_root"
+cmake -S "$project/native/peer" -B "$native" -G Ninja '-DCMAKE_OSX_ARCHITECTURES=arm64;x86_64' -DCMAKE_OSX_DEPLOYMENT_TARGET=13.0 -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$patched_source"
 cmake --build "$native" --target datachannel --parallel 2
 LUME_TEST_DATACHANNEL="$native/libdatachannel/libdatachannel.dylib" cargo test --manifest-path "$project/ports/Cargo.toml" -p lume-core -p lume-bridge --locked -j 2 -- --include-ignored | tee "$report_root/core-tests.txt"
 app="$build_root/Lume.app"

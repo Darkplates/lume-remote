@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "purpose": "Keep native ICE and MbedTLS handshakes alive during the existing bounded offline invitation/reply flow.",
+  "pins": {
+    "libdatachannel": "6b1e2e620f1e37f0eafeee702eaea0043cb305fd",
+    "libjuice": "b89c792e3612faf2f12cf35bcc56857313a06be3",
+    "mbedtls": "068ff080b369adfac81509f9b57b2afabaf82dc5"
+  },
+  "hashFormat": "SHA-256 of UTF-8 without BOM, with CRLF normalized to LF",
+  "patches": [
+    {
+      "patch": "manual-signaling-ice-v1.patch",
+      "patchSha256": "214185af4065dada904b57b7032e161ce4088dca22e8897b67ec8e00719ed780",
+      "source": "libdatachannel/deps/libjuice/src/agent.h",
+      "beforeSha256": "8b2cfef38864a2046a29432909720822e7edf99283198b350e0cca6b25fbf2a3",
+      "afterSha256": "bb3264470f89d27f050d88a7bc27862dd3044fb74d451986f8e01485694bc757"
+    },
+    {
+      "patch": "manual-signaling-dtls-v1.patch",
+      "patchSha256": "019d6754b6231d67dde386c071b16908fe647b78b1ba871eaeadc4aa8e149630",
+      "source": "libdatachannel/src/impl/dtlstransport.cpp",
+      "beforeSha256": "842f37486740c369cedb19e544706dfa26a8cc342e8f29a071183c81631a8e61",
+      "afterSha256": "766b280bc0208898c465567eb664e4ab0132b9b51a1bf0ebde2615a628fa8e1c"
+    }
+  ]
+}

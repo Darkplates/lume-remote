@@ -2,8 +2,14 @@ LUME REMOTE - THIRD-PARTY NOTICES
 
 Lume's original application source remains under LICENSE.txt (MIT).
 The bundled datachannel.dll contains the following third-party components.
-It was compiled from the pinned, unmodified source revisions below, using
-native/peer/CMakeLists.txt. Build configuration enables MBEDTLS_SSL_DTLS_SRTP,
+It is built from the pinned source revisions below plus Lume's two versioned
+manual-signaling timing patches in native/peer/patches. The libjuice agent.h
+patch sets the ICE PAC timeout to 600000 ms; the libdatachannel MbedTLS DTLS
+backend patch configures handshake timeouts with min 1000 / max 600000 ms.
+These are modified MPL-2.0 source files; upstream licenses and notices remain.
+The Mbed TLS source itself is unchanged. See docs/NATIVE-PEER-PATCHES.md for
+patch hashes, source availability, scope and validation boundaries.
+Build configuration in native/peer/CMakeLists.txt enables MBEDTLS_SSL_DTLS_SRTP,
 disables WebSockets/media/examples/tests, and statically links the C++ runtime
 and dependencies. No browser, Electron or separate runtime installation is used.
 
@@ -41,8 +47,12 @@ Notices: third-party/everest-NOTICE.txt and third-party/p256-m-NOTICE.txt.
 
 SOURCE AVAILABILITY AND REBUILD
 The complete source for each component is available at the repository and
-exact revision above, including the pinned recursive submodules. Run
-BUILD-P2P.bat to retrieve and validate those revisions and rebuild the DLL.
+exact revision above, including the pinned recursive submodules. The Lume source
+package includes the two patches, their before/after hash manifest, and the
+stdlib-only scripts/prepare-peer-source.py overlay preparer. Run BUILD-P2P.bat
+to retrieve and validate those revisions, prepare the verified patched source
+overlay without modifying the upstream checkout, and rebuild the DLL. Windows,
+Android, Linux and Apple peer builders use that same source overlay procedure.
 This developer-only rebuild requires Git, Python, Visual Studio C++ Build
 Tools and a Windows SDK. It downloads a SHA-256-verified portable CMake into
 the local build folder; it does not install a system runtime or service.

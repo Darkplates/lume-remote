@@ -1,0 +1,12 @@
+diff --git a/libdatachannel/deps/libjuice/src/agent.h b/libdatachannel/deps/libjuice/src/agent.h
+--- a/libdatachannel/deps/libjuice/src/agent.h
++++ b/libdatachannel/deps/libjuice/src/agent.h
+@@ -40,7 +40,7 @@
+ // ICE Patiently Awaiting Connectivity timer
+ // RFC 8863: The RECOMMENDED duration for the PAC timer is equal to the agent's connectivity check
+ // transaction timeout, including all retransmissions.
+-#define ICE_PAC_TIMEOUT 39500 // msecs
++#define ICE_PAC_TIMEOUT 600000 // msecs: allow an offline invitation/reply exchange
+ 
+ // Consent freshness
+ // RFC 7675: Consent expires after 30 seconds.

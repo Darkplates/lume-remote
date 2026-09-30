@@ -38,6 +38,13 @@ jobs:
           .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Verify manual P2P signaling delays with owned loopback proxies
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'
+          & .\tests\LumeTests.exe --p2p-signaling-delay *> verification/ci-p2p-signaling-delay.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-p2p-signaling-delay.txt; throw 'Native manual-signaling delay regression failed.' }
       - name: Render interface previews in dark and light themes
         run: |
           foreach ($theme in @('dark', 'light')) {

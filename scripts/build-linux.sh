@@ -6,7 +6,7 @@ source_root="${LUME_PEER_SOURCE_ROOT:-$project/build/peer-source}"
 build_root="${LUME_LINUX_BUILD_ROOT:-$project/build/linux}"
 profile="${LUME_BUILD_PROFILE:-release}"
 case "$profile" in debug|release) ;; *) echo 'LUME_BUILD_PROFILE must be debug or release' >&2; exit 1;; esac
-for command in cargo rustc git cmake ninja pkg-config; do
+for command in cargo rustc git cmake ninja pkg-config python3; do
   command -v "$command" >/dev/null || { printf 'Missing build tool: %s\n' "$command" >&2; exit 1; }
 done
 # Fail before the expensive Rust/native build when the GBM link library is absent.
@@ -26,7 +26,9 @@ fetch() {
 }
 fetch libdatachannel https://github.com/paullouisageneau/libdatachannel.git v0.24.6 6b1e2e620f1e37f0eafeee702eaea0043cb305fd
 fetch mbedtls https://github.com/Mbed-TLS/mbedtls.git mbedtls-3.6.7 068ff080b369adfac81509f9b57b2afabaf82dc5
-cmake -S "$project/native/peer" -B "$build_root/peer" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$source_root"
+patched_source="$build_root/patched-source"
+python3 "$project/scripts/prepare-peer-source.py" --source-root "$source_root" --output "$patched_source"
+cmake -S "$project/native/peer" -B "$build_root/peer" -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_POLICY_VERSION_MINIMUM=3.5 "-DLUME_PEER_SOURCE_ROOT=$patched_source"
 cmake --build "$build_root/peer" --target datachannel --parallel 2
 export LUME_TEST_DATACHANNEL="$build_root/peer/libdatachannel/libdatachannel.so"
 cargo test --manifest-path "$project/ports/Cargo.toml" -p lume-core -p lume-bridge --locked -j 2 -- --include-ignored
