@@ -55,7 +55,7 @@ owner; see the [Microsoft PipeAccessRights contract](https://learn.microsoft.com
 | PF-01 | Translate valid local generation into the host epoch | Pinned-TLS peer covers monitor changes, saved recovery and stale queued commands; actual Windows handler accepts empty clears after monitor changes |
 | PF-02 | One asynchronous publication job, periodic completion ACK | Both receiver roles survive a real 31-second publication delay; cancel/deadline/full-outbox checks |
 | PF-03 | Nonblocking/no-follow regular-file open and descriptor identity | POSIX FIFO, symlink and file-substitution checks |
-| RM-01 | Persist one pending document operation with session identity | Five operation types, deferred result and stale-session checks; Android framework instrumentation pending |
+| RM-01 | Persist one pending document operation with session identity | Five operation types, deferred result and stale-session checks; Android Activity/Bundle instrumentation passed on an owned emulator |
 | RM-02 | Handle negative and partial AudioTrack writes | Bounded PCM, partial/zero/negative writes and same-generation failure gate |
 | RM-03 | Index current validation before historical checkpoints | Current documentation links reviewed |
 
@@ -68,16 +68,29 @@ owner; see the [Microsoft PipeAccessRights contract](https://learn.microsoft.com
 | Recording output | Both synthetic MP4 fixtures independently decoded by FFmpeg 7.1 | VFR output decoded with passthrough and demux timebase; no physical desktop/microphone recording |
 | Rust on Windows | 62 core + 2 bridge tests passed, including all native peer tests | Includes real 31-second publication delays for both receiver roles; synthetic data |
 | Android JVM | Six regression groups passed | Pending operation and PCM policy logic; no Android framework or physical audio execution |
-| Android package | Fresh ARM64/x86-64 Rust/JNI, main/test APK build, lint, signature v2 and ZIP/ELF alignment passed; 0 errors / 13 existing warnings | All eight native input hashes verified; virtual-device instrumentation pending |
+| Android package | Fresh ARM64/x86-64 Rust/JNI, main/test APK build, lint, signature v2 and ZIP/ELF alignment passed; 0 errors / 13 existing warnings | All eight native input hashes verified; debug development APK |
+| Android framework runtime | Isolated remediation instrumentation passed on API 35 x86-64 KVM emulator | [Run for code commit 56fdb3d](https://github.com/Darkplates/lume-remote/actions/runs/36653592499); real Activity recreation and Bundle/Parcel, deferred binding/export, stale-session rejection; no external SAF provider or physical audio |
 | Linux/POSIX CI | 66 core + 2 bridge tests and 2 native X11/UI tests passed on Ubuntu 24.04 | [Run for code commit 56fdb3d](https://github.com/Darkplates/lume-remote/actions/runs/36653592504); FIFO/substitution/native peer tests included; keyring test filtered out |
 | Windows/Rust interoperability | Six fixture invocations passed | Both viewer/host directions, source/JPEG switching, pairing/revocation, files/folders and monitors; synthetic capture and isolated credentials/files |
 | Actual Windows annotation gate | Three positive receipts observed for host epochs 1/2/3 after monitor changes; stale local generations rejected | Empty clears only, synthetic monitors, injected input sink, owned TLS observer; no overlay, real input or clipboard |
-| Long idle soak | Pending | Local minimized/blocked UI fixture is separate from WAN |
+| Long idle soak | 1,800.3 seconds completed, exit 0, no timeout; 7,792 heartbeat bytes | Current-source copied executable and native libraries; static synthetic local P2P/TLS, minimized viewer and no UI message pump; separate from WAN |
 | Two-PC WAN | User confirmed second-PC availability; pending candidate test | Use the [candidate checklist](TEST-CANDIDATE.md) with the existing access kept available |
 
-The Android CI job executes isolated Activity/Bundle instrumentation on a fresh
-KVM-backed emulator and checks the exact success marker. A software emulator on
-this Windows host did not boot successfully; that attempt is not a pass.
+The Windows and Android hosted jobs passed for production-code commit
+`56fdb3d6ce837dd290b93c0154b0f0b544f60c15`. The Android CI job executed isolated
+Activity/Bundle instrumentation on a fresh KVM-backed emulator and returned
+`PASS Android isolated remediation contract`. The runtime input APK SHA-256 was
+`d8a1f825894f8bec67bc61cd4463a88f814e9e8349b93e25d19060515b160884`; the test APK was
+`5e73deffcd0878247d3f873592685a67ff177a060a0f955dad64dddb4116a2b7`.
+The locally built debug APK has its separate hash below; different debug signing
+and build environments do not make those packages byte-identical. A software
+emulator on this Windows host did not boot successfully; that attempt is not a pass.
+
+Commit `25067148a0e6f0f8488aa852692cf9c83225e896` adds the actual Windows annotation
+gate fixture, its hosted invocation and the PowerShell 5 harness correction. Those
+fixtures passed locally on Windows PowerShell 5 and PowerShell 7. Production source
+and the candidate application remain unchanged; that commit's fresh hosted rerun
+must be assessed by its own result.
 
 The initial local access-files harness run under Windows PowerShell 5 decoded a
 Unicode fixture filename using the local ANSI code page. The test script now

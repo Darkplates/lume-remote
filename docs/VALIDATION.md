@@ -7,6 +7,10 @@ installed-service, publisher-signing or independent-security acceptance.
 ## Current source and preview evidence
 
 - The current feature/implementation matrix is [FEATURES.md](FEATURES.md).
+- The September 30 audit corrections and current Windows, Linux, Android,
+  interoperability and 30-minute local idle evidence are in
+  [AUDIT-REMEDIATION.md](AUDIT-REMEDIATION.md). Its source/build identities and
+  remaining physical-device/WAN limits are explicit.
 - The latest versioned portable verification is
   [PORTABLE-12-VERIFICATION.md](PORTABLE-12-VERIFICATION.md); previous versioned
   verification pages retain their own dates and source boundaries.
