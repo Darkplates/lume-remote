@@ -65,6 +65,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable fixtures failed to build.' }
           .\scripts\test-portable.ps1 -SkipBuild -FixtureDirectory "$env:RUNNER_TEMP\lume-interop" *> verification/ci-portable-interop.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows interoperability failed.' }
+          .\scripts\test-portable-monitors.ps1 -SkipBuild *> verification/ci-monitors.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-monitors.txt; throw 'Portable monitor interoperability failed.' }
+          .\scripts\test-portable-annotations.ps1 -Scratch "$env:RUNNER_TEMP\lume-annotations" *> verification/ci-annotations.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-annotations.txt; throw 'Portable annotation-gate interoperability failed.' }
           .\scripts\test-portable-access.ps1 -SkipBuild -Pairing -Scratch "$env:RUNNER_TEMP\lume-paired" *> verification/ci-paired.txt
           .\scripts\test-portable-access.ps1 -SkipBuild -Scratch "$env:RUNNER_TEMP\lume-files" *> verification/ci-files.txt
           .\scripts\test-portable-file-host.ps1 -Scratch "$env:RUNNER_TEMP\lume-file-host" *> verification/ci-file-host.txt
