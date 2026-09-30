@@ -227,11 +227,10 @@ namespace LumeRemote
                         while (!stopped.IsCancellationRequested)
                         {
                             IAsyncResult wait = server.BeginWaitForConnection(null, null);
-                            using (wait.AsyncWaitHandle)
-                            {
-                                while (!wait.AsyncWaitHandle.WaitOne(500)) if (stopped.IsCancellationRequested) return;
-                                server.EndWaitForConnection(wait);
-                            }
+                            // A pending wait's I/O callback still sets this event, so it is released
+                            // only after completion; disposing it early can fault the service.
+                            while (!wait.AsyncWaitHandle.WaitOne(500)) if (stopped.IsCancellationRequested) return;
+                            server.EndWaitForConnection(wait); wait.AsyncWaitHandle.Dispose();
                             HandleControlClient(server, ownerSid);
                             // Reuse the same handle: the namespace remains service-owned
                             // between authenticated requests instead of becoming vacant.

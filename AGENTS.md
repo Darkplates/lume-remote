@@ -172,3 +172,12 @@ native logging: it can expose SDP, credentials and addresses.
 - Still unproven: a real two-network guest connection. Next WAN attempt: fresh
   codes, note whether the viewer says the reply was received automatically, and
   the phase shown at failure. Then clipboard, files both ways and 35 minutes idle.
+- Review fixes on top of the audit branch: the dashboard no longer cancels
+  Windows shutdown/logoff unless a recording is still being saved; the Rust
+  receiver rejects a repeated offer and ignores a repeated finish while a file is
+  being published (regression test fails without the fix); the Android document
+  notice expires after 10 seconds; the control-pipe wait event is no longer
+  disposed while its I/O callback can still set it; Disable revokes through
+  host.dat when the disable-state lock is held (the owner can read that
+  directory) and reports success once revocation is published. The unused
+  in-place `scripts/apply-peer-patches.ps1` was removed.

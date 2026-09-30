@@ -1387,6 +1387,7 @@ impl Worker {
                         expected == &id
                             && name == &offered
                             && incoming.is_none()
+                            && self.completion.is_none()
                             && *resumable == (op == 14),
                         "Unexpected file offer"
                     );
@@ -1483,7 +1484,9 @@ impl Worker {
             7 => {
                 let digest = r.take(32)?;
                 r.end()?;
-                if self.transfer.as_ref().is_some_and(|t| t.id() == id) {
+                // A repeated finish while the file is being verified or published is ignored.
+                if self.transfer.as_ref().is_some_and(|t| t.id() == id) && self.completion.is_none()
+                {
                     let Some(Transfer::Receive {
                         incoming, activity, ..
                     }) = &mut self.transfer
@@ -1636,6 +1639,34 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(1));
         }
+    }
+    #[test]
+    fn publication_rejects_a_repeated_offer_and_ignores_a_repeated_finish() {
+        let root = fixture_root();
+        let (mut receiver, _replies) = worker(None);
+        let (id, file) = completing(&mut receiver, &root);
+        let name = file.name.clone();
+        let (release, blocked) = mpsc::channel::<()>();
+        receiver
+            .start_completion_with(
+                &id,
+                file,
+                &Sha256::digest(b"data"),
+                move |file, digest, check| {
+                    blocked.recv_timeout(Duration::from_secs(10))?;
+                    file.complete_with(digest, check)
+                },
+            )
+            .unwrap();
+        receiver
+            .handle(packet(7, &id).bytes(&Sha256::digest(b"data")))
+            .unwrap();
+        assert!(receiver.completion.is_some());
+        assert!(receiver.handle(packet(5, &id).text(&name).long(4)).is_err());
+        release.send(()).unwrap();
+        wait_completion(&mut receiver);
+        assert_eq!(fs::read(root.join("verified.txt")).unwrap(), b"data");
+        fs::remove_dir_all(&root).ok();
     }
     #[test]
     fn completion_heartbeats_outlive_the_legacy_sender_timeout_in_both_roles() {

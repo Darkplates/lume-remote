@@ -18,6 +18,7 @@ static partial class Tests
         Run("Settings lock is a protected file, not a global object", SettingsFileLockSerializes);
         Run("Disable survives a held settings lock", DisableSurvivesHeldLock);
         Run("Disable remains effective after a delayed settings writer", DisableOutlivesSettingsWriter);
+        Run("Disable still revokes while the disable-state lock is held", DisableSurvivesHeldStateLock);
         Run("A pending enable cannot undo a later disable", DisableOutlivesPendingEnable);
         Run("Owner control listener persists across legitimate requests", ControlListenerLifetime);
         Run("Owner control-pipe framing is bounded and validated", ControlWireFraming);
@@ -109,6 +110,24 @@ static partial class Tests
         finally { CleanupDir(directory); }
     }
 
+    static void DisableSurvivesHeldStateLock()
+    {
+        string directory = HardeningDir();
+        try
+        {
+            TrustedStore store = new TrustedStore(directory, false);
+            store.ChangeHost(delegate(HostPreferences host) { host.Enabled = true; });
+            // The owner can read the Host directory, so a process running as the owner
+            // could hold this lock; revocation must not depend on it.
+            using (FileStream guard = new FileStream(Path.Combine(store.DirectoryPath, "host-state.lock"), FileMode.OpenOrCreate, FileAccess.Read, FileShare.None))
+            {
+                store.Disable();
+                Check(!store.ReadHost().Enabled, "Disable was blocked by a held state lock.");
+            }
+            Check(!store.ReadHost().Enabled, "Access returned after the state lock was released.");
+        }
+        finally { CleanupDir(directory); }
+    }
     static void DisableOutlivesSettingsWriter()
     {
         string directory = HardeningDir(); Task writer = null;

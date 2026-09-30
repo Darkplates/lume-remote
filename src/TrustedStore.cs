@@ -96,9 +96,10 @@ namespace LumeRemote
         }
     }
     // Exclusive lock backed by a file inside the ACL-protected Host directory.
-    // Only SYSTEM and Administrators can open it, so an unprivileged local user
-    // cannot pre-create or hold it to block disable/revocation (unlike a named
-    // kernel object in the global namespace).
+    // Only SYSTEM and Administrators can create it, so other local users cannot
+    // pre-create or hold it (unlike a named kernel object in the global namespace).
+    // The owner has read access to the directory and could hold it open, so
+    // Disable keeps a revocation path that does not depend on these locks.
     sealed class HostLock : IDisposable
     {
         FileStream stream;
@@ -359,10 +360,17 @@ namespace LumeRemote
         }
         void DisableDirect()
         {
-            using (HostLock.Acquire(StateLockFile, 3000)) Write(DisableFile, new Dictionary<string, string> { { "Token", Guid.NewGuid().ToString("N") } });
-            // Compact ordinary settings when possible. Failure cannot undo the
-            // already-published revocation and no unlocked host.dat write is made.
-            try { ApplyDirect(ForceDisabled, 3000); } catch (IOException) { }
+            try { using (HostLock.Acquire(StateLockFile, 3000)) Write(DisableFile, new Dictionary<string, string> { { "Token", Guid.NewGuid().ToString("N") } }); }
+            catch (IOException)
+            {
+                // The state lock is held elsewhere. No settings writer can publish without it,
+                // so revoking directly in host.dat cannot be overwritten by a concurrent enable.
+                HostPreferences preferences = Read<HostPreferences>(HostFile); ForceDisabled(preferences); preferences.Validate(); Write(HostFile, preferences);
+                return;
+            }
+            // Compact ordinary settings when possible. Any failure here cannot undo the
+            // already-published revocation, so Disable still reports success.
+            try { ApplyDirect(ForceDisabled, 3000); } catch (Exception) { }
         }
         public SavedPreferences ReadSaved()
         {

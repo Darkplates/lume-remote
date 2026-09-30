@@ -359,6 +359,8 @@ namespace LumeRemote
         {
             recordingFinalization = pending; RecordingFinalizationJobs.Track(pending);
         }
+        // UI thread only: a recording is running or its file is still being written.
+        internal bool RecordingPending { get { return savingRecording || recording != null || recordingFinalization != null && !recordingFinalization.IsCompleted; } }
         internal Task<bool> FinishRecording(int timeoutMilliseconds = RecordingFinishTimeoutMilliseconds)
         {
             if (recordingSave != null && !recordingSave.IsCompleted) return recordingSave;
@@ -555,6 +557,7 @@ namespace LumeRemote
         static int exitWaiters;
         internal static bool IsExiting { get { lock (gate) return exitWaiters != 0; } }
         internal static void BeginExit() { lock (gate) exitWaiters++; }
+        internal static bool HasPending { get { lock (gate) { pending.RemoveWhere(job => job.IsCompleted); return pending.Count != 0; } } }
         internal static void EndExit() { lock (gate) exitWaiters--; }
         internal static void Track(Task completion)
         {

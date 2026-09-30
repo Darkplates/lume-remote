@@ -108,7 +108,9 @@ namespace LumeRemote
             FormClosing += delegate(object sender, FormClosingEventArgs args)
             {
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested) { args.Cancel = true; HideDashboard(); return; }
-                if (!exitRequested) { args.Cancel = true; BeginInvoke((Action)delegate { ExitDashboard(); }); return; }
+                // Only an unsaved recording delays shutdown, logoff or Task Manager; otherwise close at once.
+                if (!exitRequested && (RecordingFinalizationJobs.HasPending || Application.OpenForms.OfType<ViewerForm>().Any(viewer => viewer.RecordingPending)))
+                { args.Cancel = true; BeginInvoke((Action)delegate { ExitDashboard(); }); return; }
                 closing = true; statistics.Stop(); StopSharing();
                 foreach (Form window in Application.OpenForms.Cast<Form>().ToArray())
                     if (window is ViewerForm || window is PeerViewerForm) window.Close();

@@ -31,6 +31,8 @@ public final class MainActivity extends Activity {
     DisplaysDialog displaysDialog;
     PendingDocumentOperation pendingDocument;
     String documentStatus="";
+    // A document notice is shown briefly, then session status and errors take over again.
+    long documentStatusUntil;
     private static final String DOCUMENT_STATE="pending_document";
     final ServiceConnection connection=new ServiceConnection(){
         public void onServiceConnected(ComponentName name,IBinder binder){service=((SessionService.LocalBinder)binder).service();selected=service.visible;dispatchDocumentResult();refresh();}
@@ -105,9 +107,9 @@ public final class MainActivity extends Activity {
         if(selected!=0&&!service.sessions.containsKey(selected))select(0);
         if(tabCount!=service.sessions.size()){tabs.removeAllViews();for(SessionService.Session s:service.sessions.values()){long id=s.handle;button("Computer "+id,tabs,()->select(id));}tabCount=service.sessions.size();}
         SessionService.Session s=current();surface.session=s;
-        if(s!=null){status.setText(!documentStatus.isEmpty()?documentStatus:s.error.isEmpty()?s.state.optString("status"):s.error);actions.setEnabled(s.state.optBoolean("connected")||s.state.optBoolean("pair_ready"));reply.setVisibility(s.state.isNull("reply")?View.GONE:View.VISIBLE);
+        if(s!=null){status.setText(!documentNotice().isEmpty()?documentStatus:s.error.isEmpty()?s.state.optString("status"):s.error);actions.setEnabled(s.state.optBoolean("connected")||s.state.optBoolean("pair_ready"));reply.setVisibility(s.state.isNull("reply")?View.GONE:View.VISIBLE);
             if(clipboardRequested&&!s.state.isNull("clipboard")){String text=s.state.optString("clipboard");getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Remote text",text));action("clear_clipboard","text",text);clipboardRequested=false;}
-        }else{status.setText(!documentStatus.isEmpty()?documentStatus:!service.homeStatus.isEmpty()?service.homeStatus:service.sessions.isEmpty()?"Connect to a computer you own or have permission to use.":"Select a computer.");actions.setEnabled(false);reply.setVisibility(View.GONE);}
+        }else{status.setText(!documentNotice().isEmpty()?documentStatus:!service.homeStatus.isEmpty()?service.homeStatus:service.sessions.isEmpty()?"Connect to a computer you own or have permission to use.":"Select a computer.");actions.setEnabled(false);reply.setVisibility(View.GONE);}
     }updates.removeCallbacks(refreshTick);if(resumed)updates.postDelayed(refreshTick,200);}
     @Override public void onResume(){super.onResume();resumed=true;if(service!=null)service.visible=selected;updates.removeCallbacksAndMessages(null);refresh();Choreographer.getInstance().removeFrameCallback(frameTick);Choreographer.getInstance().postFrameCallback(frameTick);}
     @Override public void onPause(){resumed=false;Choreographer.getInstance().removeFrameCallback(frameTick);updates.removeCallbacksAndMessages(null);surface.release();if(service!=null){service.visible=0;service.pauseMedia();}super.onPause();}
@@ -140,9 +142,10 @@ public final class MainActivity extends Activity {
     void restoreDocumentState(Bundle state) {
         if(state==null)return;Bundle document=state.getBundle(DOCUMENT_STATE);if(document==null)return;
         try{pendingDocument=new PendingDocumentOperation(document.getInt("request"),document.getLong("session"),document.getString("identity"),document.getString("context"),document.getString("result"));}
-        catch(RuntimeException e){pendingDocument=null;documentStatus="The document operation could not be restored. Please select it again.";}
+        catch(RuntimeException e){pendingDocument=null;documentStatus="The document operation could not be restored. Please select it again.";documentStatusUntil=SystemClock.elapsedRealtime()+10000;}
     }
-    void documentMessage(String message){documentStatus=message;if(status!=null)status.setText(message);}
+    void documentMessage(String message){documentStatus=message;documentStatusUntil=SystemClock.elapsedRealtime()+10000;if(status!=null)status.setText(message);}
+    String documentNotice(){if(!documentStatus.isEmpty()&&SystemClock.elapsedRealtime()>documentStatusUntil)documentStatus="";return documentStatus;}
     void dispatchDocumentResult() {
         PendingDocumentOperation operation=pendingDocument;if(operation==null||operation.resultUri==null)return;
         if(service==null){documentMessage("Waiting for Lume to reconnect to the session service…");return;}
