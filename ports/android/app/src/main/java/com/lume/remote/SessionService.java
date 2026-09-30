@@ -26,6 +26,8 @@ public final class SessionService extends Service {
     long voiceTarget;
     static final class Session {
         final long handle;
+        // Distinguish a recreated service/new session from a stale saved native handle.
+        final String documentIdentity=UUID.randomUUID().toString();
         final SessionAudio audio;
         final Object frameLock=new Object();
         volatile JSONObject state=new JSONObject();

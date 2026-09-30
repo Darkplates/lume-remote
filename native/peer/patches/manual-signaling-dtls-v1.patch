@@ -1,0 +1,13 @@
+diff --git a/libdatachannel/src/impl/dtlstransport.cpp b/libdatachannel/src/impl/dtlstransport.cpp
+--- a/libdatachannel/src/impl/dtlstransport.cpp
++++ b/libdatachannel/src/impl/dtlstransport.cpp
+@@ -408,6 +408,9 @@
+ 		mbedtls::check(mbedtls_ssl_config_defaults(
+ 		                   &mConf, mIsClient ? MBEDTLS_SSL_IS_CLIENT : MBEDTLS_SSL_IS_SERVER,
+ 		                   MBEDTLS_SSL_TRANSPORT_DATAGRAM, MBEDTLS_SSL_PRESET_DEFAULT));
+ 
++		// The peer's offline reply may arrive after ICE connects.
++		mbedtls_ssl_conf_handshake_timeout(&mConf, 1000, 600000);
++
+ 		mbedtls_ssl_conf_max_version(&mConf, MBEDTLS_SSL_MAJOR_VERSION_3, MBEDTLS_SSL_MINOR_VERSION_3); // TLS 1.2
+ 		mbedtls_ssl_conf_authmode(&mConf, MBEDTLS_SSL_VERIFY_OPTIONAL);

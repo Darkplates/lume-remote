@@ -1,9 +1,47 @@
+# Validation index
+
+This page separates current evidence from immutable historical checkpoints.
+Passing synthetic or hosted checks does not establish physical-device, WAN,
+installed-service, publisher-signing or independent-security acceptance.
+
+## Current source and preview evidence
+
+- The current feature/implementation matrix is [FEATURES.md](FEATURES.md).
+- The September 30 audit corrections and current Windows, Linux, Android,
+  interoperability and 30-minute local idle evidence are in
+  [AUDIT-REMEDIATION.md](AUDIT-REMEDIATION.md). Its source/build identities and
+  remaining physical-device/WAN limits are explicit.
+- The latest versioned portable verification is
+  [PORTABLE-12-VERIFICATION.md](PORTABLE-12-VERIFICATION.md); previous versioned
+  verification pages retain their own dates and source boundaries.
+- Required acceptance limits and the explicitly accepted Apple preparation-only
+  exception are recorded in [release-gates.json](release-gates.json).
+- Source commit `d20f787655cf216ad3eeee10bc9063148b4b7b60` passed hosted
+  [Windows checks](https://github.com/Darkplates/lume-remote/actions/runs/36646739989)
+  and [Linux checks](https://github.com/Darkplates/lume-remote/actions/runs/36646739922).
+  These are results for that exact commit, not every subsequent working tree.
+- The 2026-09-30 local audit of that commit found 107 safe Windows checks passed
+  and one intermittent clipboard-ordering failure, despite passing hosted CI.
+  Rust core/bridge passed 55 + 2 checks. Remediation is described in
+  [AUDIT-REMEDIATION.md](AUDIT-REMEDIATION.md), with its own execution boundaries.
+- Notice inventory: 496 registry packages, with 493 collected, two explicitly
+  classified later-upstream notices and one upstream-review exception. See
+  [LICENSE-PROVENANCE.md](LICENSE-PROVENANCE.md); this is not legal certification.
+- The published `v0.12.1-preview.1` ZIP represents commit
+  `19da8c1cb51372a1c7e40829130359f7163bdb97`, not the later audited source.
+  Compare the producing commit before applying source verification to a binary.
+
+## Historical 0.8 checkpoint
+
+The remainder preserves dated evidence and missing features as they stood at
+each checkpoint. Historical counts and claims are not current acceptance status.
+
 # Validation - 0.8.0 portable development checkpoint
 
 Date: 2026-09-28. Public release remains blocked. The installed Windows 0.3
 service is unchanged. Older archives, including 0.7, remain immutable checkpoints.
 
-## Current evidence
+## Evidence at the 0.8 checkpoint
 
 - Windows: 92 safe application checks passed. Rust core and C ABI passed 28
   checks, including native P2P and the encrypted vault's wrong-password/tamper

@@ -38,6 +38,13 @@ jobs:
           .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Verify manual P2P signaling delays with owned loopback proxies
+        timeout-minutes: 8
+        shell: pwsh
+        run: |
+          $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'
+          & .\tests\LumeTests.exe --p2p-signaling-delay *> verification/ci-p2p-signaling-delay.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-p2p-signaling-delay.txt; throw 'Native manual-signaling delay regression failed.' }
       - name: Render interface previews in dark and light themes
         run: |
           foreach ($theme in @('dark', 'light')) {
@@ -65,6 +72,10 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Portable fixtures failed to build.' }
           .\scripts\test-portable.ps1 -SkipBuild -FixtureDirectory "$env:RUNNER_TEMP\lume-interop" *> verification/ci-portable-interop.txt
           if ($LASTEXITCODE -ne 0) { throw 'Windows interoperability failed.' }
+          .\scripts\test-portable-monitors.ps1 -SkipBuild *> verification/ci-monitors.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-monitors.txt; throw 'Portable monitor interoperability failed.' }
+          .\scripts\test-portable-annotations.ps1 -Scratch "$env:RUNNER_TEMP\lume-annotations" *> verification/ci-annotations.txt
+          if ($LASTEXITCODE -ne 0) { Get-Content verification/ci-annotations.txt; throw 'Portable annotation-gate interoperability failed.' }
           .\scripts\test-portable-access.ps1 -SkipBuild -Pairing -Scratch "$env:RUNNER_TEMP\lume-paired" *> verification/ci-paired.txt
           .\scripts\test-portable-access.ps1 -SkipBuild -Scratch "$env:RUNNER_TEMP\lume-files" *> verification/ci-files.txt
           .\scripts\test-portable-file-host.ps1 -Scratch "$env:RUNNER_TEMP\lume-file-host" *> verification/ci-file-host.txt
@@ -77,6 +88,8 @@ jobs:
           $env:RUSTUP_TOOLCHAIN = '1.98.1'
           $env:JAVA_HOME = $env:JAVA_HOME_17_X64
           if (-not $env:JAVA_HOME -or -not $env:ANDROID_HOME) { throw 'JDK 17 and the Android SDK are required.' }
+          .\scripts\test-android-remediation.ps1
+          if ($LASTEXITCODE -ne 0) { throw 'Android JVM remediation regressions failed.' }
           rustup target add aarch64-linux-android x86_64-linux-android
           if ($LASTEXITCODE -ne 0) { throw 'Android Rust targets are unavailable.' }
           & "$env:ANDROID_HOME\cmdline-tools\latest\bin\sdkmanager.bat" 'platforms;android-36' 'build-tools;36.0.0' 'ndk;28.2.13676358'
@@ -108,6 +121,68 @@ jobs:
             verification/ui-*/*.png
             ports/android/app/build/outputs/apk/debug/*.apk
             ports/android/app/build/outputs/apk/androidTest/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+  android-runtime:
+    # Owned virtual device; no physical device, remote invitation or desktop input.
+    needs: windows
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: windows-development-and-test-reports
+          path: ${{ runner.temp }}/android-inputs
+      - name: Run Android remediation instrumentation on an isolated emulator
+        env:
+          ANDROID_AVD_HOME: ${{ runner.temp }}/lume-remediation-avd
+        run: |
+          set -eu
+          test -n "$ANDROID_HOME" && test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          mkdir -p "$ANDROID_AVD_HOME" verification
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'platform-tools' 'emulator' 'system-images;android-35;default;x86_64'
+          printf 'no\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/avdmanager" create avd -n LumeRemediation -k 'system-images;android-35;default;x86_64'
+          "$ANDROID_HOME/emulator/emulator" -avd LumeRemediation -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect -feature -Vulkan -memory 2048 -cores 2 -port 5558 > verification/android-emulator.txt 2>&1 &
+          emulator_pid=$!
+          adb="$ANDROID_HOME/platform-tools/adb"
+          trap '"$adb" -s emulator-5558 emu kill >/dev/null 2>&1 || true; kill "$emulator_pid" 2>/dev/null || true' EXIT
+          "$adb" start-server
+          booted=false
+          for attempt in $(seq 1 180); do
+            if ! kill -0 "$emulator_pid" 2>/dev/null; then cat verification/android-emulator.txt; exit 1; fi
+            if [ "$("$adb" -s emulator-5558 shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')" = 1 ]; then booted=true; break; fi
+            sleep 2
+          done
+          test "$booted" = true
+          # The Windows report artifact also contains files from RUNNER_TEMP;
+          # its common root can include checkout-directory components.
+          find "$RUNNER_TEMP/android-inputs" -type f -path '*/ports/android/app/build/outputs/apk/debug/app-debug.apk' > verification/android-app-path.txt
+          find "$RUNNER_TEMP/android-inputs" -type f -path '*/ports/android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk' > verification/android-tests-path.txt
+          test "$(wc -l < verification/android-app-path.txt)" -eq 1
+          test "$(wc -l < verification/android-tests-path.txt)" -eq 1
+          app=$(cat verification/android-app-path.txt)
+          tests=$(cat verification/android-tests-path.txt)
+          test -f "$app" && test -f "$tests"
+          sha256sum "$app" "$tests" > verification/android-runtime-inputs.txt
+          "$adb" -s emulator-5558 install "$app"
+          "$adb" -s emulator-5558 install "$tests"
+          "$adb" -s emulator-5558 shell am instrument -w -e remediation_only true com.lume.remote.test/com.lume.remote.ContractInstrumentation > verification/android-runtime.txt
+          cat verification/android-runtime.txt
+          grep -q 'PASS Android isolated remediation contract' verification/android-runtime.txt
+          if grep -E 'FAIL|INSTRUMENTATION_FAILED|Process crashed' verification/android-runtime.txt; then exit 1; fi
+          "$adb" -s emulator-5558 logcat -d -t 500 > verification/android-runtime-logcat.txt
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        if: always()
+        with:
+          name: android-remediation-runtime-reports
+          path: verification/android-*.txt
           if-no-files-found: error
           retention-days: 14
   screenshots:

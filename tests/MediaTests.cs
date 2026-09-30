@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using LumeRemote;
 
 static partial class Tests
@@ -16,6 +17,10 @@ static partial class Tests
         Run("Recording produces an H.264 MP4 with a finalized movie index", RecordingFile);
         Run("Recording keeps existing files and rejects unsupported dimensions", RecordingSafety);
         Run("Dashboard exit finalizes an active recording before closing viewers", RecordingExit);
+        Run("Viewer close waits for an already pending recording finalization", RecordingPendingClose);
+        Run("Recording timeout keeps the viewer open and completed errors allow close", RecordingCloseTimeout);
+        Run("Dashboard exit retains recording jobs after their viewer is disposed", RecordingDisposedViewerExit);
+        Run("Disconnect and immediate viewer close preserve the finalized synthetic MP4", RecordingDisconnectClose);
         Run("Audio timeline preserves stereo alignment and bounded silence gaps", RecordingAudioSafety);
         Run("MP4 recording contains H.264 video and AAC system audio", RecordingWithAudio);
         Run("Voice consent denial and cancellation leave video running and microphones off", VoiceConsentSafety);
@@ -91,6 +96,103 @@ static partial class Tests
                 if (failure != null) throw failure;
                 Check(viewer != null && viewer.IsDisposed, "Application exit left a viewer alive.");
                 Check(File.Exists(file) && System.Text.Encoding.ASCII.GetString(File.ReadAllBytes(file)).Contains("moov"), "Exit lost the recording movie index.");
+            }
+        }
+        finally { Directory.Delete(root, true); }
+    }
+    static void RecordingPendingClose()
+    {
+        var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        using (var viewer = new ViewerForm(Sample()))
+        {
+            try
+            {
+                IntPtr handle = viewer.Handle; // Create a closeable window without starting a session.
+                viewer.TrackRecordingFinalization(pending.Task); viewer.Close(); System.Windows.Forms.Application.DoEvents();
+                Check(!viewer.IsDisposed && (bool)Field(viewer, "savingRecording"), "A viewer closed before the pending writer finished.");
+                pending.SetResult(true);
+                PumpUntil(delegate { return viewer.IsDisposed; }, 3000, "The viewer did not close after finalization completed.");
+            }
+            finally { pending.TrySetCanceled(); }
+        }
+    }
+    static void RecordingCloseTimeout()
+    {
+        foreach (bool cancelled in new[] { false, true })
+        {
+            var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (var viewer = new ViewerForm(Sample()))
+            {
+                try
+                {
+                    IntPtr handle = viewer.Handle; viewer.TrackRecordingFinalization(pending.Task);
+                    Task<bool> finishing = viewer.FinishRecording(60); viewer.Close();
+                    PumpUntil(delegate { return finishing.IsCompleted; }, 3000, "A stalled finalization exceeded its bounded wait.");
+                    Check(!finishing.GetAwaiter().GetResult() && !viewer.IsDisposed, "Timeout abandoned the writer or closed the viewer.");
+                    Check(((System.Windows.Forms.Label)Field(viewer, "information")).Text.Contains("still being saved"), "Recording timeout was not visible.");
+                    Check(!RecordingFinalizationJobs.WaitForPending(20).GetAwaiter().GetResult(), "Timeout discarded the pending job.");
+                    if (cancelled) pending.SetCanceled(); else pending.SetException(new IOException("Injected finalization failure"));
+                    viewer.Close(); PumpUntil(delegate { return viewer.IsDisposed; }, 3000, "A completed recording error blocked close.");
+                    Check(RecordingFinalizationJobs.WaitForPending(1000).GetAwaiter().GetResult(), "A completed error leaked a pending recording job.");
+                }
+                finally { pending.TrySetCanceled(); }
+            }
+        }
+    }
+    static void RecordingDisposedViewerExit()
+    {
+        foreach (bool expire in new[] { false, true })
+        {
+            var pending = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (var dashboard = new MainForm())
+            {
+                try
+                {
+                    using (var viewer = new ViewerForm(Sample())) { viewer.TrackRecordingFinalization(pending.Task); }
+                    dashboard.Show(); System.Windows.Forms.Application.DoEvents(); dashboard.ExitDashboard(expire ? 60 : 3000);
+                    Check(!dashboard.IsDisposed && RecordingFinalizationJobs.IsExiting, "Application exit ignored a disposed viewer's pending writer.");
+                    if (expire)
+                    {
+                        PumpUntil(delegate { return !(bool)Field(dashboard, "exitPreparing"); }, 3000, "Application exit exceeded its bounded wait.");
+                        Check(!dashboard.IsDisposed && dashboard.Visible, "Application exit abandoned the pending writer on timeout.");
+                        Check(((System.Windows.Forms.Label)Field(dashboard, "status")).Text.Contains("still being saved"), "Application exit timeout was not visible.");
+                        Check(!RecordingFinalizationJobs.IsExiting, "Timed out shutdown prevented a later retry.");
+                        pending.SetException(new IOException("Injected detached writer failure")); dashboard.ExitDashboard();
+                    }
+                    else pending.SetResult(true);
+                    PumpUntil(delegate { return dashboard.IsDisposed; }, 3000, "Application exit did not finish after the detached writer completed.");
+                    Check(RecordingFinalizationJobs.WaitForPending(1000).GetAwaiter().GetResult() && !RecordingFinalizationJobs.IsExiting, "Shutdown leaked recording lifetime state.");
+                }
+                finally { pending.TrySetCanceled(); if (!dashboard.IsDisposed) dashboard.ExitDashboard(1000); System.Windows.Forms.Application.DoEvents(); }
+            }
+        }
+    }
+    static void RecordingDisconnectClose()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "lume-recording-disconnect-" + Guid.NewGuid().ToString("N")); Directory.CreateDirectory(root);
+        try
+        {
+            using (var fixture = new ReconnectFixture())
+            {
+                PairedLink link = fixture.Open(); using (var viewer = new ViewerForm(link.Invitation, link.Peer))
+                {
+                    viewer.Show(); PumpUntil(delegate { return Field(viewer, "displayImage") != null; }, 10000, "Disconnect recording fixture has no video.");
+                    Bitmap frame = (Bitmap)Field(viewer, "displayImage"); string file = Path.Combine(root, "saved.mp4");
+                    using (var recording = new SessionRecording(file, frame.Width, frame.Height))
+                    {
+                        recording.Ready.GetAwaiter().GetResult(); RecordingFinalizationJobs.Track(recording.Completion);
+                        typeof(ViewerForm).GetField("recording", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic).SetValue(viewer, recording);
+                        recording.Publish(frame); var enoughFrames = Task.Delay(400); PumpUntil(delegate { return enoughFrames.IsCompleted; }, 2000, "Recording timer did not complete.");
+                        fixture.Hosts[0].Dispose();
+                        PumpUntil(delegate { return Field(viewer, "recording") == null && Field(viewer, "recordingFinalization") != null; }, 5000, "Disconnect did not start recording finalization.");
+                        viewer.Close(); PumpUntil(delegate { return viewer.IsDisposed; }, 5000, "Immediate viewer close left recording finalization unfinished.");
+                        byte[] movie = File.ReadAllBytes(file);
+                        Check(System.Text.Encoding.ASCII.GetString(movie).Contains("avc1") && Mp4SampleCount(movie, 0, movie.Length) > 0, "Disconnect lost the finalized H.264 MP4 samples/index.");
+                        Check(Directory.GetFiles(root).Length == 1, "Disconnect left an incomplete recording file.");
+                        string evidence = Path.GetFullPath(Path.Combine("verification", "disconnect-recording-fixture.mp4")); Directory.CreateDirectory(Path.GetDirectoryName(evidence)); File.Copy(file, evidence, true);
+                        Console.WriteLine("DISCONNECT_RECORDING_FIXTURE: " + evidence + "; synthetic video, no real capture, microphone or input.");
+                    }
+                }
             }
         }
         finally { Directory.Delete(root, true); }

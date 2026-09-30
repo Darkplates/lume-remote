@@ -2004,6 +2004,7 @@ dependencies = [
  "flate2",
  "hmac",
  "image",
+ "libc",
  "libloading",
  "rcgen",
  "ring",

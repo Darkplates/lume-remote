@@ -133,7 +133,8 @@ mod tests {
         root
     }
     fn drive(viewer: &mut Worker, vr: &Receiver<Event>, host: &mut Worker, hr: &Receiver<Event>) {
-        for _ in 0..30000 {
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(30) {
             viewer.pump().unwrap();
             if let Err(e) = viewer.pump_job() {
                 viewer.fail(&format!("Folder stopped: {e}")).unwrap();
@@ -155,6 +156,9 @@ mod tests {
             }
             if viewer.job.is_none() && viewer.transfer.is_none() {
                 return;
+            }
+            if viewer.completion.is_some() || host.completion.is_some() {
+                thread::sleep(Duration::from_millis(1));
             }
         }
         panic!("Folder job failed to terminate");

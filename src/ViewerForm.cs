@@ -11,6 +11,7 @@ namespace LumeRemote
 {
     public sealed class ViewerForm : Form
     {
+        readonly int uiThread = Thread.CurrentThread.ManagedThreadId;
         Invitation invite;
         PeerTransport peer;
         volatile ViewerConnection connection;
@@ -41,8 +42,10 @@ namespace LumeRemote
         SessionRecording recording;
         ClipboardSync clipboardSync;
         readonly System.Windows.Forms.Timer clipboardTimer = new System.Windows.Forms.Timer { Interval = 1200 };
-        bool savingRecording, recordingBusy;
+        bool savingRecording, recordingBusy, closeAfterRecording;
         Task recordingFinalization;
+        Task<bool> recordingSave;
+        internal const int RecordingFinishTimeoutMilliseconds = 30000;
         readonly Label recordingBadge = Theme.Label("REC", 11, Color.OrangeRed);
         readonly Label microphoneBadge = Theme.Label("MIC ON", 11, Color.OrangeRed);
         ToolStripMenuItem recordMenu;
@@ -175,7 +178,7 @@ namespace LumeRemote
                         if (current == null || !connected) return; current.Require(SessionCapabilities.Power);
                         string prompt = label + " the remote PC?" + (chosen == PowerAction.Lock ? "" : " Save work first. The connection will end; Windows may wait for applications to close.");
                         if (MessageBox.Show(this, prompt, "Lume - " + label, MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return;
-                        await FinishRecording(); await current.Power(chosen); ShowNotice(label + " requested. The session will reconnect when the host is available.");
+                        if (!await FinishRecording()) return; await current.Power(chosen); ShowNotice(label + " requested. The session will reconnect when the host is available.");
                     }
                     catch (Exception error) { ShowNotice(error.Message); }
                 });
@@ -242,8 +245,9 @@ namespace LumeRemote
             Shown += async delegate { await Run(); };
             FormClosing += async delegate(object sender, FormClosingEventArgs args)
             {
-                if (savingRecording) { args.Cancel = true; return; }
-                if (recording != null) { args.Cancel = true; await FinishRecording(); OnUi(Close); return; }
+                if (savingRecording) { args.Cancel = true; closeAfterRecording = true; return; }
+                if (recording != null || recordingFinalization != null)
+                { args.Cancel = true; closeAfterRecording = true; await FinishRecording(); return; }
                 closed = true; connected = false; clipboardTimer.Stop(); if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } closing.Cancel(); timer.Stop(); if (connection != null) connection.Dispose(); if (peer != null) peer.Dispose(); outgoing.CompleteAdding(); SessionLog.Write(SessionLog.UserDirectory, "viewer", "closed_locally"); };
             FormClosed += delegate { presentation.Dispose(); if (displayImage != null) { displayImage.Dispose(); displayImage = null; } timer.Dispose(); clipboardTimer.Dispose(); menu.Dispose(); pixels.Dispose(); clip.Dispose(); release.Dispose(); };
             timer.Tick += delegate { ViewerConnection current = connection; files.Enabled = connected && current != null && current.Files != null; microphoneBadge.Visible = connected && current != null && current.VoiceEnabled; Tick(); }; timer.Start();
@@ -309,7 +313,7 @@ namespace LumeRemote
                     failure = current.Failure;
                 }
                 catch (Exception error) { failure = current.Failure ?? error; }
-                finally { drawing = false; canvas.Cursor = Cursors.Default; stroke.Clear(); canvas.Stroke = null; if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) { recordingFinalization = capture.Stop(); Task cleanup = recordingFinalization.ContinueWith(delegate(Task done) { OnUi(delegate { recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)"; }); if (done.IsFaulted) { var error = done.Exception; OnUi(delegate { ShowNotice("Recording could not be saved."); }); } }); } connected = false; pendingMouse = null; current.Dispose(); connection = null; if (filesWindow != null && !filesWindow.IsDisposed) filesWindow.Close(); if (chatWindow != null && !chatWindow.IsDisposed) chatWindow.Close(); if (peer != null) { peer.Dispose(); peer = null; } }
+                finally { drawing = false; canvas.Cursor = Cursors.Default; stroke.Clear(); canvas.Stroke = null; if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) { TrackRecordingFinalization(capture.Stop()); Task cleanup = recordingFinalization.ContinueWith(delegate(Task done) { OnUi(delegate { recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)"; }); if (done.IsFaulted) { var error = done.Exception; OnUi(delegate { ShowNotice("Recording could not be saved."); }); } }); } connected = false; pendingMouse = null; current.Dispose(); connection = null; if (filesWindow != null && !filesWindow.IsDisposed) filesWindow.Close(); if (chatWindow != null && !chatWindow.IsDisposed) chatWindow.Close(); if (peer != null) { peer.Dispose(); peer = null; } }
                 if (closed) return;
                 SessionLog.Write(SessionLog.UserDirectory, "viewer", SessionLog.Reason(failure), failure);
                 Bitmap stale = presentation.Take(); if (stale != null) stale.Dispose();
@@ -351,20 +355,43 @@ namespace LumeRemote
             int epoch; Bitmap next = presentation.Take(out epoch); if (next == null) return; displayedEpoch = epoch;
             Bitmap old = displayImage; displayImage = next; ResizeCanvas(); canvas.Invalidate(); if (old != null) old.Dispose();
         }
-        internal async Task FinishRecording()
+        internal void TrackRecordingFinalization(Task pending)
         {
-            SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) recordingFinalization = capture.Stop(); Task pending = recordingFinalization; if (pending == null) return; savingRecording = true;
-            try { await pending; ShowNotice("Recording saved."); }
-            catch (Exception error) { ShowNotice("Recording: " + error.Message); }
-            finally { if (recordingFinalization == pending) recordingFinalization = null; savingRecording = false; recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)"; }
+            recordingFinalization = pending; RecordingFinalizationJobs.Track(pending);
+        }
+        internal Task<bool> FinishRecording(int timeoutMilliseconds = RecordingFinishTimeoutMilliseconds)
+        {
+            if (recordingSave != null && !recordingSave.IsCompleted) return recordingSave;
+            SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) TrackRecordingFinalization(capture.Stop());
+            Task pending = recordingFinalization; if (pending == null) return Task.FromResult(true);
+            savingRecording = true; return recordingSave = FinishRecording(pending, timeoutMilliseconds);
+        }
+        async Task<bool> FinishRecording(Task pending, int timeoutMilliseconds)
+        {
+            bool finished = false; string message;
+            try
+            {
+                if (!pending.IsCompleted && await Task.WhenAny(pending, Task.Delay(Math.Max(1, timeoutMilliseconds))).ConfigureAwait(false) != pending)
+                    message = "Recording is still being saved. Lume will stay open; try closing again shortly.";
+                else { finished = true; await pending.ConfigureAwait(false); message = "Recording saved."; }
+            }
+            catch (Exception error) { finished = true; message = "Recording: " + error.Message; }
+            await RecordingUi.Run(this, uiThread, delegate
+            {
+                if (finished && recordingFinalization == pending) recordingFinalization = null;
+                savingRecording = false; ShowNotice(message); recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)";
+                bool closeRequested = closeAfterRecording; closeAfterRecording = false;
+                if (finished && closeRequested) OnUi(Close);
+            }).ConfigureAwait(false);
+            return finished;
         }
         async Task ToggleRecording(ToolStripMenuItem item)
         {
-            if (recordingBusy) return; recordingBusy = true; item.Enabled = false;
+            if (recordingBusy || savingRecording || RecordingFinalizationJobs.IsExiting || recordingFinalization != null && !recordingFinalization.IsCompleted) return; recordingBusy = true; item.Enabled = false;
             try
             {
                 SessionRecording capture = Interlocked.Exchange(ref recording, null);
-                if (capture != null) { recordingFinalization = capture.Stop(); await FinishRecording(); return; }
+                if (capture != null) { TrackRecordingFinalization(capture.Stop()); await FinishRecording(); return; }
                 if (!connected || displayImage == null) throw new InvalidOperationException("Connect before recording.");
                 ViewerConnection current = connection; int recordingRate; bool recordAudio;
                 using (var options = new RecordingOptionsForm(current.SourceRefresh, MediaNative.Version >= 2 && (current.Capabilities & SessionCapabilities.Audio) != 0, current.AudioEnabled))
@@ -373,8 +400,8 @@ namespace LumeRemote
                 {
                     if (dialog.ShowDialog(this) != DialogResult.OK) return;
                     if (recordAudio && !current.AudioEnabled) await current.SetAudio(true);
-                    if (!connected || current != connection || displayImage == null) throw new OperationCanceledException("The connection changed before recording started.");
-                    capture = new SessionRecording(dialog.FileName, displayImage.Width, displayImage.Height, recordingRate, recordAudio); recording = capture;
+                    if (!connected || current != connection || displayImage == null || closed || RecordingFinalizationJobs.IsExiting) throw new OperationCanceledException("The connection changed or Lume is closing before recording started.");
+                    capture = new SessionRecording(dialog.FileName, displayImage.Width, displayImage.Height, recordingRate, recordAudio); RecordingFinalizationJobs.Track(capture.Completion); recording = capture;
                     try { await capture.Ready; if (closed || !connected || recording != capture) throw new OperationCanceledException(); capture.Publish(displayImage); recordingBadge.Visible = true;
                         Task observation = capture.Completion.ContinueWith(delegate(Task done) { if (done.IsFaulted) { var problem = done.Exception; OnUi(delegate { if (Interlocked.CompareExchange(ref recording, null, capture) == capture) { recordingBadge.Visible = false; item.Text = "Start recording (MP4)"; ShowNotice("Recording stopped: " + problem.GetBaseException().Message); } }); } }); }
                     catch { Interlocked.CompareExchange(ref recording, null, capture); capture.Dispose(); throw; }
@@ -499,6 +526,86 @@ namespace LumeRemote
         {
             if (keyData == (Keys.Control | Keys.Alt | Keys.Shift | Keys.Escape)) { ReleaseInput(); if (fullScreen) ToggleFullscreen(); Focus(); return true; }
             return base.ProcessCmdKey(ref message, keyData);
+        }
+        protected override void Dispose(bool disposing)
+        {
+            if (disposing)
+            {
+                SessionRecording capture = Interlocked.Exchange(ref recording, null);
+                if (capture != null) TrackRecordingFinalization(capture.Stop());
+                if (!closed)
+                {
+                    closed = true; connected = false; closing.Cancel(); outgoing.CompleteAdding();
+                    if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; }
+                    if (connection != null) connection.Dispose(); if (peer != null) peer.Dispose();
+                    presentation.Dispose(); if (displayImage != null) { displayImage.Dispose(); displayImage = null; }
+                }
+                timer.Dispose(); clipboardTimer.Dispose(); Microsoft.Win32.SystemEvents.PowerModeChanged -= PowerChanged;
+            }
+            base.Dispose(disposing);
+        }
+    }
+
+    // Native writers are background jobs. Their lifetime must survive a viewer being disposed,
+    // and shutdown must never abandon a writer merely because a bounded wait expired.
+    internal static class RecordingFinalizationJobs
+    {
+        static readonly object gate = new object();
+        static readonly System.Collections.Generic.HashSet<Task> pending = new System.Collections.Generic.HashSet<Task>();
+        static int exitWaiters;
+        internal static bool IsExiting { get { lock (gate) return exitWaiters != 0; } }
+        internal static void BeginExit() { lock (gate) exitWaiters++; }
+        internal static void EndExit() { lock (gate) exitWaiters--; }
+        internal static void Track(Task completion)
+        {
+            if (completion == null) throw new ArgumentNullException("completion");
+            lock (gate) if (!pending.Add(completion)) return;
+            completion.ContinueWith(delegate(Task done)
+            {
+                if (done.IsFaulted) { var observed = done.Exception; }
+                lock (gate) pending.Remove(done);
+            }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        }
+        internal static async Task<bool> WaitForPending(int timeoutMilliseconds)
+        {
+            Stopwatch elapsed = Stopwatch.StartNew();
+            while (true)
+            {
+                Task[] snapshot; lock (gate) { pending.RemoveWhere(job => job.IsCompleted); snapshot = new Task[pending.Count]; pending.CopyTo(snapshot); }
+                if (snapshot.Length == 0) return true;
+                Task all = Task.WhenAll(snapshot);
+                Task observation = all.ContinueWith(delegate(Task done) { var observed = done.Exception; }, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+                int remaining = Math.Max(0, timeoutMilliseconds - (int)Math.Min(Int32.MaxValue, elapsed.ElapsedMilliseconds));
+                if (!all.IsCompleted && (remaining == 0 || await Task.WhenAny(all, Task.Delay(remaining)).ConfigureAwait(false) != all)) return false;
+                try { await all.ConfigureAwait(false); } catch (Exception) { } // Completed failures and cancellation no longer hold shutdown open.
+            }
+        }
+    }
+
+    // Do not depend on the ambient WinForms synchronization context: disposing the last
+    // viewer can remove it while dashboard/recording continuations are still pending.
+    internal static class RecordingUi
+    {
+        internal static Task<bool> Run(Form owner, int uiThread, Action action)
+        {
+            var result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            EventHandler disposed = null;
+            disposed = delegate { owner.Disposed -= disposed; result.TrySetResult(false); };
+            Action run = delegate
+            {
+                try { if (owner.IsDisposed) result.TrySetResult(false); else { action(); result.TrySetResult(true); } }
+                catch (Exception error) { result.TrySetException(error); }
+                finally { owner.Disposed -= disposed; }
+            };
+            owner.Disposed += disposed;
+            if (owner.IsDisposed) disposed(owner, EventArgs.Empty);
+            else if (Thread.CurrentThread.ManagedThreadId == uiThread) run();
+            else
+            {
+                try { owner.BeginInvoke(run); }
+                catch (InvalidOperationException) { owner.Disposed -= disposed; result.TrySetResult(false); }
+            }
+            return result.Task;
         }
     }
 

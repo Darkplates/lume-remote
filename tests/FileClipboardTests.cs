@@ -15,6 +15,7 @@ static partial class Tests
     static void FileClipboardChecks()
     {
         Run("Clipboard uses STA and reports a busy clipboard without crashing", ClipboardApartment);
+        Run("Awaited clipboard reads, writes and failures release the guard before completion", ClipboardSequential);
         Run("Rapid clipboard actions and busy callbacks preserve the desktop session", ClipboardRepeat);
         Run("File paths reject traversal, device names, streams, links and wrong owners", FilePathSecurity);
         Run("File hashes, chunk offsets and size are verified before final publication", FileIntegrity);
@@ -71,9 +72,43 @@ static partial class Tests
         {
             Task<bool> pending = ClipboardAccess.Write("first", delegate { entered.Set(); finish.WaitOne(3000); });
             Check(entered.WaitOne(1000), "Clipboard worker did not start.");
+            Reject(delegate { ClipboardAccess.Read(delegate { return "second"; }); });
             Reject(delegate { ClipboardAccess.Write("second", delegate { }); }); finish.Set(); Check(Await(pending), "Clipboard worker did not finish.");
         }
-        Thread.Sleep(20); Reject(delegate { Await(ClipboardAccess.Write("busy", delegate { throw new System.Runtime.InteropServices.ExternalException(); })); });
+        Reject(delegate { Await(ClipboardAccess.Write("busy", delegate { throw new System.Runtime.InteropServices.ExternalException(); })); });
+        Check(Await(ClipboardAccess.Read(delegate { return "recovered"; })) == "recovered", "The failed write held the clipboard guard after completion.");
+        using (ManualResetEvent entered = new ManualResetEvent(false)) using (ManualResetEvent finish = new ManualResetEvent(false))
+        {
+            Task<string> pending = ClipboardAccess.Read(delegate { entered.Set(); finish.WaitOne(3000); return "read"; });
+            Check(entered.WaitOne(1000), "Clipboard reader did not start.");
+            Reject(delegate { ClipboardAccess.Read(delegate { return "second"; }); });
+            Reject(delegate { ClipboardAccess.Write("second", delegate { }); });
+            finish.Set(); Check(Await(pending) == "read", "Clipboard reader did not finish.");
+        }
+    }
+    static void ClipboardSequential()
+    {
+        Task.Run(async delegate
+        {
+            int written = 0;
+            for (int i = 0; i < 1000; i++)
+            {
+                Check(await ClipboardAccess.Read(delegate { return "synthetic read"; }) == "synthetic read", "Sequential read changed the fixture.");
+                Check(await ClipboardAccess.Write("synthetic write", delegate(string value) { Check(value == "synthetic write", "Sequential write changed the fixture."); written++; }), "Sequential write failed.");
+                await ClipboardFailure(ClipboardAccess.Read(delegate { throw new IOException("Injected read failure"); }), "unavailable");
+                await ClipboardFailure(ClipboardAccess.Write("synthetic busy", delegate { throw new System.Runtime.InteropServices.ExternalException(); }), "in use");
+                await ClipboardFailure(ClipboardAccess.Write("synthetic failure", delegate { throw new IOException("Injected write failure"); }), "could not update");
+            }
+            Check(written == 1000, "The sequential clipboard callbacks were skipped.");
+            Check(await ClipboardAccess.Read(delegate { return "recovered"; }) == "recovered", "The final failed callback did not release the clipboard guard.");
+        }).GetAwaiter().GetResult();
+        Console.WriteLine("CLIPBOARD: 5001 awaited synthetic STA operations, including read/write errors; the real clipboard was not accessed.");
+    }
+    static async Task ClipboardFailure(Task pending, string message)
+    {
+        try { await pending; }
+        catch (InvalidOperationException error) { Check(error.Message.Contains(message), "Clipboard error lost its expected diagnosis."); return; }
+        throw new Exception("The injected clipboard failure was accepted.");
     }
     static void ClipboardRepeat()
     {

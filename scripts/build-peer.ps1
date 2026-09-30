@@ -1,4 +1,4 @@
-param([string]$SourceDirectory = '', [string]$BuildDirectory = '')
+param([string]$SourceDirectory = '', [string]$BuildDirectory = '', [string]$OutputPath = '')
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 if (-not $SourceDirectory) { $SourceDirectory = Join-Path $projectRoot 'build\peer-source' }
@@ -38,9 +38,15 @@ if (-not (Test-Path -LiteralPath $cmakeDirectory)) { Add-Type -AssemblyName Syst
 $cmakeExe = Join-Path $cmakeDirectory 'bin\cmake.exe'
 if (-not $BuildDirectory) { $BuildDirectory = Join-Path $projectRoot 'build\peer-bin' }
 $BuildDirectory = [System.IO.Path]::GetFullPath($BuildDirectory)
-& $cmakeExe -S (Join-Path $projectRoot 'native\peer') -B $BuildDirectory -G 'Visual Studio 17 2022' -A x64 "-DLUME_PEER_SOURCE_ROOT=$SourceDirectory" '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
+$patchedSource = Join-Path $BuildDirectory 'patched-source'
+& $python.Source (Join-Path $PSScriptRoot 'prepare-peer-source.py') --source-root $SourceDirectory --output $patchedSource
+if ($LASTEXITCODE -ne 0) { throw 'Verified WebRTC source overlay preparation failed.' }
+& $cmakeExe -S (Join-Path $projectRoot 'native\peer') -B $BuildDirectory -G 'Visual Studio 17 2022' -A x64 "-DLUME_PEER_SOURCE_ROOT=$patchedSource" '-DCMAKE_POLICY_VERSION_MINIMUM=3.5'
 if ($LASTEXITCODE -ne 0) { throw 'WebRTC dependency configuration failed.' }
 & $cmakeExe --build $BuildDirectory --config Release --target datachannel --parallel 2
 if ($LASTEXITCODE -ne 0) { throw 'WebRTC dependency build failed.' }
-Copy-Item -LiteralPath (Join-Path $BuildDirectory 'libdatachannel\Release\datachannel.dll') -Destination (Join-Path $projectRoot 'datachannel.dll')
-Get-Item -LiteralPath (Join-Path $projectRoot 'datachannel.dll') | Select-Object Name, Length
+if (-not $OutputPath) { $OutputPath = Join-Path $projectRoot 'datachannel.dll' }
+$OutputPath = [System.IO.Path]::GetFullPath($OutputPath)
+New-Item -ItemType Directory -Path (Split-Path -Parent $OutputPath) -Force | Out-Null
+Copy-Item -LiteralPath (Join-Path $BuildDirectory 'libdatachannel\Release\datachannel.dll') -Destination $OutputPath
+Get-Item -LiteralPath $OutputPath | Select-Object FullName, Length

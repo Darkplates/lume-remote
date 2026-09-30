@@ -25,6 +25,7 @@ static partial class Tests
         if (args.Length == 2 && args[0] == "--portable-peer-fixture") { PortablePeerFixture(args[1]); return 0; }
         if (args.Length == 2 && args[0] == "--portable-viewer") { PortableViewerFixture(args[1]); return 0; }
         if (args.Length == 2 && args[0] == "--portable-monitors-fixture") { PortableMonitorsFixture(args[1]); return 0; }
+        if (args.Length == 2 && args[0] == "--portable-annotations-fixture") { PortableAnnotationsFixture(args[1]); return 0; }
         if (args.Length == 2 && args[0] == "--portable-monitors-viewer") { PortableMonitorsViewer(args[1]); return 0; }
         if (args.Length == 3 && args[0] == "--portable-files-fixture") { PortableFilesFixture(args[1], args[2]); return 0; }
         if (args.Length == 2 && args[0] == "--portable-paired-fixture") { PortablePairedFixture(args[1]); return 0; }
@@ -52,6 +53,7 @@ static partial class Tests
         if (args.Length > 0 && args[0] == "--benchmark") { Benchmark(); return 0; }
         if (args.Length > 0 && args[0] == "--profile") { ProfileStages(); return 0; }
         if (args.Length > 0 && args[0] == "--p2p-ui") { Run("Main app P2P approval UI", PeerMainApproval); return failed == 0 ? 0 : 1; }
+        if (args.Length > 0 && args[0] == "--p2p-signaling-delay") { PeerSignalingDelayChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--quality") { QualityChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--signal") { Run("Encrypted signaling rejects tampering and address substitution", SignalSecurity); Run("Public signaling delivers authenticated encrypted messages", PublicSignaling); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--paired") { Run("Protected settings and one-time pairing code", ProtectedSettings); Run("Pair once, reconnect automatically, then revoke the live session", PersistentPairing); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }

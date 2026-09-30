@@ -31,7 +31,8 @@ try{
         foreach($name in @('folder-job','folder-job (1)')) {
             $tree=Join-Path $remote $name
             if(-not(Test-Path -LiteralPath (Join-Path $tree 'nested/empty') -PathType Container)){throw 'Remote empty folder is missing.'}
-            if((Get-FileHash -LiteralPath (Join-Path $tree 'nested/café.bin') -Algorithm SHA256).Hash -ne $sourceHash){throw 'Remote folder bytes differ.'}
+            $unicodeLeaf = 'nested/caf' + [char]0x00E9 + '.bin'
+            if((Get-FileHash -LiteralPath (Join-Path $tree $unicodeLeaf) -Algorithm SHA256).Hash -ne $sourceHash){throw 'Remote folder bytes differ.'}
         }
         Write-Output 'PASS Independent Windows filesystem hashes match both uploaded copies.'
     }

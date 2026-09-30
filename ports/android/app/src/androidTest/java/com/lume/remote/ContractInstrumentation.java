@@ -18,6 +18,7 @@ import java.util.function.BooleanSupplier;
 public final class ContractInstrumentation extends Instrumentation {
     private long viewer;
     private MainActivity activity;
+    private boolean remediationOnly;
     private static void check(boolean ok,String message){if(!ok)throw new AssertionError(message);}
     private static void waitFor(BooleanSupplier condition,String message)throws Exception{
         long until=SystemClock.elapsedRealtime()+20000;
@@ -30,10 +31,12 @@ public final class ContractInstrumentation extends Instrumentation {
     }
     private boolean action(String json){return Native.action(viewer,Native.utf8(json));}
     private JSONObject state(){try{return new JSONObject(Native.text(Native.state(viewer)));}catch(Exception e){throw new AssertionError("Invalid native state",e);}}
-    @Override public void onCreate(Bundle bundle){super.onCreate(bundle);start();}
+    @Override public void onCreate(Bundle bundle){super.onCreate(bundle);remediationOnly=bundle!=null&&"true".equals(bundle.getString("remediation_only"));start();}
     @Override public void onStart(){
         Bundle result=new Bundle();int outcome=Activity.RESULT_CANCELED;
         try{
+            RemediationChecks.run(this,result);
+            if(remediationOnly){result.putString("stream","PASS Android isolated remediation contract\n");finish(Activity.RESULT_OK,result);return;}
             for(String name:new String[]{"../escape","CON.txt","COM¹.txt","stream:tail","trailing.",".lume-partial"}) {
                 boolean rejected=false;try{FolderDocuments.name(name);}catch(java.io.IOException expected){rejected=true;}
                 check(rejected,"Unsafe folder entry name accepted");

@@ -167,8 +167,8 @@ namespace LumeRemote
             Directory.CreateDirectory(store.DirectoryPath);
             string ownerSid = null; try { if (File.Exists(store.HostFile)) ownerSid = store.ReadHost().OwnerSid; } catch { ownerSid = null; }
             if (ownerSid != null) { string owner = ownerSid; controlServer = Task.Run(delegate { ServeControl(owner); }); }
-            watcher = new FileSystemWatcher(store.DirectoryPath, "host.dat") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, EnableRaisingEvents = true };
-            watcher.Changed += delegate { Pulse(); }; watcher.Created += delegate { Pulse(); }; watcher.Renamed += delegate { Pulse(); };
+            watcher = new FileSystemWatcher(store.DirectoryPath, "host*.dat") { NotifyFilter = NotifyFilters.LastWrite | NotifyFilters.FileName | NotifyFilters.Size, EnableRaisingEvents = true };
+            watcher.Changed += delegate { Pulse(); }; watcher.Created += delegate { Pulse(); }; watcher.Renamed += delegate { Pulse(); }; watcher.Deleted += delegate { Pulse(); };
             DateTime retry = DateTime.MinValue;
             try
             {
@@ -209,7 +209,7 @@ namespace LumeRemote
         {
             while (!stopped.IsCancellationRequested)
             {
-                NamedPipeServerStream server = null;
+                NamedPipeServerStream server = null; string name = store.NewControlPipeName();
                 try
                 {
                     PipeSecurity security = new PipeSecurity();
@@ -218,14 +218,33 @@ namespace LumeRemote
                     security.AddAccessRule(new PipeAccessRule(new SecurityIdentifier(ownerSid), PipeAccessRights.ReadWrite | PipeAccessRights.Synchronize, AccessControlType.Allow));
                     // BeginWaitForConnection requires an asynchronous pipe on .NET Framework; with
                     // PipeOptions.None it throws after the client may already have connected.
-                    server = new NamedPipeServerStream(store.ControlPipeName, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 8192, 8192, security);
-                    IAsyncResult wait = server.BeginWaitForConnection(null, null);
-                    while (!wait.AsyncWaitHandle.WaitOne(500)) { if (stopped.IsCancellationRequested) { try { server.Dispose(); } catch { } return; } }
-                    server.EndWaitForConnection(wait);
-                    HandleControlClient(server, ownerSid);
+                    server = new NamedPipeServerStream(name, PipeDirection.InOut, 1, PipeTransmissionMode.Byte, PipeOptions.Asynchronous, 8192, 8192, security);
+                    store.PublishControlPipe(name);
+                    NamedPipeServerStream listener = server;
+                    // Cancellation also interrupts a client stalled in ReadFrame/drain.
+                    using (stopped.Token.Register(delegate { try { listener.Dispose(); } catch { } }))
+                    {
+                        while (!stopped.IsCancellationRequested)
+                        {
+                            IAsyncResult wait = server.BeginWaitForConnection(null, null);
+                            using (wait.AsyncWaitHandle)
+                            {
+                                while (!wait.AsyncWaitHandle.WaitOne(500)) if (stopped.IsCancellationRequested) return;
+                                server.EndWaitForConnection(wait);
+                            }
+                            HandleControlClient(server, ownerSid);
+                            // Reuse the same handle: the namespace remains service-owned
+                            // between authenticated requests instead of becoming vacant.
+                            if (!stopped.IsCancellationRequested) server.Disconnect();
+                        }
+                    }
                 }
                 catch (Exception error) { if (!stopped.IsCancellationRequested) { SessionLog.Write(store.DirectoryPath, "host", "control_channel_failed", error); stopped.Token.WaitHandle.WaitOne(500); } }
-                finally { if (server != null) { try { server.Dispose(); } catch { } } }
+                finally
+                {
+                    try { store.RemoveControlPipe(name); } catch (Exception error) { if (!stopped.IsCancellationRequested) SessionLog.Write(store.DirectoryPath, "host", "control_channel_failed", error); }
+                    if (server != null) { try { server.Dispose(); } catch { } }
+                }
             }
         }
         void HandleControlClient(NamedPipeServerStream server, string ownerSid)

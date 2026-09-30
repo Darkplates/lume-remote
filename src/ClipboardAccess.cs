@@ -17,16 +17,17 @@ namespace LumeRemote
             TaskCompletionSource<string> result = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
             Thread worker = new Thread(delegate()
             {
+                string value = null; Exception failure = null;
                 try
                 {
-                    string value = read();
+                    value = read();
                     if (System.Text.Encoding.UTF8.GetByteCount(value) > 262144) throw new InvalidOperationException("Clipboard text must be smaller than 256 KiB per action.");
-                    result.TrySetResult(value);
                 }
-                catch (Exception) { result.TrySetException(new InvalidOperationException("The remote clipboard is unavailable or exceeds 256 KiB. Try copying a smaller text selection.")); }
+                catch (Exception) { failure = new InvalidOperationException("The remote clipboard is unavailable or exceeds 256 KiB. Try copying a smaller text selection."); }
                 finally { Interlocked.Exchange(ref busy, 0); }
+                if (failure == null) result.TrySetResult(value); else result.TrySetException(failure);
             }) { IsBackground = true, Name = "Lume clipboard reader" };
-            worker.SetApartmentState(ApartmentState.STA); try { worker.Start(); } catch { Interlocked.Exchange(ref busy, 0); throw; }
+            try { worker.SetApartmentState(ApartmentState.STA); worker.Start(); } catch { Interlocked.Exchange(ref busy, 0); throw; }
             return result.Task;
         }
         public static Task<bool> Write(string text)
@@ -39,13 +40,14 @@ namespace LumeRemote
             TaskCompletionSource<bool> result = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             Thread worker = new Thread(delegate()
             {
-                try { write(text); result.TrySetResult(true); }
-                catch (ExternalException) { result.TrySetException(new InvalidOperationException("The remote clipboard is in use. Try again shortly.")); }
-                catch (Exception) { result.TrySetException(new InvalidOperationException("Windows could not update the remote clipboard.")); }
+                Exception failure = null;
+                try { write(text); }
+                catch (ExternalException) { failure = new InvalidOperationException("The remote clipboard is in use. Try again shortly."); }
+                catch (Exception) { failure = new InvalidOperationException("Windows could not update the remote clipboard."); }
                 finally { Interlocked.Exchange(ref busy, 0); }
+                if (failure == null) result.TrySetResult(true); else result.TrySetException(failure);
             }) { IsBackground = true, Name = "Lume clipboard" };
-            worker.SetApartmentState(ApartmentState.STA);
-            try { worker.Start(); } catch { Interlocked.Exchange(ref busy, 0); throw; }
+            try { worker.SetApartmentState(ApartmentState.STA); worker.Start(); } catch { Interlocked.Exchange(ref busy, 0); throw; }
             return result.Task;
         }
     }

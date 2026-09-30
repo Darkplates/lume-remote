@@ -10,6 +10,7 @@ $ErrorActionPreference = 'Stop'
 $project = Split-Path -Parent $PSScriptRoot
 $Sdk = [IO.Path]::GetFullPath($Sdk)
 $PeerSource = [IO.Path]::GetFullPath($PeerSource)
+$python = Get-Command python.exe -ErrorAction Stop
 if (-not $BuildDirectory) { $BuildDirectory = Join-Path $project 'build\android' }
 $BuildDirectory = [IO.Path]::GetFullPath($BuildDirectory)
 $ndk = Join-Path $Sdk 'ndk\28.2.13676358'
@@ -24,6 +25,9 @@ foreach ($entry in @(@('libdatachannel','6b1e2e620f1e37f0eafeee702eaea0043cb305f
     $submodules = & git -C $path submodule status --recursive
     if ($LASTEXITCODE -ne 0 -or ($submodules | Where-Object { $_ -match '^[-+U]' })) { throw 'Pinned submodules are incomplete.' }
 }
+$patchedSource = Join-Path $BuildDirectory 'patched-source'
+& $python.Source (Join-Path $PSScriptRoot 'prepare-peer-source.py') --source-root $PeerSource --output $patchedSource
+if ($LASTEXITCODE -ne 0) { throw 'Verified Android WebRTC source overlay preparation failed.' }
 $previousFlags = $env:RUSTFLAGS
 $previousEnvironment = @{}
 function Set-TemporaryEnvironment($Name, $Value) {
@@ -44,7 +48,7 @@ try {
         & cargo build --manifest-path (Join-Path $project 'ports\Cargo.toml') -p lume-bridge --release --target $target --locked -j 2
         if ($LASTEXITCODE -ne 0) { throw ('Rust Android build failed: ' + $abi) }
         $nativeBuild = Join-Path $BuildDirectory $abi
-        & $CMake -S (Join-Path $project 'native\peer') -B $nativeBuild -G Ninja "-DCMAKE_MAKE_PROGRAM=$Ninja" "-DCMAKE_TOOLCHAIN_FILE=$ndk\build\cmake\android.toolchain.cmake" "-DANDROID_ABI=$abi" '-DANDROID_PLATFORM=android-26' '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON' '-DCMAKE_BUILD_TYPE=Release' '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' "-DLUME_PEER_SOURCE_ROOT=$PeerSource"
+        & $CMake -S (Join-Path $project 'native\peer') -B $nativeBuild -G Ninja "-DCMAKE_MAKE_PROGRAM=$Ninja" "-DCMAKE_TOOLCHAIN_FILE=$ndk\build\cmake\android.toolchain.cmake" "-DANDROID_ABI=$abi" '-DANDROID_PLATFORM=android-26' '-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON' '-DCMAKE_BUILD_TYPE=Release' '-DCMAKE_POLICY_VERSION_MINIMUM=3.5' "-DLUME_PEER_SOURCE_ROOT=$patchedSource"
         if ($LASTEXITCODE -ne 0) { throw ('Android WebRTC configure failed: ' + $abi) }
         & $CMake --build $nativeBuild --target datachannel --parallel 2
         if ($LASTEXITCODE -ne 0) { throw ('Android WebRTC build failed: ' + $abi) }
