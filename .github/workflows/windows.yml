@@ -39,7 +39,7 @@ jobs:
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
       - name: Verify manual P2P signaling delays with owned loopback proxies
-        timeout-minutes: 12
+        timeout-minutes: 8
         shell: pwsh
         run: |
           $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'

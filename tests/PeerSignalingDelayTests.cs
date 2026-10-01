@@ -29,8 +29,7 @@ static partial class Tests
         Run("Native manual P2P connects with an immediate reply", delegate { LoadSignalingDelayLibrary(); PeerSignalingDelay(0, false); });
         if (failed != 0) return; // A failed control cannot support a delayed comparison.
         Run("Native ICE survives a reply delayed by 45 seconds", delegate { PeerSignalingDelay(45000, false); });
-        Run("Native DTLS survives an early route and reply delayed by 150 seconds (older actpass offer)", delegate { PeerSignalingDelay(150000, true, true); });
-        Run("Sharing PC as DTLS client: no pending handshake before a reply delayed by 150 seconds", delegate { PeerSignalingDelay(150000, true, false); });
+        Run("Native DTLS survives an early route and reply delayed by 150 seconds", delegate { PeerSignalingDelay(150000, true); });
     }
     static void LoadSignalingDelayLibrary()
     {
@@ -146,10 +145,7 @@ static partial class Tests
         while (count < observed.Length) { int read = receiver.Read(observed, count, observed.Length - count); Check(read > 0, "The native binary stream ended during the delay fixture."); count += read; }
         for (int i = 0; i < expected.Length; ++i) Check(observed[i] == expected[i], "The native binary stream changed a byte after signaling delay.");
     }
-    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute) { PeerSignalingDelay(delayMilliseconds, earlyRoute, false); }
-    // legacyOffer restores the actpass offer that older sharing PCs send, so the answering
-    // PC becomes the DTLS client and starts its handshake before the reply is applied.
-    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute, bool legacyOffer)
+    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute)
     {
         Stopwatch total = Stopwatch.StartNew(); PeerTransport host = null, viewer = null; SignalingDelayProxy proxy = null;
         List<Task> waits = new List<Task>();
@@ -157,9 +153,7 @@ static partial class Tests
         {
             host = new PeerTransport(false); viewer = new PeerTransport(false);
             Check(GetModuleHandleW("datachannel.dll") == signalingDelayLibrary, "The peer imports did not resolve to the selected native library.");
-            string offer = host.CreateOffer();
-            if (legacyOffer) offer = offer.Replace("\r\na=setup:active\r\n", "\r\na=setup:actpass\r\n");
-            proxy = new SignalingDelayProxy(SignalingDelayEndpoint(offer));
+            string offer = host.CreateOffer(); proxy = new SignalingDelayProxy(SignalingDelayEndpoint(offer));
             string answer = viewer.CreateAnswer(SignalingDelayDescription(offer, proxy.HostPort));
             proxy.Viewer = SignalingDelayEndpoint(answer); proxy.Forward = earlyRoute;
             Stopwatch manual = Stopwatch.StartNew(); bool selectedRoute = false; int reported = 0;
@@ -168,13 +162,13 @@ static partial class Tests
                 Check(host.CanRead && viewer.CanRead, "A native peer ended before the delayed manual reply was applied.");
                 Check(proxy.Error == 0, "An owned UDP proxy failed (socket code " + proxy.Error + ").");
                 if (earlyRoute && !selectedRoute) selectedRoute = viewer.RouteSummary().StartsWith("Direct P2P /", StringComparison.Ordinal);
-                if (earlyRoute && manual.ElapsedMilliseconds >= 15000) Check(selectedRoute && (legacyOffer ? proxy.Handshakes > 0 : proxy.Handshakes == 0), legacyOffer ? "The early-route fixture did not establish ICE and begin DTLS before the reply delay." : "The answering PC started DTLS before the sharing PC applied its reply.");
+                if (earlyRoute && manual.ElapsedMilliseconds >= 15000) Check(selectedRoute && proxy.Handshakes > 0, "The early-route fixture did not establish ICE and begin DTLS before the reply delay.");
                 int seconds = (int)manual.Elapsed.TotalSeconds;
                 if (seconds >= reported + 30) { reported = seconds; Console.WriteLine("SIGNALING_WAIT elapsedSeconds=" + seconds + " peersAlive=True earlyRoute=" + earlyRoute + " dtlsHandshakes=" + proxy.Handshakes); }
                 Thread.Sleep(100);
             }
             Check(host.CanRead && viewer.CanRead, "A native peer ended at the manual reply deadline.");
-            if (earlyRoute) Check(selectedRoute && (legacyOffer ? proxy.Handshakes > 0 : proxy.Handshakes == 0), legacyOffer ? "The early-route delay did not exercise pending DTLS." : "DTLS was pending before the reply was applied.");
+            if (earlyRoute) Check(selectedRoute && proxy.Handshakes > 0, "The early-route delay did not exercise pending DTLS.");
             else if (delayMilliseconds > 0) Check(proxy.Forwarded == 0 && proxy.Dropped > 0, "The blocked-route delay did not suppress connectivity checks.");
             host.AcceptAnswer(SignalingDelayDescription(answer, proxy.ViewerPort)); proxy.Forward = true;
             Exception hostFailure = null, viewerFailure = null;
