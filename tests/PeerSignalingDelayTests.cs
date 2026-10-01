@@ -30,6 +30,8 @@ static partial class Tests
         if (failed != 0) return; // A failed control cannot support a delayed comparison.
         Run("Native ICE survives a reply delayed by 45 seconds", delegate { PeerSignalingDelay(45000, false); });
         Run("Native DTLS survives an early route and reply delayed by 150 seconds", delegate { PeerSignalingDelay(150000, true); });
+        // Firewalls and NAT routers admit a peer's packets only shortly after sending to it.
+        Run("Native ICE survives a reply delayed by 150 seconds behind 30-second stateful firewalls", delegate { PeerSignalingDelay(150000, false, 30000); });
     }
     static void LoadSignalingDelayLibrary()
     {
@@ -90,6 +92,12 @@ static partial class Tests
         internal int Error { get { return Volatile.Read(ref firstError); } }
         internal IPEndPoint Viewer { set { viewerEndpoint = value; } }
         internal bool Forward { set { forward = value; } }
+        readonly Stopwatch clock = Stopwatch.StartNew();
+        long lastFromViewer = -1, lastFromHost = -1, quietAtReply = -1;
+        int statefulWindow;
+        internal int StatefulWindow { set { statefulWindow = value; } }
+        // How long the answering PC had been silent when the sharing PC first sent.
+        internal long ViewerQuietMilliseconds { get { return Interlocked.Read(ref quietAtReply); } }
         internal SignalingDelayProxy(IPEndPoint host)
         {
             hostEndpoint = host;
@@ -116,6 +124,14 @@ static partial class Tests
                     IPEndPoint target = viewerDirection ? hostEndpoint : viewerEndpoint;
                     if (!forward || expected == null || target == null || !IPAddress.IsLoopback(sender.Address) || sender.Port != expected.Port)
                     { Interlocked.Increment(ref dropped); continue; }
+                    if (statefulWindow > 0)
+                    {
+                        long now = clock.ElapsedMilliseconds;
+                        if (viewerDirection) Interlocked.Exchange(ref lastFromViewer, now); else Interlocked.Exchange(ref lastFromHost, now);
+                        long peerLast = viewerDirection ? Interlocked.Read(ref lastFromHost) : Interlocked.Read(ref lastFromViewer);
+                        if (!viewerDirection && Interlocked.Read(ref quietAtReply) < 0) { long viewerLast = Interlocked.Read(ref lastFromViewer); Interlocked.Exchange(ref quietAtReply, viewerLast < 0 ? now : now - viewerLast); }
+                        if (peerLast < 0 || now - peerLast > statefulWindow) { Interlocked.Increment(ref dropped); continue; }
+                    }
                     // Opposite sockets preserve the proxy endpoint advertised in each description.
                     outgoing.Send(bytes, bytes.Length, target); Interlocked.Increment(ref forwarded);
                     if (bytes.Length >= 13 && bytes[0] == 22) Interlocked.Increment(ref handshakes);
@@ -145,7 +161,10 @@ static partial class Tests
         while (count < observed.Length) { int read = receiver.Read(observed, count, observed.Length - count); Check(read > 0, "The native binary stream ended during the delay fixture."); count += read; }
         for (int i = 0; i < expected.Length; ++i) Check(observed[i] == expected[i], "The native binary stream changed a byte after signaling delay.");
     }
-    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute)
+    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute) { PeerSignalingDelay(delayMilliseconds, earlyRoute, 0); }
+    // statefulMilliseconds > 0 models a stateful firewall or NAT on each side: inbound
+    // packets pass only if that side sent to the other within the window.
+    static void PeerSignalingDelay(int delayMilliseconds, bool earlyRoute, int statefulMilliseconds)
     {
         Stopwatch total = Stopwatch.StartNew(); PeerTransport host = null, viewer = null; SignalingDelayProxy proxy = null;
         List<Task> waits = new List<Task>();
@@ -155,7 +174,7 @@ static partial class Tests
             Check(GetModuleHandleW("datachannel.dll") == signalingDelayLibrary, "The peer imports did not resolve to the selected native library.");
             string offer = host.CreateOffer(); proxy = new SignalingDelayProxy(SignalingDelayEndpoint(offer));
             string answer = viewer.CreateAnswer(SignalingDelayDescription(offer, proxy.HostPort));
-            proxy.Viewer = SignalingDelayEndpoint(answer); proxy.Forward = earlyRoute;
+            proxy.Viewer = SignalingDelayEndpoint(answer); proxy.StatefulWindow = statefulMilliseconds; proxy.Forward = earlyRoute || statefulMilliseconds > 0;
             Stopwatch manual = Stopwatch.StartNew(); bool selectedRoute = false; int reported = 0;
             while (manual.ElapsedMilliseconds < delayMilliseconds)
             {
@@ -172,8 +191,8 @@ static partial class Tests
             else if (delayMilliseconds > 0) Check(proxy.Forwarded == 0 && proxy.Dropped > 0, "The blocked-route delay did not suppress connectivity checks.");
             host.AcceptAnswer(SignalingDelayDescription(answer, proxy.ViewerPort)); proxy.Forward = true;
             Exception hostFailure = null, viewerFailure = null;
-            int hostWait = earlyRoute ? 90000 : 10000;
-            int viewerWait = earlyRoute ? Math.Max(1, 180000 - (int)manual.ElapsedMilliseconds) : 10000;
+            int hostWait = earlyRoute || statefulMilliseconds > 0 ? 90000 : 10000;
+            int viewerWait = earlyRoute ? Math.Max(1, 180000 - (int)manual.ElapsedMilliseconds) : statefulMilliseconds > 0 ? 90000 : 10000;
             waits.Add(Task.Run(delegate { try { host.WaitReady(hostWait); } catch (Exception error) { hostFailure = error; } }));
             waits.Add(Task.Run(delegate { try { viewer.WaitReady(viewerWait); } catch (Exception error) { viewerFailure = error; if (earlyRoute) viewer.Dispose(); } }));
             Check(Task.WaitAll(waits.ToArray(), Math.Max(hostWait, viewerWait) + 2500), "Native readiness tasks did not finish at their bounded deadlines.");
@@ -183,6 +202,7 @@ static partial class Tests
             SignalingDelayBytes(host, viewer, new byte[] { 89, 77, 66, 58, 44, 33, 27, 19 });
             Check(proxy.Error == 0, "An owned UDP proxy failed during duplex validation (socket code " + proxy.Error + ").");
             proxy.Report(delayMilliseconds, earlyRoute, total.Elapsed.TotalSeconds);
+            if (statefulMilliseconds > 0) Console.WriteLine("SIGNALING_STATEFUL windowMs=" + statefulMilliseconds + " viewerQuietBeforeReplyMs=" + proxy.ViewerQuietMilliseconds);
             Console.WriteLine("SIGNALING_DUPLEX verifiedBytesPerDirection=8");
         }
         finally
