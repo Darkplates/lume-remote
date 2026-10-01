@@ -192,3 +192,11 @@ native logging: it can expose SDP, credentials and addresses.
   `manual-signaling-ice-checks-v1.patch` (libjuice `agent.c`: restart exhausted
   checks while connecting and the PAC timer runs) made all four delay cases pass
   on `02e7723`. Re-test on real PCs is next; WAN is still unproven.
+- Owner-requested flow simplification (2026-10-01): short-code pairing
+  (`src/ShortPairing.cs`: 8 digits as broker rendezvous, committed P-256 ECDH, 6-digit
+  comparison confirmed on both PCs, then the unchanged long pairing code is sent
+  encrypted; the service and control pipe are untouched) and guest invitation links
+  (`src/InvitationLinks.cs`, `docs/open.html`: https page on GitHub Pages hands the
+  fragment-held invitation to the per-user `lume-open:` handler, which always asks
+  before connecting). GitHub Pages must be enabled for the repository (main, /docs) for
+  links to open; pasting still works without it.

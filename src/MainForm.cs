@@ -18,7 +18,7 @@ namespace LumeRemote
         readonly ComboBox mode = Theme.Combo(), address = Theme.Combo(), screen = Theme.Combo(), profile = Theme.Combo();
         readonly TextBox port = Theme.Box(false), relay = Theme.Box(false), invitation = Theme.Box(true), remote = Theme.Box(true);
         readonly CheckBox control = new CheckBox { Text = "Allow control and files after approval", Checked = true, AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 4, 0, 12) };
-        readonly Button start = Theme.Button("Start sharing", true), stop = Theme.Button("Stop sharing", false), connect = Theme.Button("Connect to computer", true), copy = Theme.Button("Copy invitation", false);
+        readonly Button start = Theme.Button("Start sharing", true), stop = Theme.Button("Stop sharing", false), connect = Theme.Button("Connect to computer", true), copy = Theme.Button("Copy invitation", false), copyLink = Theme.Button("Copy link", true);
         readonly Label status = Theme.Label("Ready. No connection is active.", 10, Theme.Muted), resources = Theme.Label("", 9, Theme.Muted);
         readonly Label endpoint = Theme.Label("Not sharing. Start sharing to create a private invitation.", 10, Theme.Muted);
         readonly Timer statistics = new Timer { Interval = 2000 };
@@ -56,7 +56,7 @@ namespace LumeRemote
             computersTab.Click += delegate { columns.Visible = false; home.Visible = true; home.BringToFront(); computersTab.Selected = true; guestTab.Selected = false; };
             guestTab.Click += delegate { home.Visible = false; columns.Visible = true; columns.BringToFront(); FitColumn(left, leftScroll); FitColumn(right, rightScroll); guestTab.Selected = true; computersTab.Selected = false; };
             left.Controls.Add(Theme.Label("Share this PC", 16, Theme.Text));
-            left.Controls.Add(Theme.Label("Start, send the code, approve your guest.", 10, Theme.Muted));
+            left.Controls.Add(Theme.Label("Start, send the link, approve your guest.", 10, Theme.Muted));
             FlowLayoutPanel settings = Theme.Column(); settings.Name = "Settings"; settings.Padding = new Padding(0); settings.Visible = false;
             AddField(settings, "Connection route", mode); mode.Items.AddRange(new object[] { "P2P Internet - invitation and reply", "Direct - local network or VPN", "Internet - your own relay" }); mode.SelectedIndex = 0;
             AddField(settings, "Local network address", address);
@@ -81,23 +81,24 @@ namespace LumeRemote
             FlowLayoutPanel actions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) }; actions.Controls.Add(start); actions.Controls.Add(stop); left.Controls.Add(actions);
             stop.Enabled = false; start.Click += async delegate { await StartSharing(); }; stop.Click += delegate { StopSharing(); };
             left.Controls.Add(Theme.Label("Your private invitation", 9, Theme.Muted)); invitation.ReadOnly = true; invitation.ScrollBars = ScrollBars.Vertical; invitation.TabStop = false; left.Controls.Add(invitation);
-            copy.Enabled = false;
+            copy.Enabled = copyLink.Enabled = false; copyLink.Width = 120; copy.Width = 150;
             Button checkHost = Theme.Button("Check network", false);
             FlowLayoutPanel invitationActions = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0) };
-            invitationActions.Controls.Add(copy); invitationActions.Controls.Add(checkHost); left.Controls.Add(invitationActions);
+            invitationActions.Controls.Add(copyLink); invitationActions.Controls.Add(copy); left.Controls.Add(invitationActions); left.Controls.Add(checkHost);
             settings.Controls.Add(endpoint);
             checkHost.Click += delegate { if (peer != null) SetStatus("P2P uses ICE/STUN and an invitation/reply exchange. No inbound TCP listener is required."); else new ConnectionDiagnosticsForm(host == null ? null : host.Invite, true).Show(this); };
             copy.Click += delegate { try { if (invitation.Text.Length > 0) { Clipboard.SetText(invitation.Text); SetStatus("Invitation copied. Send it privately to the person you trust."); } } catch (Exception e) { SetStatus(e.Message); } };
+            copyLink.Click += delegate { try { if (invitation.Text.Length > 0) { Clipboard.SetText(InvitationLinks.Link(invitation.Text)); SetStatus("Link copied. Send it privately; the other person clicks it to open Lume and connect."); } } catch (Exception e) { SetStatus(e.Message); } };
             left.Controls.Add(Theme.Label("Emergency stop: Ctrl + Alt + Shift + F12", 9, Theme.Muted));
             Button configure = Theme.Button("Connection and quality settings", false); configure.Width = 330;
             configure.Click += delegate { settings.Visible = !settings.Visible; configure.Text = settings.Visible ? "Hide settings" : "Connection and quality settings"; FitColumn(left, leftScroll); };
             left.Controls.Add(configure); left.Controls.Add(settings);
             right.Controls.Add(Theme.Label("Connect as a guest", 16, Theme.Text));
-            right.Controls.Add(Theme.Label("Paste the code from the other PC.", 10, Theme.Muted));
+            right.Controls.Add(Theme.Label("Click the link you received, or paste the invitation here.", 10, Theme.Muted));
             AddField(right, "Private invitation", remote); remote.Height = 132; remote.MaxLength = 65536; remote.ScrollBars = ScrollBars.Vertical;
             connect.Width = 240; right.Controls.Add(connect); connect.Click += delegate { ConnectRemote(); };
             Button checkRemote = Theme.Button("Check connection", false); checkRemote.Width = 240; right.Controls.Add(checkRemote);
-            checkRemote.Click += delegate { try { if (remote.Text.Trim().StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) { PeerSignal.Parse(remote.Text); SetStatus("Valid P2P invitation. Use Connect to computer; its reply returns to the sharing PC automatically."); } else new ConnectionDiagnosticsForm(Invitation.Parse(remote.Text), false).Show(this); } catch (Exception error) { SetStatus(error.Message); } };
+            checkRemote.Click += delegate { try { string text = InvitationLinks.Unwrap(remote.Text); if (text.StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) { PeerSignal.Parse(text); SetStatus("Valid P2P invitation. Use Connect to computer; its reply returns to the sharing PC automatically."); } else new ConnectionDiagnosticsForm(Invitation.Parse(text), false).Show(this); } catch (Exception error) { SetStatus(error.Message); } };
             Button guide = Theme.Button("Open quick start", false); right.Controls.Add(guide);
             guide.Click += delegate { try { Process.Start(new ProcessStartInfo(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "START-HERE.txt")) { UseShellExecute = true }); } catch (Exception e) { SetStatus(e.Message); } };
             FlowLayoutPanel footer = new FlowLayoutPanel { Dock = DockStyle.Fill, WrapContents = false, Padding = new Padding(0, 8, 0, 0) };
@@ -230,7 +231,7 @@ namespace LumeRemote
                     if (closing || current != generation) { createdPeer.Dispose(); return; } peer = createdPeer;
                     PeerSignal offer = await Task.Run(delegate { return PeerSignal.Offer(created.Invite, createdPeer.CreateOffer()); });
                     if (closing || current != generation) { createdPeer.Dispose(); return; }
-                    invitation.Text = offer.ToString(); copy.Enabled = true;
+                    invitation.Text = offer.ToString(); copy.Enabled = copyLink.Enabled = true;
                     endpoint.Text = "P2P Internet / invitation and reply\nNo inbound TCP port or VPN is required.";
                     SetStatus("P2P invitation ready. Send it privately. The reply returns to the P2P window automatically, or can be pasted there.");
                     new PeerHostForm(offer, createdPeer, delegate { if (current == generation && host == created) { SetStatus(createdPeer.RouteSummary() + " connected. Local approval is next."); created.AcceptPeer(createdPeer); } },
@@ -238,7 +239,7 @@ namespace LumeRemote
                     return;
                 }
                 if (useRelay) host.StartRelay(relayHost, relayPort); else host.Start(bind, listenPort, bind.ToString());
-                invitation.Text = host.Invite.ToString(); copy.Enabled = true;
+                invitation.Text = host.Invite.ToString(); copy.Enabled = copyLink.Enabled = true;
                 endpoint.Text = (useRelay ? "Relay endpoint: " : "Listening on: ") + ConnectionDiagnostics.Endpoint(host.Invite) +
                     (useRelay ? "\nBoth PCs connect to your relay." : "\nDirect mode: same reachable LAN or VPN.");
             }
@@ -256,7 +257,7 @@ namespace LumeRemote
         {
             SetIndicator(null);
             generation++; if (peer != null) { peer.Dispose(); peer = null; } if (host != null) { host.Dispose(); host = null; }
-            invitation.Clear(); copy.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
+            invitation.Clear(); copy.Enabled = copyLink.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
             foreach (Form owned in OwnedForms) if (owned is ConsentForm || owned is TimedConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
         }
@@ -331,7 +332,7 @@ namespace LumeRemote
         }
         void ConnectRemote()
         {
-            try { if (remote.Text.Trim().StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) new PeerViewerForm(PeerSignal.Parse(remote.Text)).Show(); else { Invitation invite = Invitation.Parse(remote.Text); ViewerForm viewer = new ViewerForm(invite); viewer.Show(); } }
+            try { string text = InvitationLinks.Unwrap(remote.Text); if (text.StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) new PeerViewerForm(PeerSignal.Parse(text)).Show(); else { Invitation invite = Invitation.Parse(text); ViewerForm viewer = new ViewerForm(invite); viewer.Show(); } }
             catch (Exception error) { SetStatus(error.Message); }
         }
         void SetStatus(string value)

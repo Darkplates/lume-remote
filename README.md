@@ -32,8 +32,8 @@ network, an established product will serve you better today.
 
 | Step | What happens | Who runs it |
 | --- | --- | --- |
-| Introduction of saved PCs | The two PCs exchange a small encrypted, authenticated message to find each other. | Public [PeerJS](https://peerjs.com) broker (`0.peerjs.com`), a third party. It sees which IDs talk and when, **not** the content. |
-| Introduction of guests | You send the invitation privately. The guest's reply comes back automatically as an encrypted, authenticated message through the same broker; if that fails, the guest copies it back by hand. | The same public PeerJS broker, which sees only random IDs and timing. Set `LUME_MANUAL_GUEST_REPLY=1` to keep the exchange fully manual. |
+| Introduction of saved PCs | Pairing: you type an 8-digit code shown on the other PC and confirm that both PCs show the same 6-digit number. Afterwards the two PCs exchange a small encrypted, authenticated message to find each other. | Public [PeerJS](https://peerjs.com) broker (`0.peerjs.com`), a third party. It sees which IDs talk and when, **not** the content. |
+| Introduction of guests | You send a link (or the invitation) privately. The link opens a static page that hands the invitation to Lume in the browser; the invitation sits after `#`, which browsers never send to the page server (GitHub Pages). The guest's reply comes back automatically as an encrypted, authenticated message through the same broker; if that fails, the guest copies it back by hand. | The same public PeerJS broker, which sees only random IDs and timing. Set `LUME_MANUAL_GUEST_REPLY=1` to keep the exchange fully manual. |
 | Address discovery | Each PC learns its public address. | Cloudflare STUN (`stun.cloudflare.com`). It carries no desktop data. |
 | The session itself | Screen, input, clipboard and files over a direct WebRTC data channel, with Lume's own pinned TLS inside. | Your two PCs. |
 | When a direct route is impossible | Some NAT/firewall combinations block direct connections. There is no automatic TURN relay. | You: use LAN/VPN or run the included [TCP relay](relay/relay.py), which only forwards encrypted bytes. |
@@ -65,10 +65,12 @@ privately as described in [SECURITY.md](SECURITY.md).
 1. Download the Windows ZIP from [Releases](https://github.com/Darkplates/lume-remote/releases),
    check its SHA-256, extract the whole ZIP on both PCs and open `START.bat`.
 2. On the PC you want to reach, choose **Enable access** and approve the Windows prompt.
-3. Choose **Pair another PC**. On your other PC, choose **Add a computer** and paste the code.
+3. Choose **Pair another PC**. On your other PC, choose **Add a computer**, type the 8-digit code and
+   confirm that both PCs show the same number.
 4. Double-click the saved PC to connect.
 
-For a one-off guest, use **Guest access**. The guest's request needs your approval.
+For a one-off guest, use **Guest access → Start sharing → Copy link** and send the link. The guest
+clicks it, Lume opens and asks before connecting, and you approve the request on your PC.
 
 | Dark | Light |
 | --- | --- |

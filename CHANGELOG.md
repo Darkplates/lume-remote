@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- Pair your own PCs by typing an 8-digit code instead of copying a long code: both
+  PCs then show the same 6-digit number, which both people confirm before the existing
+  one-time pairing code is sent encrypted. The full code still works.
+- Guest invitations can be shared as a link. Clicking it opens a static page that hands the
+  invitation to Lume (registered per user as `lume-open:`); Lume asks before connecting
+  and the sharing PC still approves. Pasting the link or the invitation also works.
+- A third native patch keeps ICE checks running while a manual reply can still arrive,
+  so a reply returned minutes later is no longer dropped by stateful firewalls or NAT.
 - Guest P2P over the Internet: the controlling PC now returns its reply to the
   sharing PC automatically, as an encrypted and authenticated message through the
   public broker, so both PCs check routes at the same time instead of waiting for a

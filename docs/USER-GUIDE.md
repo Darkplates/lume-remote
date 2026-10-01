@@ -37,6 +37,29 @@ File access follows the signed-in owner's Windows permissions. It supports ordin
 
 Saved access uses encrypted messages through the public PeerJS signaling service, and Cloudflare STUN for address discovery. The desktop travels through the peer connection. These external services have their own availability and policies. Some network combinations require a reachable relay; no automatic TURN service or free hosted relay bandwidth is supplied. Manual P2P signaling, LAN/VPN connections and a self-hosted TCP relay are available.
 
+### Pairing your own PCs
+
+1. On the PC you want to reach, choose **Enable access**, then **Pair another PC**. It shows an
+   eight-digit code, for example `4829 1307`.
+2. On your other PC, choose **Add a computer** and type those digits.
+3. Both PCs then show the same six-digit number. Check that it matches and choose
+   **They match** on both. If the numbers differ, stop: nothing is shared.
+
+The digits only help the two PCs find each other through the broker. The matching number
+proves that nobody in between swapped keys. Afterwards the PCs exchange the existing one-time
+pairing code encrypted. The full code can still be copied and pasted instead, for example
+without Internet access to the broker.
+
+### Guest invitation links
+
+**Copy link** creates an https link to a static page (`open.html` on GitHub Pages). The page
+reads the invitation from the part after `#`, which browsers never send to any server,
+removes it from the address bar and opens Lume through the per-user `lume-open:` protocol.
+Lume registers that protocol for the current Windows user when the dashboard starts. A link
+never connects by itself: Lume asks first, and the sharing PC still approves. Without Lume
+installed, the page explains how to get it and offers **Copy invitation**. Pasting the link
+or the invitation into **Private invitation** also works.
+
 ### Guest access over the Internet (P2P)
 
 1. On the PC you share, choose **Guest access → Start sharing** and send the invitation privately.

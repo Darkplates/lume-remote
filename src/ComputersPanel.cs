@@ -54,7 +54,7 @@ namespace LumeRemote
             computers.KeyDown += async delegate(object sender, KeyEventArgs e) { if (e.KeyCode == Keys.Enter) { e.Handled = e.SuppressKeyPress = true; await ConnectSelected(); } };
             // Empty state: a short guide with Add a computer as the next step.
             empty.Controls.Add(Theme.Label("No computers yet", 12, Theme.Text)); empty.Controls.Add(Theme.Label("Pair once, then connect with one click.", 10, Theme.Muted));
-            foreach (string step in new[] { "1   On the PC you want to control, open Lume and choose Enable access.", "2   There, choose Pair another PC and copy the code.", "3   Here, choose Add a computer and paste it." }) empty.Controls.Add(Theme.Label(step, 10, Theme.Text));
+            foreach (string step in new[] { "1   On the PC you want to control, open Lume and choose Enable access.", "2   There, choose Pair another PC. It shows an eight-digit code.", "3   Here, choose Add a computer and type it." }) empty.Controls.Add(Theme.Label(step, 10, Theme.Text));
             Label hostHeading = Theme.Label("This PC", 14, Theme.Text); hostHeading.Margin = new Padding(0, 0, 0, 8);
             deviceName.Font = new Font(Theme.FontNameStrong, 12); deviceName.Margin = new Padding(0, 0, 0, 2);
             left.Controls.Add(hostHeading); left.Controls.Add(deviceName); left.Controls.Add(hostSummary); left.Controls.Add(hostDetail); left.Controls.Add(trustedSummary);
@@ -90,9 +90,17 @@ namespace LumeRemote
             cancel.Click += delegate { if (connecting != null) connecting.Cancel(); };
             add.Click += async delegate
             {
-                string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Paste its one-time code here.", "", true, delegate(string text) { try { PairingCode.Parse(text); return null; } catch (Exception) { return "This code is not valid. Check that you copied all of it."; } }, "Add computer"); if (code == null) return;
+                string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Type the eight-digit code it shows, or paste its full code.", "", true, delegate(string text) { if (ShortPairing.Normalize(text) != null) return null; try { PairingCode.Parse(text); return null; } catch (Exception) { return "Enter the eight digits shown on the other PC, or paste all of its full code."; } }, "Add computer"); if (code == null) return;
                 add.Enabled = false;
-                try { using (CancellationTokenSource timeout = new CancellationTokenSource(40000)) { progress.Text = "Pairing securely..."; SavedComputer computer = await PairedClient.Pair(PairingCode.Parse(code), Environment.MachineName, timeout.Token); saved.Computers.RemoveAll(c => c.HostId == computer.HostId && c.WakeOnly == computer.WakeOnly && (!c.WakeOnly || c.WakeMac == computer.WakeMac)); saved.Computers.Add(computer); Save(); ReloadSaved(); computers.SelectedItem = computer; progress.Text = "Saved. Use Connect whenever you need this PC."; } }
+                try
+                {
+                    string digits = ShortPairing.Normalize(code);
+                    if (digits != null)
+                        using (CancellationTokenSource joining = new CancellationTokenSource(300000))
+                            code = await ShortPairing.Join(digits, Environment.MachineName, ConfirmOnUi, delegate(string text) { OnUi(delegate { progress.Text = text; }); }, joining.Token);
+                    using (CancellationTokenSource timeout = new CancellationTokenSource(40000)) { progress.Text = "Pairing securely..."; SavedComputer computer = await PairedClient.Pair(PairingCode.Parse(code), Environment.MachineName, timeout.Token); saved.Computers.RemoveAll(c => c.HostId == computer.HostId && c.WakeOnly == computer.WakeOnly && (!c.WakeOnly || c.WakeMac == computer.WakeMac)); saved.Computers.Add(computer); Save(); ReloadSaved(); computers.SelectedItem = computer; progress.Text = "Saved. Use Connect whenever you need this PC."; }
+                }
+                catch (OperationCanceledException error) { progress.Text = error.Message; }
                 catch (Exception error) { ShowError(error); } finally { add.Enabled = true; }
             };
             remove.Click += delegate { SavedComputer selected = computers.SelectedItem as SavedComputer; if (selected == null) return; if (MessageBox.Show(FindForm(), "Forget " + selected + " on this PC? You will need a new pairing code to connect again.", "Lume - Forget computer", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return; saved.Computers.Remove(selected); foreach (SavedComputer c in saved.Computers) if (c.WakeHelperId == selected.Id) c.WakeHelperId = null; Save(); ReloadSaved(); };
@@ -255,13 +263,21 @@ namespace LumeRemote
         static Font CodeFont() { return new Font(Theme.InstalledFontName("Cascadia Mono", "Consolas"), 10); }
         void ShowPairing(PairingCode code)
         {
-            using (Form dialog = Dialog("Pair another PC", 580, 520))
+            using (Form dialog = Dialog("Pair another PC", 580, 640))
             {
-                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
+                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18); panel.AutoScroll = true;
                 panel.Controls.Add(Theme.Label("Pair another PC", 16, Theme.Text));
-                panel.Controls.Add(Theme.Label("On your other PC, choose Add a computer and paste this one-time code. It works once and expires in 15 minutes.", 10, Theme.Muted));
-                TextBox value = Theme.Box(true); value.ReadOnly = true; value.Text = code.ToString(); value.Font = CodeFont(); value.Height = 96; value.Width = 520; value.AccessibleName = "One-time pairing code"; value.TabStop = false; panel.Controls.Add(value);
-                Button copy = Theme.Button("Copy code", true); copy.Width = 140; copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy);
+                panel.Controls.Add(Theme.Label("On your other PC, choose Add a computer and type this code. It works once and expires in 15 minutes.", 10, Theme.Muted));
+                Label shortCode = new Label { AutoSize = true, Text = "Preparing...", ForeColor = Theme.Text, Font = new Font(Theme.InstalledFontName("Cascadia Mono", "Consolas"), 26, FontStyle.Bold), Margin = new Padding(0, 0, 0, 6), AccessibleName = "Short pairing code" };
+                panel.Controls.Add(shortCode);
+                Label shortStatus = Theme.Label("Connecting to the pairing service...", 10, Theme.Muted); shortStatus.MaximumSize = new Size(520, 0); panel.Controls.Add(shortStatus);
+                // Shown once the other PC has typed the code: both people compare one number.
+                FlowLayoutPanel compare = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 6), Visible = false };
+                Button matches = Theme.Button("They match", true), different = Theme.Button("They don't match", false); matches.Width = 140; different.Width = 170;
+                compare.Controls.Add(matches); compare.Controls.Add(different); panel.Controls.Add(compare);
+                Label manual = Theme.Label("Or copy the full code and paste it on the other PC:", 9, Theme.Muted); manual.Margin = new Padding(0, 8, 0, 4); panel.Controls.Add(manual);
+                TextBox value = Theme.Box(true); value.ReadOnly = true; value.Text = code.ToString(); value.Font = CodeFont(); value.Height = 56; value.Width = 520; value.AccessibleName = "One-time pairing code"; value.TabStop = false; panel.Controls.Add(value);
+                Button copy = Theme.Button("Copy full code", false); copy.Width = 150; copy.Click += delegate { try { Clipboard.SetText(code.ToString()); copy.Text = "Copied"; } catch (Exception error) { MessageBox.Show(dialog, error.Message); } }; panel.Controls.Add(copy);
                 Label heading = Theme.Label(code.wake ? "The paired PC will only be able to:" : "The paired PC will be able to:", 10, Theme.Text); heading.Margin = new Padding(0, 10, 0, 4); panel.Controls.Add(heading);
                 if (code.wake) panel.Controls.Add(new CapabilityRow("Send wake packets to " + code.mac, true));
                 else foreach (string capability in PairedCapabilities) panel.Controls.Add(new CapabilityRow(capability, true));
@@ -269,7 +285,54 @@ namespace LumeRemote
                 Button revokeCode = Theme.Button("Cancel pairing code", false), done = Theme.Button("Done", false); revokeCode.Width = 180; done.Width = 110; done.DialogResult = DialogResult.OK;
                 revokeCode.Click += delegate { try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); dialog.Close(); progress.Text = "Pairing code cancelled. It can no longer be used."; } catch (Exception error) { MessageBox.Show(dialog, error.Message, "Lume"); } };
                 buttons.Controls.Add(revokeCode); buttons.Controls.Add(done); panel.Controls.Add(buttons);
-                dialog.Controls.Add(panel); dialog.AcceptButton = done; dialog.CancelButton = done; dialog.ActiveControl = copy; dialog.Shown += delegate { value.SelectionLength = 0; }; Theme.EndLayout(dialog); dialog.ShowDialog(this);
+                ShortPairingOffer offer = null; bool closed = false;
+                Action<Action> onUi = delegate(Action action) { try { if (!closed) dialog.BeginInvoke(action); } catch (InvalidOperationException) { } };
+                matches.Click += delegate { compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
+                different.Click += delegate { compare.Visible = false; if (offer != null) { offer.Dispose(); offer = null; } shortStatus.Text = "Stopped. Nothing was shared. Close this window and choose Pair another PC to try again."; shortStatus.ForeColor = Theme.Danger; };
+                dialog.Shown += async delegate
+                {
+                    value.SelectionLength = 0;
+                    try
+                    {
+                        ShortPairingOffer started = await ShortPairingOffer.Start(code.ToString(), Environment.MachineName);
+                        if (closed) { started.Dispose(); return; }
+                        offer = started; shortCode.Text = ShortPairing.Format(started.Code); shortStatus.Text = "Waiting for the other PC...";
+                        started.Ready += delegate(string number, string name) { onUi(delegate { shortStatus.Text = "Check that " + name + " (name not verified) shows the same number:  " + number + "\nIf it does, choose They match. If not, stop."; shortStatus.ForeColor = Theme.Text; compare.Visible = true; dialog.ActiveControl = different; }); };
+                        started.Failed += delegate(string message) { onUi(delegate { compare.Visible = false; shortStatus.Text = message; shortStatus.ForeColor = Theme.Danger; }); };
+                    }
+                    catch (Exception)
+                    {
+                        if (closed) return;
+                        shortCode.Text = "Unavailable"; shortStatus.Text = "The short code needs an Internet connection to the pairing service. Use the full code below instead.";
+                    }
+                };
+                dialog.FormClosed += delegate { closed = true; if (offer != null) offer.Dispose(); };
+                dialog.Controls.Add(panel); dialog.AcceptButton = done; dialog.CancelButton = done; dialog.ActiveControl = done; Theme.EndLayout(dialog); dialog.ShowDialog(this);
+            }
+        }
+        void OnUi(Action action) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(action); } catch (InvalidOperationException) { } }
+        Task<bool> ConfirmOnUi(string number, string name)
+        {
+            TaskCompletionSource<bool> answer = new TaskCompletionSource<bool>();
+            try { BeginInvoke((Action)delegate { try { answer.TrySetResult(ConfirmNumber(number, name)); } catch (Exception error) { answer.TrySetException(error); } }); }
+            catch (InvalidOperationException) { answer.TrySetResult(false); }
+            return answer.Task;
+        }
+        // Both people compare the number; the safe choice is the default.
+        bool ConfirmNumber(string number, string name)
+        {
+            using (Form dialog = Dialog("Compare the numbers", 520, 300))
+            {
+                FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
+                panel.Controls.Add(Theme.Label("Does the other PC show this number?", 16, Theme.Text));
+                panel.Controls.Add(new Label { AutoSize = true, Text = number, ForeColor = Theme.Text, Font = new Font(Theme.InstalledFontName("Cascadia Mono", "Consolas"), 26, FontStyle.Bold), Margin = new Padding(0, 0, 0, 8) });
+                Label claimed = Theme.Label("Other PC: " + name + " (name not verified). Continue only if both PCs show the same number.", 10, Theme.Muted); claimed.MaximumSize = new Size(460, 0); panel.Controls.Add(claimed);
+                FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
+                Button different = Theme.Button("They don't match", false), matches = Theme.Button("They match", true); different.Width = 170; matches.Width = 140;
+                different.DialogResult = DialogResult.Cancel; matches.DialogResult = DialogResult.OK;
+                buttons.Controls.Add(different); buttons.Controls.Add(matches); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
+                dialog.CancelButton = different; dialog.ActiveControl = different; Theme.EndLayout(dialog);
+                return dialog.ShowDialog(this) == DialogResult.OK;
             }
         }
         // Explains permanent access before the Windows administrator prompt appears.

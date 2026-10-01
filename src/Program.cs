@@ -29,6 +29,9 @@ namespace LumeRemote
             }
             Application.EnableVisualStyles(); Application.SetCompatibleTextRenderingDefault(false);
             Application.ThreadException += delegate(object sender, System.Threading.ThreadExceptionEventArgs e) { MessageBox.Show(e.Exception.Message, "Lume Remote", MessageBoxButtons.OK, MessageBoxIcon.Error); };
+            // A clicked invitation link opens only the viewer, alongside any running dashboard.
+            if (args.Length == 1 && InvitationLinks.IsLaunch(args[0])) { InvitationLinks.Open(args[0]); return; }
+            InvitationLinks.Register();
             Application.Run(new MainForm());
         }
     }

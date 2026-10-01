@@ -56,7 +56,7 @@ static partial class Tests
         if (args.Length == 2 && args[0] == "--p2p-ui-late") { int seconds = Int32.Parse(args[1]); Run("Main app P2P approval with a reply returned " + seconds + " s late by hand", delegate { PeerMainApproval(seconds * 1000); }); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--p2p-signaling-delay") { PeerSignalingDelayChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--quality") { QualityChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
-        if (args.Length > 0 && args[0] == "--signal") { Run("Encrypted signaling rejects tampering and address substitution", SignalSecurity); Run("Public signaling delivers authenticated encrypted messages", PublicSignaling); Run("Guest reply returns automatically through the public broker", GuestRendezvousPublic); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
+        if (args.Length > 0 && args[0] == "--signal") { Run("Encrypted signaling rejects tampering and address substitution", SignalSecurity); Run("Public signaling delivers authenticated encrypted messages", PublicSignaling); Run("Guest reply returns automatically through the public broker", GuestRendezvousPublic); Run("Short-code pairing through the public broker", ShortPairingPublic); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--paired") { Run("Protected settings and one-time pairing code", ProtectedSettings); Run("Pair once, reconnect automatically, then revoke the live session", PersistentPairing); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--hardening") { HardeningChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--installed-host") { Run("Installed service: real source capture, keyboard, mouse and revocation", InstalledHost); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
@@ -122,6 +122,8 @@ static partial class Tests
         Run("Native WebRTC layout and ordered binary stream", PeerBytes);
         Run("P2P offer, signed reply and malformed-code limits", PeerCodes);
         Run("Guest reply rendezvous derives private identities and rejects forgeries", GuestRendezvousIdentities);
+        Run("Short-code pairing agrees on one number and isolates a substituted key", ShortPairingHandshake);
+        Run("Invitation links carry the exact invitation and reject other content", InvitationLinkRoundTrip);
         Run("P2P pinned TLS delivers acknowledged desktop frames", PeerFrames);
         Run("P2P local rejection prevents capture", PeerDecline);
         Run("P2P wrong certificate pin cannot reach approval", delegate { PeerBadCredentials(true); });
