@@ -48,29 +48,31 @@ namespace LumeRemote
         // Started from a clicked link: confirm, then open only the viewer windows.
         public static void Open(string argument)
         {
-            string invitation; Form first;
+            string invitation, destination; Form first;
             try
             {
                 invitation = Unwrap(argument);
-                first = invitation.StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal) ? (Form)new PeerViewerForm(PeerSignal.Parse(invitation)) : new ViewerForm(Invitation.Parse(invitation));
+                if (invitation.StartsWith(PeerSignal.OfferPrefix, StringComparison.Ordinal)) { first = new PeerViewerForm(PeerSignal.Parse(invitation)); destination = "Route: P2P Internet. Your network address becomes visible to the sharing PC."; }
+                else { Invitation invite = Invitation.Parse(invitation); first = new ViewerForm(invite); destination = (invite.Relay ? "Route: relay at " : "Connects to: ") + ConnectionDiagnostics.Endpoint(invite); }
             }
             catch (Exception)
             {
                 MessageBox.Show("This Lume link is incomplete or damaged. Ask for a new invitation.", "Lume Remote", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
-            if (!Confirm()) { first.Dispose(); return; }
+            if (!Confirm(destination)) { first.Dispose(); return; }
             first.Show();
             Application.Run(new OpenWindows());
         }
-        static bool Confirm()
+        static bool Confirm(string destination)
         {
             using (Form dialog = new Form { Text = "Lume - Invitation link", Icon = Brand.Icon, BackColor = Theme.Background, ForeColor = Theme.Text, StartPosition = FormStartPosition.CenterScreen, TopMost = true })
             {
-                Theme.BeginLayout(dialog); dialog.ClientSize = new Size(500, 250); dialog.MinimumSize = dialog.Size;
+                Theme.BeginLayout(dialog); dialog.ClientSize = new Size(500, 300); dialog.MinimumSize = dialog.Size;
                 FlowLayoutPanel panel = Theme.Column(); panel.Dock = DockStyle.Fill; panel.BackColor = Theme.Background; panel.Padding = new Padding(28, 22, 28, 18);
                 panel.Controls.Add(Theme.Label("Connect to a shared PC?", 16, Theme.Text));
-                Label text = Theme.Label("You opened a Lume invitation link. Connect only if you asked this person to share their screen with you. They still approve the connection on their PC.", 10, Theme.Muted); text.MaximumSize = new Size(440, 0); panel.Controls.Add(text);
+                Label text = Theme.Label("A Lume invitation link was opened, from a message or a website. Connect only if you asked this person to share their screen with you. They still approve the connection on their PC.", 10, Theme.Muted); text.MaximumSize = new Size(440, 0); panel.Controls.Add(text);
+                Label where = Theme.Label(destination, 10, Theme.Text); where.MaximumSize = new Size(440, 0); panel.Controls.Add(where);
                 FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
                 Button cancel = Theme.Button("Cancel", false), connect = Theme.Button("Connect", true); cancel.Width = 120; connect.Width = 130;
                 cancel.DialogResult = DialogResult.Cancel; connect.DialogResult = DialogResult.OK;

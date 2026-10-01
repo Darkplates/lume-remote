@@ -76,11 +76,22 @@ namespace LumeRemote
                 {
                     try
                     {
-                        if (packet.type == "EXPIRE") { offered.TrySetException(new IOException("No PC is showing this code. Check the digits, and keep Pair another PC open on the other PC.")); return; }
+                        if (packet.type == "EXPIRE")
+                        {
+                            offered.TrySetException(new IOException("No PC is showing this code. Check the digits, and keep Pair another PC open on the other PC."));
+                            delivered.TrySetException(new IOException("The other PC closed its pairing window. Start again from Pair another PC."));
+                            return;
+                        }
                         SignalEnvelope sealedBody = packet.payload;
                         if (packet.src != target || sealedBody == null || sealedBody.route != route || sealedBody.request != request) return;
                         if (sealedBody.stage == "key") offered.TrySetResult(SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody));
                         else if (sealedBody.stage == "code") { string agreed; lock (gate) agreed = sessionKey; if (agreed != null) delivered.TrySetResult(SignalCrypto.Open(agreed, packet.src, broker.Id, sealedBody)); }
+                        else if (sealedBody.stage == "reject")
+                        {
+                            SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody);
+                            OperationCanceledException stopped = new OperationCanceledException("The other PC stopped the pairing because the numbers did not match. Nothing was shared.");
+                            offered.TrySetException(stopped); delivered.TrySetException(stopped);
+                        }
                         else if (sealedBody.stage == "busy") offered.TrySetException(new IOException("Another PC is already pairing with this code. Choose Pair another PC again on the other PC."));
                     }
                     // Anyone can address this broker ID: ignore unauthenticated or malformed messages.
@@ -136,9 +147,16 @@ namespace LumeRemote
         }
         public static async Task<ShortPairingOffer> Start(string pairingCode, string thisName)
         {
-            PairingCode.Parse(pairingCode);
+            long expires = PairingCode.Parse(pairingCode).expires;
             ShortPairingOffer offer = new ShortPairingOffer(pairingCode, thisName);
-            try { await offer.broker.Start(Security.Token(32)).ConfigureAwait(false); return offer; }
+            try
+            {
+                await offer.broker.Start(Security.Token(32)).ConfigureAwait(false);
+                // The digits never outlive the one-time code they carry.
+                int remaining = (int)Math.Max(1000, Math.Min(Int32.MaxValue, (expires - DateTime.UtcNow.Ticks) / TimeSpan.TicksPerMillisecond));
+                Task expiry = Task.Delay(remaining).ContinueWith(delegate { offer.Fail("This code expired. Close this window and choose Pair another PC again."); offer.Dispose(); });
+                return offer;
+            }
             catch { offer.Dispose(); throw; }
         }
         void Send(string destination, string requestId, string stage, SignalBody body, string key)
@@ -167,26 +185,38 @@ namespace LumeRemote
                 }
                 string from, requestId; lock (gate) { from = peer; requestId = request; }
                 if (packet.src != from || sealedBody.request != requestId) return;
-                if (sealedBody.stage == "reveal")
+                // From here on the sender is the pinned joining PC: its failures end this attempt.
+                try
                 {
-                    SignalBody body = SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody);
-                    byte[] joinPublic = PairingHandshake.Bytes(body.key, PairingHandshake.PublicKeyLength), joinNonce = PairingHandshake.Bytes(body.code, PairingHandshake.NonceLength);
-                    lock (gate) { if (revealed) return; revealed = true; }
-                    if (!PairingHandshake.Opens(commitment, joinPublic, joinNonce)) { Fail("The other PC did not prove its key. Nothing was shared; start again."); return; }
-                    handshake.Complete(route, handshake.PublicKey, handshake.Nonce, joinPublic, joinNonce, true);
-                    lock (gate) verified = true;
-                    Action<string, string> ready = Ready; if (ready != null) ready(handshake.Sas, ShortPairing.ClaimedName(body.name));
+                    if (sealedBody.stage == "reveal")
+                    {
+                        SignalBody body = SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody);
+                        lock (gate) { if (revealed) return; revealed = true; }
+                        byte[] joinPublic = PairingHandshake.Bytes(body.key, PairingHandshake.PublicKeyLength), joinNonce = PairingHandshake.Bytes(body.code, PairingHandshake.NonceLength);
+                        if (!PairingHandshake.Opens(commitment, joinPublic, joinNonce)) { Fail("The other PC did not prove its key. Nothing was shared; start again."); return; }
+                        handshake.Complete(route, handshake.PublicKey, handshake.Nonce, joinPublic, joinNonce, true);
+                        lock (gate) verified = true;
+                        Action<string, string> ready = Ready; if (ready != null) ready(handshake.Sas, ShortPairing.ClaimedName(body.name));
+                    }
+                    else if (sealedBody.stage == "reject")
+                    {
+                        SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody);
+                        Fail(CodeSent ? "The other PC reported that the numbers do not match after the code was sent. The pairing code is being cancelled; start again." :
+                            "The other PC reported that the numbers do not match. Nothing was shared.");
+                    }
                 }
-                else if (sealedBody.stage == "reject")
-                {
-                    SignalCrypto.Open(envelope, packet.src, broker.Id, sealedBody);
-                    Fail("The other PC reported that the numbers do not match. Nothing was shared.");
-                }
+                catch (Exception) { lock (gate) { if (!revealed) return; } Fail("The pairing exchange failed. Nothing was shared; start again."); }
             }
-            catch (CryptographicException) { }
-            catch (InvalidDataException) { }
-            catch (FormatException) { }
-            catch (Exception error) { Fail(error.Message); }
+            // Anyone who knows the digits can send here: ignore whatever does not come from the pinned PC.
+            catch (Exception) { }
+        }
+        public bool CodeSent { get { lock (gate) return sent; } }
+        // The owner saw different numbers: tell the joining PC, then stop.
+        public void Reject()
+        {
+            string destination, requestId; lock (gate) { destination = peer; requestId = request; }
+            if (destination != null) Send(destination, requestId, "reject", new SignalBody(), envelope);
+            Dispose();
         }
         // The owner confirmed that both PCs show the same number.
         public void Confirm()
@@ -200,7 +230,8 @@ namespace LumeRemote
         {
             if (Interlocked.Exchange(ref disposed, 1) != 0) return;
             // Give a just-confirmed code a moment to leave before closing the broker connection.
-            Task.Delay(sent ? 3000 : 0).ContinueWith(delegate { broker.Dispose(); handshake.Dispose(); });
+            bool linger; lock (gate) linger = sent || peer != null;
+            Task.Delay(linger ? 3000 : 0).ContinueWith(delegate { broker.Dispose(); handshake.Dispose(); });
         }
     }
 

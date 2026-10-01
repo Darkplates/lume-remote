@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
@@ -92,6 +93,17 @@ static partial class Tests
             }
         }
         finally { declined.Dispose(); }
+        // The sharing owner seeing different numbers stops the joining PC at once.
+        ShortPairingOffer refused = ShortPairingOffer.Start(SamplePairingCode(), "Sharing fixture").GetAwaiter().GetResult();
+        try
+        {
+            refused.Ready += delegate { refused.Reject(); };
+            Stopwatch clock = Stopwatch.StartNew(); bool stopped = false;
+            try { using (CancellationTokenSource limit = new CancellationTokenSource(60000)) ShortPairing.Join(refused.Code, "Joining fixture", delegate { return Task.FromResult(true); }, delegate { }, limit.Token).GetAwaiter().GetResult(); }
+            catch (OperationCanceledException error) { stopped = error.Message.Contains("did not match"); }
+            Check(stopped && clock.ElapsedMilliseconds < 30000, "A refusal on the sharing PC did not stop the joining PC promptly.");
+        }
+        finally { refused.Dispose(); }
         bool missing = false;
         try { using (CancellationTokenSource limit = new CancellationTokenSource(60000)) ShortPairing.Join(ShortPairing.NewCode(), "Joining fixture", delegate { return Task.FromResult(true); }, delegate { }, limit.Token).GetAwaiter().GetResult(); }
         catch (Exception error) { missing = error is System.IO.IOException || error is TimeoutException; }

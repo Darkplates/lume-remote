@@ -288,7 +288,7 @@ namespace LumeRemote
                 ShortPairingOffer offer = null; bool closed = false;
                 Action<Action> onUi = delegate(Action action) { try { if (!closed) dialog.BeginInvoke(action); } catch (InvalidOperationException) { } };
                 matches.Click += delegate { compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
-                different.Click += delegate { compare.Visible = false; if (offer != null) { offer.Dispose(); offer = null; } shortStatus.Text = "Stopped. Nothing was shared. Close this window and choose Pair another PC to try again."; shortStatus.ForeColor = Theme.Danger; };
+                different.Click += delegate { compare.Visible = false; if (offer != null) { offer.Reject(); offer = null; } shortStatus.Text = "Stopped. Nothing was shared. Close this window and choose Pair another PC to try again."; shortStatus.ForeColor = Theme.Danger; };
                 dialog.Shown += async delegate
                 {
                     value.SelectionLength = 0;
@@ -298,7 +298,15 @@ namespace LumeRemote
                         if (closed) { started.Dispose(); return; }
                         offer = started; shortCode.Text = ShortPairing.Format(started.Code); shortStatus.Text = "Waiting for the other PC...";
                         started.Ready += delegate(string number, string name) { onUi(delegate { shortStatus.Text = "Check that " + name + " (name not verified) shows the same number:  " + number + "\nIf it does, choose They match. If not, stop."; shortStatus.ForeColor = Theme.Text; compare.Visible = true; dialog.ActiveControl = different; }); };
-                        started.Failed += delegate(string message) { onUi(delegate { compare.Visible = false; shortStatus.Text = message; shortStatus.ForeColor = Theme.Danger; }); };
+                        started.Failed += delegate(string message)
+                        {
+                            onUi(delegate
+                            {
+                                compare.Visible = false; shortStatus.Text = message; shortStatus.ForeColor = Theme.Danger;
+                                // A mismatch reported after sending means the code may have reached the wrong PC.
+                                if (started.CodeSent) { try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); progress.Text = "Pairing code cancelled after a reported mismatch."; } catch (Exception error) { shortStatus.Text = message + " Cancel the pairing code: " + error.Message; } }
+                            });
+                        };
                     }
                     catch (Exception)
                     {
