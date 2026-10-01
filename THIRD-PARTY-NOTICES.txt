@@ -2,9 +2,10 @@ LUME REMOTE - THIRD-PARTY NOTICES
 
 Lume's original application source remains under LICENSE.txt (MIT).
 The bundled datachannel.dll contains the following third-party components.
-It is built from the pinned source revisions below plus Lume's two versioned
+It is built from the pinned source revisions below plus Lume's three versioned
 manual-signaling timing patches in native/peer/patches. The libjuice agent.h
-patch sets the ICE PAC timeout to 600000 ms; the libdatachannel MbedTLS DTLS
+patch sets the ICE PAC timeout to 600000 ms; the libjuice agent.c patch restarts
+exhausted connectivity checks until that timer expires; the libdatachannel MbedTLS DTLS
 backend patch configures handshake timeouts with min 1000 / max 600000 ms.
 These are modified MPL-2.0 source files; upstream licenses and notices remain.
 The Mbed TLS source itself is unchanged. See docs/NATIVE-PEER-PATCHES.md for

@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "purpose": "Keep native ICE and MbedTLS handshakes alive during the existing bounded offline invitation/reply flow.",
+  "purpose": "Keep native ICE checks and MbedTLS handshakes alive during the existing bounded offline invitation/reply flow.",
   "pins": {
     "libdatachannel": "6b1e2e620f1e37f0eafeee702eaea0043cb305fd",
     "libjuice": "b89c792e3612faf2f12cf35bcc56857313a06be3",
@@ -14,6 +14,13 @@
       "source": "libdatachannel/deps/libjuice/src/agent.h",
       "beforeSha256": "8b2cfef38864a2046a29432909720822e7edf99283198b350e0cca6b25fbf2a3",
       "afterSha256": "bb3264470f89d27f050d88a7bc27862dd3044fb74d451986f8e01485694bc757"
+    },
+    {
+      "patch": "manual-signaling-ice-checks-v1.patch",
+      "patchSha256": "5694f25fcaccf00ba3166ea36be1bd4f92f70e3e502905f8a0eb327d4a9eff00",
+      "source": "libdatachannel/deps/libjuice/src/agent.c",
+      "beforeSha256": "be0e772b55f548eee6a0a6d1519458456ef2be191f2050c20467e445cb81fb52",
+      "afterSha256": "a91a4cd60c3e79097d8bd7d7ed757d482b25fca78d1b498f8fbaa9c73cfbeb8a"
     },
     {
       "patch": "manual-signaling-dtls-v1.patch",

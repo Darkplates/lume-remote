@@ -1,0 +1,22 @@
+diff --git a/libdatachannel/deps/libjuice/src/agent.c b/libdatachannel/deps/libjuice/src/agent.c
+--- a/libdatachannel/deps/libjuice/src/agent.c
++++ b/libdatachannel/deps/libjuice/src/agent.c
+@@ -989,6 +989,18 @@
+ 				break;
+ 
+ 			default:
++				// Lume: an offline reply may reach the remote agent minutes later, and stateful
++				// firewalls or NATs admit its checks only while this agent keeps sending. Restart
++				// exhausted checks until the connectivity (PAC) timer expires instead of failing.
++				if (entry->pair && entry->type == AGENT_STUN_ENTRY_TYPE_CHECK &&
++				    entry->retransmissions < 0 && agent->state == JUICE_STATE_CONNECTING &&
++				    agent->pac_timestamp && now < agent->pac_timestamp &&
++				    entry->pair->state == ICE_CANDIDATE_PAIR_STATE_PENDING) {
++					JLOG_DEBUG("Candidate pair check restarted while awaiting connectivity");
++					entry->transaction_id_expired = true;
++					agent_arm_transmission(agent, entry, MIN_STUN_RETRANSMISSION_TIMEOUT);
++					break;
++				}
+ 				if (entry->pair) {
+ 					JLOG_DEBUG("Candidate pair check failed");
+ 					entry->pair->state = ICE_CANDIDATE_PAIR_STATE_FAILED;
