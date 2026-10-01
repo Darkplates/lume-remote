@@ -31,6 +31,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Notice provenance verification failed.' }
       - name: Build pinned native dependencies and the application
         run: .\scripts\build-all.ps1 -Tests
+      - name: Compile the separate synthetic two-PC fixture
+        run: .\scripts\build-two-pc-fixture.ps1
       - name: Verify opt-in benchmark tooling
         run: |
           python scripts/test-benchmark-report.py

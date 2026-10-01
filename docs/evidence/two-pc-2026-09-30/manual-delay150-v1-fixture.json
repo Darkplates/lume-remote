@@ -1,0 +1,46 @@
+{
+  "Run": "manual-delay150-v1",
+  "ReplyTransferred": false,
+  "Host": {
+    "Running": false,
+    "State": {
+      "Role": "host",
+      "Mode": "manual",
+      "Passed": false,
+      "Stage": "failed",
+      "Seconds": 245.479,
+      "Approvals": 0,
+      "Sources": 0,
+      "Captures": 0,
+      "InjectedInput": 0,
+      "ClipboardReads": 0,
+      "ClipboardWrites": 0,
+      "ReplyVerified": true,
+      "FailedStage": "waiting-route",
+      "ErrorType": "TimeoutException",
+      "ExitCode": 1
+    },
+    "PrivateReplyReady": false
+  },
+  "Viewer": {
+    "Running": false,
+    "State": {
+      "Role": "viewer",
+      "Mode": "manual",
+      "Passed": false,
+      "Stage": "failed",
+      "Seconds": 241.668,
+      "Approvals": 0,
+      "Sources": 0,
+      "Captures": 0,
+      "InjectedInput": 0,
+      "ClipboardReads": 0,
+      "ClipboardWrites": 0,
+      "ReplyDelaySeconds": 150,
+      "FailedStage": "waiting-route",
+      "ErrorType": "TimeoutException",
+      "ExitCode": 1
+    },
+    "PrivateReplyReady": false
+  }
+}

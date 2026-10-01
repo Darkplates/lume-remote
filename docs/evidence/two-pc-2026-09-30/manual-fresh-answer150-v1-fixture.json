@@ -1,0 +1,126 @@
+{
+  "Run": "manual-fresh-answer150-v1",
+  "ReplyTransferred": false,
+  "Host": {
+    "Running": false,
+    "State": {
+      "Role": "host",
+      "Mode": "manual",
+      "Passed": true,
+      "NativeSha256": "23ABE43E9C9ED8378021B49C6CAC652273A78BE0A27AFFC2D2F9C0873902DDB8",
+      "PeerChecking": true,
+      "PeerRouted": true,
+      "PeerSecured": true,
+      "PeerOpened": true,
+      "PeerEnded": false,
+      "PeerPhase": "Connected.",
+      "PeerCanRead": true,
+      "PhaseTrace": [
+        {
+          "Seconds": 0.024,
+          "Checking": false,
+          "Routed": false,
+          "Secured": false,
+          "Opened": false,
+          "Ended": false,
+          "Phase": "Waiting for the other PC..."
+        },
+        {
+          "Seconds": 1.035,
+          "Checking": true,
+          "Routed": false,
+          "Secured": false,
+          "Opened": false,
+          "Ended": false,
+          "Phase": "Checking network routes between the two PCs..."
+        },
+        {
+          "Seconds": 155.264,
+          "Checking": true,
+          "Routed": true,
+          "Secured": true,
+          "Opened": true,
+          "Ended": false,
+          "Phase": "Connected."
+        }
+      ],
+      "Stage": "passed",
+      "Seconds": 160.721,
+      "Approvals": 1,
+      "Sources": 1,
+      "Captures": 30,
+      "InjectedInput": 2,
+      "ClipboardReads": 2,
+      "ClipboardWrites": 1,
+      "ReplyVerified": true,
+      "Route": "Direct P2P / host candidates",
+      "UploadedSha256": "ECF753DE9A148CBD232A32B3A5D3C6CF6122D7CFA17CA7EA59359735BA8126D7",
+      "SyntheticOnly": true,
+      "ExitCode": 0
+    },
+    "PrivateReplyReady": false
+  },
+  "Viewer": {
+    "Running": false,
+    "State": {
+      "Role": "viewer",
+      "Mode": "manual",
+      "Passed": true,
+      "NativeSha256": "23ABE43E9C9ED8378021B49C6CAC652273A78BE0A27AFFC2D2F9C0873902DDB8",
+      "PeerChecking": true,
+      "PeerRouted": true,
+      "PeerSecured": true,
+      "PeerOpened": true,
+      "PeerEnded": false,
+      "PeerPhase": "Connected.",
+      "PeerCanRead": true,
+      "PhaseTrace": [
+        {
+          "Seconds": 0.025,
+          "Checking": false,
+          "Routed": false,
+          "Secured": false,
+          "Opened": false,
+          "Ended": false,
+          "Phase": "Waiting for the other PC..."
+        },
+        {
+          "Seconds": 152.142,
+          "Checking": true,
+          "Routed": false,
+          "Secured": false,
+          "Opened": false,
+          "Ended": false,
+          "Phase": "Checking network routes between the two PCs..."
+        },
+        {
+          "Seconds": 153.155,
+          "Checking": true,
+          "Routed": true,
+          "Secured": true,
+          "Opened": true,
+          "Ended": false,
+          "Phase": "Connected."
+        }
+      ],
+      "Stage": "passed",
+      "Seconds": 159.041,
+      "Approvals": 0,
+      "Sources": 0,
+      "Captures": 0,
+      "InjectedInput": 0,
+      "ClipboardReads": 0,
+      "ClipboardWrites": 0,
+      "ReplyDelaySeconds": 150,
+      "DelayBeforeAnswer": true,
+      "Route": "Direct P2P / NAT traversal",
+      "DownloadedSha256": "7C39B4906343DB17B270943428EA7167AAB0CD40A14EF536DCDC01C356A73A44",
+      "IdleSeconds": 5,
+      "Frames": 30,
+      "SyntheticOnly": true,
+      "ReceiverJoined": true,
+      "ExitCode": 0
+    },
+    "PrivateReplyReady": false
+  }
+}

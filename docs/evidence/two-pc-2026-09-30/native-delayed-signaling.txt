@@ -1,0 +1,20 @@
+SCOPE Owned native peers and loopback UDP proxies; no public STUN, capture, input, approval or clipboard. No SDP, addresses or credentials are logged.
+NATIVE_INPUT_SHA256 23ABE43E9C9ED8378021B49C6CAC652273A78BE0A27AFFC2D2F9C0873902DDB8
+SIGNALING_DELAY replyDelayMs=0 earlyRoute=False elapsedSeconds=0.1 seen=25 dropped=1 forwarded=24 dtlsHandshakes=3 proxyError=0
+SIGNALING_DUPLEX verifiedBytesPerDirection=8
+SIGNALING_CLEANUP ownedProxyThreadsJoined=True peersEnded=True readinessTasksJoined=True
+PASS Native manual P2P connects with an immediate reply
+SIGNALING_WAIT elapsedSeconds=30 peersAlive=True earlyRoute=False dtlsHandshakes=0
+SIGNALING_DELAY replyDelayMs=45000 earlyRoute=False elapsedSeconds=45.1 seen=31 dropped=7 forwarded=24 dtlsHandshakes=3 proxyError=0
+SIGNALING_DUPLEX verifiedBytesPerDirection=8
+SIGNALING_CLEANUP ownedProxyThreadsJoined=True peersEnded=True readinessTasksJoined=True
+PASS Native ICE survives a reply delayed by 45 seconds
+SIGNALING_WAIT elapsedSeconds=30 peersAlive=True earlyRoute=True dtlsHandshakes=5
+SIGNALING_WAIT elapsedSeconds=60 peersAlive=True earlyRoute=True dtlsHandshakes=6
+SIGNALING_WAIT elapsedSeconds=90 peersAlive=True earlyRoute=True dtlsHandshakes=7
+SIGNALING_WAIT elapsedSeconds=120 peersAlive=True earlyRoute=True dtlsHandshakes=7
+SIGNALING_DELAY replyDelayMs=150000 earlyRoute=True elapsedSeconds=150.1 seen=123 dropped=1 forwarded=122 dtlsHandshakes=32 proxyError=0
+SIGNALING_DUPLEX verifiedBytesPerDirection=8
+SIGNALING_CLEANUP ownedProxyThreadsJoined=True peersEnded=True readinessTasksJoined=True
+PASS Native DTLS survives an early route and reply delayed by 150 seconds
+RESULT: 3 passed, 0 failed.

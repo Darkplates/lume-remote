@@ -1,0 +1,6 @@
+{
+  "SameEthernetSubnet": true,
+  "EqualPrefixLength": true,
+  "NoNetworkChange": true,
+  "AddressesSuppressed": true
+}
