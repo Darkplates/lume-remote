@@ -53,6 +53,7 @@ static partial class Tests
         if (args.Length > 0 && args[0] == "--benchmark") { Benchmark(); return 0; }
         if (args.Length > 0 && args[0] == "--profile") { ProfileStages(); return 0; }
         if (args.Length > 0 && args[0] == "--p2p-ui") { Run("Main app P2P approval UI", PeerMainApproval); return failed == 0 ? 0 : 1; }
+        if (args.Length == 2 && args[0] == "--p2p-ui-late") { int seconds = Int32.Parse(args[1]); Run("Main app P2P approval with a reply returned " + seconds + " s late by hand", delegate { PeerMainApproval(seconds * 1000); }); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--p2p-signaling-delay") { PeerSignalingDelayChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--quality") { QualityChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--signal") { Run("Encrypted signaling rejects tampering and address substitution", SignalSecurity); Run("Public signaling delivers authenticated encrypted messages", PublicSignaling); Run("Guest reply returns automatically through the public broker", GuestRendezvousPublic); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
@@ -268,7 +269,10 @@ static partial class Tests
         while (!done() && clock.ElapsedMilliseconds < milliseconds) { Application.DoEvents(); Thread.Sleep(10); }
         Check(done(), error);
     }
-    static void PeerMainApproval()
+    static void PeerMainApproval() { PeerMainApproval(0); }
+    // lateMilliseconds > 0 models a person returning the reply late by hand. Only phase
+    // text is printed; codes, keys and addresses never are.
+    static void PeerMainApproval(int lateMilliseconds)
     {
         // This fixture exchanges codes by hand; automatic delivery would contact the public broker.
         GuestRendezvous.Enabled = false;
@@ -289,6 +293,15 @@ static partial class Tests
                     Stopwatch preparation = Stopwatch.StartNew();
                     while (returnedReply.Text.Length == 0 && preparation.ElapsedMilliseconds < 30000) await Task.Delay(20);
                     Check(returnedReply.Text.StartsWith(PeerSignal.ReplyPrefix, StringComparison.Ordinal), "The controlling window did not generate its reply.");
+                    if (lateMilliseconds > 0)
+                    {
+                        Stopwatch late = Stopwatch.StartNew();
+                        while (late.ElapsedMilliseconds < lateMilliseconds)
+                        {
+                            await Task.Delay(Math.Min(15000, Math.Max(1, lateMilliseconds - (int)late.ElapsedMilliseconds)));
+                            Console.WriteLine("LATE_REPLY t+" + late.ElapsedMilliseconds / 1000 + "s viewer: " + ((Label)Field(controlling, "status")).Text.Replace("\n", " | ") + (controlling.IsDisposed ? " [closed]" : ""));
+                        }
+                    }
                     TextBox replyField = (TextBox)Field(pairing, "reply");
                     Check(!replyField.InvokeRequired, "The fixture lost its Windows Forms synchronization context.");
                     replyField.Text = returnedReply.Text;
@@ -302,9 +315,14 @@ static partial class Tests
                                 { approvalSeen = true; child.DialogResult = DialogResult.No; child.Close(); break; }
                         };
                         declineOwnFixture.Start(); ((Button)Field(pairing, "apply")).PerformClick();
-                        ViewerForm remote = null; Stopwatch connection = Stopwatch.StartNew();
-                        while (connection.ElapsedMilliseconds < 20000)
+                        ViewerForm remote = null; Stopwatch connection = Stopwatch.StartNew(); long reported = 0;
+                        while (connection.ElapsedMilliseconds < (lateMilliseconds > 0 ? 100000 : 20000))
                         {
+                            if (lateMilliseconds > 0 && connection.ElapsedMilliseconds - reported >= 10000 && !approvalSeen)
+                            {
+                                reported = connection.ElapsedMilliseconds;
+                                Console.WriteLine("LATE_REPLY applied+" + reported / 1000 + "s host: " + ((Label)Field(pairing, "status")).Text + (controlling.IsDisposed ? "" : " | viewer: " + ((Label)Field(controlling, "status")).Text.Replace("\n", " | ")));
+                            }
                             foreach (Form window in Application.OpenForms) if (window is ViewerForm) remote = (ViewerForm)window;
                             if (approvalSeen && remote != null && remote.Text == "Lume - Disconnected") break;
                             await Task.Delay(20);

@@ -53,6 +53,16 @@ jobs:
           & .\tests\LumeTests.exe --signal *> verification/ci-public-signaling.txt
           $code = $LASTEXITCODE; Get-Content verification/ci-public-signaling.txt
           if ($code -ne 0) { throw 'Public signaling or automatic guest reply delivery failed.' }
+      - name: Diagnose the real P2P windows with a reply returned late by hand
+        # Loopback only. Prints phase text, never codes. Reported without blocking while being diagnosed.
+        continue-on-error: true
+        timeout-minutes: 10
+        run: |
+          & .\tests\LumeTests.exe --p2p-ui *> verification/ci-p2p-ui.txt
+          $now = $LASTEXITCODE; Get-Content verification/ci-p2p-ui.txt
+          & .\tests\LumeTests.exe --p2p-ui-late 150 *> verification/ci-p2p-ui-late.txt
+          $late = $LASTEXITCODE; Get-Content verification/ci-p2p-ui-late.txt
+          if ($now -ne 0 -or $late -ne 0) { throw 'The real P2P window flow failed.' }
       - name: Render interface previews in dark and light themes
         run: |
           foreach ($theme in @('dark', 'light')) {
