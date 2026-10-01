@@ -183,3 +183,12 @@ native logging: it can expose SDP, credentials and addresses.
   in-place `scripts/apply-peer-patches.ps1` was removed.
 - Next step for the owner's local agent: follow `docs/TWO-PC-TEST-PLAN.md`
   (two home PCs over WinRM; LAN flow first, then one PC on a different network).
+- Two-PC LAN result from the owner's local agent: the automatic reply connected
+  with frames, clipboard and files both ways; a manual reply returned 150 s late
+  failed twice. Cause: stock libjuice fails a pair after one check cycle (~40 s), so
+  the answering PC goes silent and stateful filters (Windows Firewall, NAT) on both
+  sides drop the sharing PC's late checks. CI reproduced it with a 30 s stateful
+  filter model (failed on `3eeead5`), and the third native patch
+  `manual-signaling-ice-checks-v1.patch` (libjuice `agent.c`: restart exhausted
+  checks while connecting and the PAC timer runs) made all four delay cases pass
+  on `02e7723`. Re-test on real PCs is next; WAN is still unproven.
