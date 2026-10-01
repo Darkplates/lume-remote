@@ -198,6 +198,7 @@ static partial class Tests
             PeerSignal offer = PeerSignal.Offer(Sample(), first.CreateOffer()), parsed = PeerSignal.Parse(offer.ToString());
             Check(parsed.Sdp == offer.Sdp && parsed.Session.Secret == offer.Session.Secret, "P2P invitation changed in transit.");
             PeerSignal reply = parsed.Reply(second.CreateAnswer(parsed.Sdp)); offer.VerifyReply(PeerSignal.Parse(reply.ToString()));
+            Check(offer.Sdp.Contains("\r\na=setup:active\r\n") && !offer.Sdp.Contains("a=setup:actpass") && reply.Sdp.Contains("\r\na=setup:passive\r\n"), "The sharing PC is not the DTLS client, so a late reply could miss the handshake.");
             reply.Sdp += "a=x-lume-test:tampered\r\n"; Reject(delegate { offer.VerifyReply(reply); });
             Reject(delegate { PeerSignal.Parse(new string('A', 65537)); }); Reject(delegate { PeerSignal.Parse("lume-p2p://invalid"); });
             Reject(delegate { PeerSignal.ValidateSdp("v=0\r\n"); });

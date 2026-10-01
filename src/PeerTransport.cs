@@ -93,7 +93,18 @@ namespace LumeRemote
         public string CreateOffer()
         {
             lock (nativeGate) { CheckOpen(); Attach(Checked(Rtc.rtcCreateDataChannel(peer, "lume-tls"))); Checked(Rtc.rtcSetLocalDescription(peer, "offer")); }
-            return GatherDescription();
+            return PreferOffererDtlsClient(GatherDescription());
+        }
+        // The answering PC starts route checks as soon as it creates its reply, which may
+        // reach this PC minutes later by hand. As DTLS client it would start the handshake
+        // early and back off to retransmissions minutes apart, missing this PC's setup
+        // budget. Advertising setup:active makes this PC, which applies the reply last, the
+        // DTLS client, so the handshake starts at once. This PC's own state stays actpass,
+        // which accepts either answer role, so older answering PCs are unaffected.
+        internal static string PreferOffererDtlsClient(string offer)
+        {
+            string value = offer.Replace("\r\na=setup:actpass\r\n", "\r\na=setup:active\r\n");
+            PeerSignal.ValidateSdp(value); return value;
         }
         public string CreateAnswer(string offer)
         {
