@@ -153,6 +153,14 @@ pub fn safe_name(name: &str) -> Result<()> {
     );
     Ok(())
 }
+/// Names this module reserves for its own partial and staging files in a shared
+/// folder. They are hidden from listings and cannot be uploaded, created or opened
+/// by a viewer. Compared case-insensitively for Windows and macOS file systems.
+fn reserved_name(name: &str) -> bool {
+    name.as_bytes()
+        .get(..6)
+        .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b".lume-"))
+}
 fn remote_path(path: &str) -> Result<()> {
     ensure!(
         path.len() <= 4096 && !path.chars().any(char::is_control),
@@ -797,6 +805,7 @@ impl Worker {
         for part in tail.split('\\') {
             if !part.is_empty() {
                 safe_name(part)?;
+                ensure!(!reserved_name(part), "That name is reserved");
                 full.push(part);
             }
         }
@@ -844,7 +853,7 @@ impl Worker {
                         let Some(name) = item.file_name().to_str().map(str::to_owned) else {
                             continue;
                         };
-                        if name.starts_with(".lume-") || safe_name(&name).is_err() {
+                        if reserved_name(&name) || safe_name(&name).is_err() {
                             continue;
                         }
                         let Ok(kind) = item.file_type() else { continue };
@@ -968,6 +977,7 @@ impl Worker {
                 };
                 r.end()?;
                 let result = (|| -> Result<Transfer> {
+                    ensure!(!reserved_name(&name), "That name is reserved");
                     ensure!(
                         self.transfer.is_none() && self.completion.is_none(),
                         "Another transfer is active"
@@ -1006,6 +1016,7 @@ impl Worker {
                 let unique = r.boolean()?;
                 r.end()?;
                 let result = (|| -> Result<String> {
+                    ensure!(!reserved_name(&name), "That name is reserved");
                     let parent = self.resolve(&parent)?;
                     ensure!(parent.is_dir(), "Choose a shared folder");
                     for n in 0..if unique { 10000 } else { 1 } {
@@ -2173,6 +2184,49 @@ mod tests {
         fs::remove_file(saved).unwrap();
         fs::remove_file(dir.join("sample.txt")).unwrap();
         fs::remove_dir(dir).unwrap();
+    }
+    #[test]
+    fn host_refuses_reserved_lume_names() {
+        assert!(reserved_name(".lume-x.partial") && reserved_name(".LUME-x"));
+        assert!(!reserved_name(".lume") && !reserved_name("lume-x") && !reserved_name("é"));
+        let root =
+            std::env::temp_dir().join(format!("lume-reserved-test-{}", identifier().unwrap()));
+        fs::create_dir(&root).unwrap();
+        fs::write(root.join(".lume-existing.partial"), b"staging").unwrap();
+        let (mut host, rx) = worker(Some(root.clone()));
+        let failed = |rx: &Receiver<Event>| match rx.try_recv() {
+            Ok(Event::Send(p)) if p.0[1] == 10 => {
+                let mut r = Reader::new(&p.0[2..]);
+                r.text(32).unwrap();
+                !r.boolean().unwrap()
+            }
+            _ => false,
+        };
+        for name in [".lume-upload.partial", ".Lume-upload"] {
+            let id = identifier().unwrap();
+            let body = Packet::new(0).text("R:\\").text(name).long(4);
+            host.request(4, &id, &mut Reader::new(&body.0[1..]))
+                .unwrap();
+            assert!(failed(&rx), "{name}");
+            assert!(host.transfer.is_none());
+            let body = Packet::new(0).text("R:\\").text(name).byte(0);
+            host.request(11, &id, &mut Reader::new(&body.0[1..]))
+                .unwrap();
+            assert!(failed(&rx), "{name}");
+        }
+        let id = identifier().unwrap();
+        let body = Packet::new(0).text("R:\\.lume-existing.partial");
+        host.request(3, &id, &mut Reader::new(&body.0[1..]))
+            .unwrap();
+        assert!(failed(&rx));
+        assert!(host.resolve("R:\\.lume-existing.partial").is_err());
+        let mut names: Vec<_> = fs::read_dir(&root)
+            .unwrap()
+            .map(|e| e.unwrap().file_name())
+            .collect();
+        names.sort();
+        assert_eq!(names, [".lume-existing.partial"]);
+        fs::remove_dir_all(root).unwrap();
     }
     #[test]
     fn names_and_explicit_destinations_reject_traversal() {
