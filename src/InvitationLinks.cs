@@ -74,7 +74,7 @@ namespace LumeRemote
                 Label text = Theme.Label("A Lume invitation link was opened, from a message or a website. Connect only if you asked this person to share their screen with you. They still approve the connection on their PC.", 10, Theme.Muted); text.MaximumSize = new Size(440, 0); panel.Controls.Add(text);
                 Label where = Theme.Label(destination, 10, Theme.Text); where.MaximumSize = new Size(440, 0); panel.Controls.Add(where);
                 FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
-                Button cancel = Theme.Button("Cancel", false), connect = Theme.Button("Connect", true); cancel.Width = 120; connect.Width = 130;
+                Button cancel = Theme.Button("Cancel", false), connect = Theme.Button("Connect", true); cancel.Width = 120; connect.Width = 130; Theme.ArmAfterShown(dialog, connect);
                 cancel.DialogResult = DialogResult.Cancel; connect.DialogResult = DialogResult.OK;
                 buttons.Controls.Add(cancel); buttons.Controls.Add(connect); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
                 dialog.CancelButton = cancel; dialog.ActiveControl = cancel; Theme.EndLayout(dialog);

@@ -18,6 +18,10 @@ with zipfile.ZipFile(args.apk) as package:
     assert package.testzip() is None, 'APK CRC failure'
     assert {n for n in names if n.startswith('lib/')} == expected, 'Unexpected native ABI/library set'
     assert 'assets/portable/inventory.json' in names, 'Upstream notice inventory missing'
+    # MPL-2.0 source availability and the list of modified files travel with the APK.
+    assert 'assets/THIRD-PARTY-NOTICES.txt' in names, 'THIRD-PARTY-NOTICES.txt missing from APK assets'
+    repository_notices = (Path(__file__).resolve().parent.parent / 'THIRD-PARTY-NOTICES.txt').read_bytes().replace(b'\r\n', b'\n')
+    assert package.read('assets/THIRD-PARTY-NOTICES.txt').replace(b'\r\n', b'\n') == repository_notices, 'APK THIRD-PARTY-NOTICES.txt differs from the repository'
     inventory = json.loads(package.read('assets/portable/inventory.json'))
     notices = 0
     for dependency in inventory['packages']:

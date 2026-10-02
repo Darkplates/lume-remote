@@ -13,6 +13,15 @@ static partial class Tests
     [DllImport("user32.dll", SetLastError = true)] static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
     [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr window, int id);
 
+    static void RelayOperatorToken()
+    {
+        string room = Guid.NewGuid().ToString("N");
+        Check(Transport.RelayHeader("H", room, null) == "LUME1 H " + room + "\n" && Transport.RelayHeader("V", room, "") == "LUME1 V " + room + "\n", "The relay header without a token changed.");
+        Check(Transport.RelayHeader("H", room, "operator-token_0123") == "LUME1 H " + room + " operator-token_0123\n", "The operator token was not sent.");
+        Reject(delegate { Transport.RelayHeader("H", room, "short"); });
+        Reject(delegate { Transport.RelayHeader("H", room, "bad token with spaces"); });
+        Reject(delegate { Transport.RelayHeader("H", room, "line\nbreak-0123456789"); });
+    }
     static void GuestControlMarker()
     {
         Check(!GuestControl.Active, "A guest-control marker was already active.");

@@ -76,6 +76,16 @@ namespace LumeRemote
         { return new Label { Text = text, AutoSize = true, ForeColor = color, Font = new Font(size >= 14 ? FontNameStrong : FontName, size), Margin = new Padding(0, 0, 0, 10), MaximumSize = new Size(430, 0) }; }
         public static Button Button(string text, bool primary) { return Button(text, primary ? ButtonKind.Primary : ButtonKind.Secondary); }
         public static Button DangerButton(string text) { return Button(text, ButtonKind.Danger); }
+        // Approval buttons start disabled for a moment after the window appears, so a click or key
+        // press that was already under way cannot approve a request the person never saw.
+        public static void ArmAfterShown(Form form, Button button, int milliseconds = 1000)
+        {
+            button.Enabled = false;
+            Timer arm = new Timer { Interval = milliseconds };
+            arm.Tick += delegate { arm.Stop(); arm.Dispose(); if (!button.IsDisposed) button.Enabled = true; };
+            form.Shown += delegate { arm.Start(); };
+            form.FormClosed += delegate { arm.Dispose(); };
+        }
         public static Button Button(string text, ButtonKind kind)
         {
             ReadableButton button = new ReadableButton { Text = text, Kind = kind, Height = ButtonHeight, Width = 180, FlatStyle = FlatStyle.Flat, Font = new Font(FontNameStrong, 10), Cursor = Cursors.Default, Margin = new Padding(0, 6, 8, 8) };

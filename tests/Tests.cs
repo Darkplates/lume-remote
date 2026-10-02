@@ -124,6 +124,7 @@ static partial class Tests
         Run("Guest reply rendezvous derives private identities and rejects forgeries", GuestRendezvousIdentities);
         Run("Short-code pairing agrees on one number and isolates a substituted key", ShortPairingHandshake);
         Run("Invitation links carry the exact invitation and reject other content", InvitationLinkRoundTrip);
+        Run("Relay operator token is sent only when configured and well formed", RelayOperatorToken);
         Run("Owner-only actions see a guest who controls this desktop", GuestControlMarker);
         Run("Guest P2P replies yield a stable check code", GuestCheckCode);
         Run("Guests cannot switch to a display the owner did not share", GuestDisplayLocked);

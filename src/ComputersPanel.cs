@@ -304,7 +304,7 @@ namespace LumeRemote
                         ShortPairingOffer started = await ShortPairingOffer.Start(code.ToString(), Environment.MachineName);
                         if (closed) { started.Dispose(); return; }
                         offer = started; shortCode.Text = ShortPairing.Format(started.Code); shortStatus.Text = "Waiting for the other PC...";
-                        started.Ready += delegate(string number, string name) { onUi(delegate { shortStatus.Text = "Check that " + name + " (name not verified) shows the same number:  " + number + "\nIf it does, choose They match. If not, stop."; shortStatus.ForeColor = Theme.Text; compare.Visible = true; dialog.ActiveControl = different; }); };
+                        started.Ready += delegate(string number, string name) { onUi(delegate { shortStatus.Text = "Check that " + name + " (name not verified) shows the same number:  " + number + "\nIf it does, choose They match. If not, stop."; shortStatus.ForeColor = Theme.Text; matches.Enabled = false; compare.Visible = true; dialog.ActiveControl = different; System.Windows.Forms.Timer arm = new System.Windows.Forms.Timer { Interval = 1000 }; arm.Tick += delegate { arm.Dispose(); if (!matches.IsDisposed) matches.Enabled = true; }; arm.Start(); }); };
                         started.Failed += delegate(string message)
                         {
                             onUi(delegate
@@ -354,7 +354,7 @@ namespace LumeRemote
                 panel.Controls.Add(new Label { AutoSize = true, Text = number, ForeColor = Theme.Text, Font = new Font(Theme.InstalledFontName("Cascadia Mono", "Consolas"), 26, FontStyle.Bold), Margin = new Padding(0, 0, 0, 8) });
                 Label claimed = Theme.Label("Other PC: " + name + " (name not verified). Continue only if both PCs show the same number.", 10, Theme.Muted); claimed.MaximumSize = new Size(460, 0); panel.Controls.Add(claimed);
                 FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 10, 0, 0) };
-                Button different = Theme.Button("They don't match", false), matches = Theme.Button("They match", true); different.Width = 170; matches.Width = 140;
+                Button different = Theme.Button("They don't match", false), matches = Theme.Button("They match", true); different.Width = 170; matches.Width = 140; Theme.ArmAfterShown(dialog, matches);
                 different.DialogResult = DialogResult.Cancel; matches.DialogResult = DialogResult.OK;
                 buttons.Controls.Add(different); buttons.Controls.Add(matches); panel.Controls.Add(buttons); dialog.Controls.Add(panel);
                 dialog.CancelButton = different; dialog.ActiveControl = different; Theme.EndLayout(dialog);

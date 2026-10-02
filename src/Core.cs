@@ -175,10 +175,19 @@ namespace LumeRemote
         }
         public static void JoinRelay(TcpClient client, string role, string room)
         {
-            byte[] line = Encoding.ASCII.GetBytes("LUME1 " + role + " " + room + "\n");
+            byte[] line = Encoding.ASCII.GetBytes(RelayHeader(role, room, role == "H" ? Environment.GetEnvironmentVariable("LUME_RELAY_TOKEN") : null));
             client.GetStream().Write(line, 0, line.Length);
             int response = client.GetStream().ReadByte();
-            if (response != 1) throw new IOException(response == 2 ? "The relay has no waiting host. Ask for a fresh invitation or retry shortly." : "The relay rejected the connection.");
+            if (response != 1) throw new IOException(response == 2 ? "The relay has no waiting host. Ask for a fresh invitation or retry shortly." : "The relay rejected the connection. If it requires an operator token, set LUME_RELAY_TOKEN on the sharing PC.");
+        }
+        // A relay started with an operator token requires it from sharing PCs (relay/relay.py).
+        // Viewers join by room only. The token is never logged.
+        internal static string RelayHeader(string role, string room, string token)
+        {
+            if (String.IsNullOrEmpty(token)) return "LUME1 " + role + " " + room + "\n";
+            if (token.Length < 16 || token.Length > 64) throw new InvalidDataException("LUME_RELAY_TOKEN must be 16-64 characters.");
+            foreach (char c in token) if (!(c >= 'A' && c <= 'Z' || c >= 'a' && c <= 'z' || c >= '0' && c <= '9' || c == '.' || c == '_' || c == '~' || c == '-')) throw new InvalidDataException("LUME_RELAY_TOKEN may contain only letters, digits, '.', '_', '~' and '-'.");
+            return "LUME1 " + role + " " + room + " " + token + "\n";
         }
     }
 }

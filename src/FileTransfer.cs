@@ -40,7 +40,15 @@ namespace LumeRemote
             public string Id, Name, Folder;
             public long Length, Sent, Ack, Activity = Stopwatch.GetTimestamp();
             public bool Ready, Cancelled, Resumable;
-            public long ResumeOffset, PreparationSent;
+            public long ResumeOffset, PreparationSent, PreparingSince;
+            // "Preparing" from the peer keeps a transfer alive only for a bounded time: 10 minutes
+            // plus time to hash the file at 20 MB/s, so a peer cannot pin the transfer forever.
+            public bool StillPreparing(long now)
+            {
+                if (PreparingSince == 0) PreparingSince = now;
+                double seconds = 600 + Length / (20.0 * 1024 * 1024);
+                return now - PreparingSince < (long)(seconds * Stopwatch.Frequency);
+            }
             public byte[] PrefixHash;
             public IncomingFile Incoming;
             public readonly TaskCompletionSource<string> Done = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -386,7 +394,13 @@ namespace LumeRemote
                     }); break;
                 case FileOp.Preparing:
                     packet.End(); if (!Resume) throw new InvalidDataException("Transfer resume was not negotiated.");
-                    lock (gate) { if (sending != null && sending.Id == id && sending.Resumable) sending.Activity = Stopwatch.GetTimestamp(); if (receiving != null && receiving.Id == id && receiving.Resumable) receiving.Activity = Stopwatch.GetTimestamp(); Monitor.PulseAll(gate); } break;
+                    lock (gate)
+                    {
+                        long now = Stopwatch.GetTimestamp();
+                        if (sending != null && sending.Id == id && sending.Resumable && sending.StillPreparing(now)) sending.Activity = now;
+                        if (receiving != null && receiving.Id == id && receiving.Resumable && receiving.StillPreparing(now)) receiving.Activity = now;
+                        Monitor.PulseAll(gate);
+                    } break;
                 case FileOp.ResumeReady:
                     long resumeOffset = packet.Reader.ReadInt64(); byte[] prefixHash = packet.Reader.ReadBytes(32); packet.End();
                     if (!Resume || resumeOffset < 0 || prefixHash.Length != 32) throw new InvalidDataException("Invalid resume response.");

@@ -301,7 +301,7 @@ namespace LumeRemote
                     {
                         Theme.BeginLayout(dialog); dialog.Size = new Size(550, 390);
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
-                        Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 200; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
+                        Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 200; Theme.ArmAfterShown(dialog, accept); accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
                         Button ignore = Theme.Button("Don't copy", false); ignore.Width = 130; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore; dialog.ActiveControl = ignore;
                         // The guest's input is paused while this is open, so it never waits indefinitely.
                         Timer expiry = new Timer { Interval = 60000 }; expiry.Tick += delegate { expiry.Stop(); dialog.Close(); };
@@ -401,7 +401,7 @@ namespace LumeRemote
             panel.Controls.Add(new CapabilityRow(request.Files ? "Browse, send and receive your files" : "No access to your files", request.Control && request.Files));
             Label trust = Theme.Label(request.Control ? "Only accept someone you trust. You can disconnect at any time." : "Keyboard, mouse, clipboard and file access stay disabled.", 10, Theme.Text); trust.Margin = new Padding(0, 12, 0, 4); panel.Controls.Add(trust);
             Label countdown = Theme.Label("Automatically declined in 60 seconds.", 9, Theme.Muted); panel.Controls.Add(countdown);
-            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 0) }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true);
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true, Margin = new Padding(0, 8, 0, 0) }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(request.Control ? "Allow control" : "Allow viewing", true); Theme.ArmAfterShown(this, allow);
             deny.Width = allow.Width = 160; deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
             ActiveControl = deny;
             Theme.EndLayout(this);
@@ -428,7 +428,7 @@ namespace LumeRemote
             panel.Controls.Add(Theme.Label(heading, 18, Theme.Text));
             panel.Controls.Add(Theme.Label(message, 11, Theme.Text));
             Label countdown = Theme.Label("Automatically declined in " + remaining + " seconds.", 10, Theme.Muted); panel.Controls.Add(countdown);
-            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(allowText, true);
+            FlowLayoutPanel buttons = new FlowLayoutPanel { AutoSize = true }; Button deny = Theme.Button("Decline", false), allow = Theme.Button(allowText, true); Theme.ArmAfterShown(this, allow);
             deny.DialogResult = DialogResult.No; allow.DialogResult = DialogResult.Yes; buttons.Controls.Add(deny); buttons.Controls.Add(allow); panel.Controls.Add(buttons); Controls.Add(panel);
             Theme.EndLayout(this);
             CancelButton = deny; AcceptButton = deny; ActiveControl = deny;
