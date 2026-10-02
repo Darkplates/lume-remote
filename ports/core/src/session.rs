@@ -25,7 +25,17 @@ const PRE_AUTH_DEADLINE: Duration = Duration::from_secs(12);
 /// P2P keeps its previous worst case (12 s handshake followed by 12 s authentication).
 const PEER_PRE_AUTH_DEADLINE: Duration = Duration::from_secs(24);
 /// Unauthenticated direct connections processed at once. Extra connections are closed.
-const MAX_PRE_AUTH_HANDSHAKES: usize = 4;
+const MAX_PRE_AUTH_HANDSHAKES: usize = 8;
+/// Unauthenticated direct connections processed at once from one source address
+/// (IPv6 sources are grouped by /64), so one source cannot hold every slot.
+const MAX_PRE_AUTH_PER_SOURCE: usize = 2;
+/// Largest authentication packet body, as on the Windows host (`wire.Read(2048)`).
+const AUTH_PACKET_LIMIT: usize = 2048;
+/// Largest packet body a host accepts from an authenticated viewer, as on the
+/// Windows host (`wire.Read(270000)`). File chunks, tool requests and voice fit.
+const HOST_RECEIVE_PACKET: usize = 270000;
+/// Viewer messages a host processes per second before ending the session (Windows: 1200).
+const HOST_MESSAGE_RATE: u32 = 1200;
 const FRESH_INVITATION: &str = "Start sharing again for a fresh invitation";
 
 pub enum Stream {
@@ -191,6 +201,9 @@ impl Network {
     }
     fn set_receive_limit(&mut self, limit: usize) {
         self.framer.set_limit(limit);
+    }
+    fn set_packet_limit(&mut self, limit: usize) {
+        self.framer.set_packet_limit(limit);
     }
 }
 impl Drop for Network {
@@ -444,6 +457,11 @@ impl Viewer {
     pub fn disconnect(&self) {
         self.stop.store(true, Ordering::Release);
     }
+    /// A cancellation handle that does not borrow the viewer, so it can cancel while
+    /// another thread holds the viewer to join it.
+    pub fn canceller(&self) -> Canceller {
+        Canceller(self.stop.clone())
+    }
     pub fn is_finished(&self) -> bool {
         self.worker
             .as_ref()
@@ -463,6 +481,14 @@ impl Viewer {
 impl Drop for Viewer {
     fn drop(&mut self) {
         self.close_and_wait();
+    }
+}
+/// Cancels one viewer without waiting for, or locking, the viewer itself.
+#[derive(Clone)]
+pub struct Canceller(Arc<AtomicBool>);
+impl Canceller {
+    pub fn cancel(&self) {
+        self.0.store(true, Ordering::Release);
     }
 }
 fn tcp(invite: &Invitation) -> Result<TcpStream> {
@@ -788,18 +814,7 @@ fn viewer_attempt(
                     let id = r.long()?;
                     let tool = r.byte()?;
                     ensure!(id > 0, "Invalid request id");
-                    let (ok, error) = if tool == 4 {
-                        let text = r.text(8192)?;
-                        r.end()?;
-                        let mut s = state.lock().unwrap();
-                        s.chats.push(text);
-                        if s.chats.len() > 100 {
-                            s.chats.remove(0);
-                        }
-                        (true, "")
-                    } else {
-                        (false, "This action is unavailable on this viewer")
-                    };
+                    let (ok, error) = viewer_tool(accepted, state, tool, &mut r)?;
                     net.send(
                         Packet::new(19)
                             .long(id)
@@ -1119,6 +1134,58 @@ fn viewer_attempt(
     }
     Ok(())
 }
+/// One host-initiated tool request on a viewer. Only negotiated chat is supported;
+/// as on Windows, chat before acceptance or without the capability ends the session.
+fn viewer_tool(
+    accepted: bool,
+    state: &Mutex<ViewState>,
+    tool: u8,
+    r: &mut Reader<'_>,
+) -> Result<(bool, &'static str)> {
+    if tool != 4 {
+        return Ok((false, "This action is unavailable on this viewer"));
+    }
+    ensure!(
+        accepted && state.lock().unwrap().capabilities & CHAT != 0,
+        "Unexpected host action"
+    );
+    let text = r.text(8192)?;
+    r.end()?;
+    Ok(match chat_text(&text) {
+        Some(text) => {
+            store_chat(&mut state.lock().unwrap().chats, text);
+            (true, "")
+        }
+        None => (false, "The message contains unsupported characters"),
+    })
+}
+/// Chat capability bit (Windows `SessionCapabilities.Chat`).
+const CHAT: u64 = 4;
+/// Stored incoming chat history, in UTF-8 bytes and messages.
+const CHAT_HISTORY_BYTES: usize = 64 * 1024;
+const CHAT_HISTORY_MESSAGES: usize = 100;
+/// Normalizes CRLF/CR line breaks to LF and refuses any other control character
+/// except tab, so remote text cannot inject terminal or layout controls.
+fn chat_text(text: &str) -> Option<String> {
+    let text = text.replace("\r\n", "\n").replace('\r', "\n");
+    (!text
+        .chars()
+        .any(|c| c.is_control() && c != '\n' && c != '\t'))
+    .then_some(text)
+}
+/// Appends one message, dropping the oldest to keep the history within its bounds.
+fn store_chat(chats: &mut Vec<String>, text: String) {
+    chats.push(text);
+    let mut total: usize = chats.iter().map(String::len).sum();
+    let mut drop = 0;
+    while chats.len() - drop > CHAT_HISTORY_MESSAGES
+        || (total > CHAT_HISTORY_BYTES && chats.len() - drop > 1)
+    {
+        total -= chats[drop].len();
+        drop += 1;
+    }
+    chats.drain(..drop);
+}
 pub fn validate_input(action: u8, a: i32, b: i32) -> Result<()> {
     let valid = match action {
         0 => (0..=65535).contains(&a) && (0..=65535).contains(&b),
@@ -1182,14 +1249,17 @@ impl Host {
     /// Direct guest listener. The invitation is single-use: once an authenticated
     /// guest's approval request or session ends, the listener closes.
     pub fn listen(bind: &str, advertised: &str, control: bool, factory: Factory) -> Result<Self> {
-        Self::listen_with(bind, advertised, control, factory, PRE_AUTH_DEADLINE)
+        Self::listen_with(bind, advertised, control, factory, PRE_AUTH_DEADLINE, None)
     }
+    /// `resume_key` marks an owner-paired session (test fixtures only; real
+    /// paired sessions use [`Host::peer_resuming`]).
     fn listen_with(
         bind: &str,
         advertised: &str,
         control: bool,
         factory: Factory,
         pre_auth: Duration,
+        resume_key: Option<zeroize::Zeroizing<String>>,
     ) -> Result<Self> {
         let listener = TcpListener::bind(bind)?;
         listener.set_nonblocking(true)?;
@@ -1214,8 +1284,15 @@ impl Host {
             let Some(guest) = direct_accept(listener, &identity, &stop, &status, pre_auth) else {
                 return;
             };
-            let result =
-                host_authorized(guest, control, &factory, &requests_tx, &stop, &status, None);
+            let result = host_authorized(
+                guest,
+                control,
+                &factory,
+                &requests_tx,
+                &stop,
+                &status,
+                resume_key.as_deref().map(String::as_str),
+            );
             // Fresh session secrets: this invitation never authorizes another session.
             *status.lock().unwrap() = match result {
                 Ok(()) => format!("Session ended. {FRESH_INVITATION}"),
@@ -1367,7 +1444,7 @@ fn direct_accept(
 ) -> Option<Authenticated> {
     let claimed = Arc::new(AtomicBool::new(false));
     let (ready_tx, ready) = mpsc::sync_channel::<Authenticated>(1);
-    let mut workers: Vec<thread::JoinHandle<()>> = Vec::new();
+    let mut workers: Vec<(std::net::IpAddr, thread::JoinHandle<()>)> = Vec::new();
     let mut guest = None;
     while !stop.load(Ordering::Acquire) {
         if let Ok(authenticated) = ready.try_recv() {
@@ -1375,9 +1452,10 @@ fn direct_accept(
             break;
         }
         match listener.accept() {
-            Ok((socket, _)) => {
-                workers.retain(|worker| !worker.is_finished());
-                if workers.len() >= MAX_PRE_AUTH_HANDSHAKES {
+            Ok((socket, address)) => {
+                workers.retain(|(_, worker)| !worker.is_finished());
+                let source = source_group(address.ip());
+                if !admit_handshake(workers.iter().map(|(ip, _)| *ip), source) {
                     let _ = socket.shutdown(Shutdown::Both);
                     continue;
                 }
@@ -1405,7 +1483,7 @@ fn direct_accept(
                     }
                 });
                 match spawned {
-                    Ok(worker) => workers.push(worker),
+                    Ok(worker) => workers.push((source, worker)),
                     Err(e) => {
                         *status.lock().unwrap() = format!("Listener failed: {e}");
                         break;
@@ -1427,10 +1505,35 @@ fn direct_accept(
         let _status = status.lock().unwrap();
         claimed.store(true, Ordering::Release);
     }
-    for worker in workers {
+    for (_, worker) in workers {
         let _ = worker.join();
     }
     guest
+}
+/// Whether one more unauthenticated handshake from `source` fits the global and
+/// per-source caps, given the source groups of the handshakes still running.
+fn admit_handshake(
+    active: impl Iterator<Item = std::net::IpAddr>,
+    source: std::net::IpAddr,
+) -> bool {
+    let (mut total, mut same) = (0, 0);
+    for ip in active {
+        total += 1;
+        same += (ip == source) as usize;
+    }
+    total < MAX_PRE_AUTH_HANDSHAKES && same < MAX_PRE_AUTH_PER_SOURCE
+}
+/// Groups a source address for per-source limits: IPv4 (including IPv4-mapped
+/// IPv6) by address, other IPv6 by /64, the smallest block one subscriber usually holds.
+fn source_group(address: std::net::IpAddr) -> std::net::IpAddr {
+    match address.to_canonical() {
+        std::net::IpAddr::V6(v6) => {
+            let mut octets = v6.octets();
+            octets[8..].fill(0);
+            std::net::IpAddr::V6(octets.into())
+        }
+        v4 => v4,
+    }
 }
 /// TLS handshake plus invitation proof, both bounded by one absolute `deadline`.
 fn authenticate(
@@ -1447,6 +1550,7 @@ fn authenticate(
     )?;
     // The authentication packet is tiny; do not buffer large packets for an unauthenticated peer.
     net.set_receive_limit(PRE_AUTH_RECEIVE_LIMIT);
+    net.set_packet_limit(AUTH_PACKET_LIMIT);
     let (version, name) = loop {
         ensure!(!cancelled(), "Sharing stopped");
         ensure!(Instant::now() < deadline, "Authentication timed out");
@@ -1471,7 +1575,9 @@ fn authenticate(
         }
         thread::sleep(Duration::from_millis(5));
     };
-    net.set_receive_limit(wire::FRAMER_LIMIT);
+    // A larger declared length is refused from its header, before the body is buffered.
+    net.set_packet_limit(HOST_RECEIVE_PACKET);
+    net.set_receive_limit(host_receive_buffer());
     Ok(Authenticated { net, version, name })
 }
 #[allow(clippy::too_many_arguments)]
@@ -1492,6 +1598,37 @@ fn host_session(
         Instant::now() + PEER_PRE_AUTH_DEADLINE,
     )?;
     host_authorized(guest, control, factory, requests, stop, status, resume_key)
+}
+/// One partial viewer packet plus one 64 KiB TLS plaintext read.
+const fn host_receive_buffer() -> usize {
+    HOST_RECEIVE_PACKET + 4 + 65536
+}
+/// Optional features a portable host may offer to one session.
+///
+/// The Windows host asks its owner before each guest clipboard or system-audio
+/// action; this portable host has no such prompt, so one-time guests never get
+/// clipboard access or system audio. Voice still needs control plus the existing
+/// local microphone consent. Owner-paired permanent sessions (which carry a resume
+/// key) keep their configured access.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct SessionPolicy {
+    clipboard: bool,
+    media: u64,
+}
+impl SessionPolicy {
+    fn new(paired: bool, control: bool) -> Self {
+        if paired {
+            Self {
+                clipboard: control,
+                media: crate::media::AUDIO | crate::media::VOICE,
+            }
+        } else {
+            Self {
+                clipboard: false,
+                media: if control { crate::media::VOICE } else { 0 },
+            }
+        }
+    }
 }
 /// Local approval and the session for one authenticated guest.
 fn host_authorized(
@@ -1533,8 +1670,11 @@ fn host_authorized(
         }
     }
     let mut source = OwnerDesktop(factory()?);
-    let mut media =
-        crate::media::HostMedia::new(if version >= 4 { source.0.media() } else { None });
+    let policy = SessionPolicy::new(resume_key.is_some(), control);
+    let mut media = crate::media::HostMedia::with_features(
+        if version >= 4 { source.0.media() } else { None },
+        policy.media,
+    );
     let files = if control && version >= 3 {
         source
             .0
@@ -1562,7 +1702,7 @@ fn host_authorized(
     if version >= 3 {
         accepted = accepted.byte(files.is_some() as u8)
     }
-    let clipboard_allowed = control && source.0.clipboard_available();
+    let clipboard_allowed = policy.clipboard && source.0.clipboard_available();
     let monitors_allowed = source.0.supports_monitors();
     if version >= 4 {
         accepted = accepted.ulong(
@@ -1593,9 +1733,17 @@ fn host_authorized(
     let mut next = Instant::now();
     let mut last_frame: Option<RgbaImage> = None;
     let mut force = true;
+    let mut flood = Instant::now();
+    let mut messages = 0u32;
     net.last = Instant::now();
     while !stop.load(Ordering::Acquire) {
         for p in net.tick()? {
+            if flood.elapsed() >= Duration::from_secs(1) {
+                messages = 0;
+                flood = Instant::now();
+            }
+            messages += 1;
+            ensure!(messages <= HOST_MESSAGE_RATE, "Input rate exceeded");
             let mut r = Reader::new(&p.0[1..]);
             match p.0[0] {
                 5 => {
@@ -2280,7 +2428,7 @@ mod tests {
         }
         fn release(&mut self) {}
     }
-    fn wait(check: impl Fn() -> bool) {
+    fn wait(mut check: impl FnMut() -> bool) {
         let t = Instant::now();
         while !check() {
             assert!(t.elapsed() < Duration::from_secs(8), "Timed out");
@@ -2424,11 +2572,14 @@ mod tests {
         let text = Arc::new(Mutex::new("host text".to_string()));
         let writes = Arc::new(AtomicUsize::new(0));
         let (a, b) = (text.clone(), writes.clone());
-        let host = Host::listen(
+        // Clipboard access is reserved for owner-paired sessions (which carry a resume key).
+        let host = Host::listen_with(
             "127.0.0.1:0",
             "127.0.0.1",
             true,
             Arc::new(move || Ok(Box::new(ClipboardFixture(a.clone(), b.clone())))),
+            PRE_AUTH_DEADLINE,
+            Some(zeroize::Zeroizing::new("paired-fixture-key".into())),
         )
         .unwrap();
         let viewer = Viewer::connect(host.invitation.clone(), Quality::default());
@@ -2465,6 +2616,266 @@ mod tests {
             .unwrap();
         wait(|| viewer.state.lock().unwrap().frames > previous);
     }
+    /// Counts every clipboard and system-audio use; a guest must cause none.
+    #[derive(Clone, Default)]
+    struct Uses {
+        reads: Arc<AtomicUsize>,
+        writes: Arc<AtomicUsize>,
+        audio: Arc<AtomicUsize>,
+        voice: Arc<AtomicUsize>,
+    }
+    struct CountingMedia(Uses);
+    impl crate::media::Backend for CountingMedia {
+        fn audio(&mut self, enabled: bool) -> Result<()> {
+            self.0.audio.fetch_add(enabled as usize, Ordering::Relaxed);
+            Ok(())
+        }
+        fn voice(&mut self, enabled: bool) -> Result<()> {
+            self.0.voice.fetch_add(enabled as usize, Ordering::Relaxed);
+            Ok(())
+        }
+        fn poll(&mut self) -> Result<Vec<crate::media::HostEvent>> {
+            Ok(Vec::new())
+        }
+        fn play(&mut self, _: &[u8]) -> Result<()> {
+            Ok(())
+        }
+    }
+    struct PolicyFixture(Uses);
+    impl Desktop for PolicyFixture {
+        fn size(&self) -> (u32, u32, u32) {
+            Synthetic.size()
+        }
+        fn capture(&mut self) -> Result<RgbaImage> {
+            Synthetic.capture()
+        }
+        fn input(&mut self, _: u8, _: i32, _: i32) -> Result<()> {
+            Ok(())
+        }
+        fn release(&mut self) {}
+        fn media(&self) -> Option<Box<dyn crate::media::Backend>> {
+            Some(Box::new(CountingMedia(self.0.clone())))
+        }
+        fn clipboard_available(&self) -> bool {
+            true
+        }
+        fn clipboard_read(&mut self) -> Result<String> {
+            self.0.reads.fetch_add(1, Ordering::Relaxed);
+            Ok("private host clipboard".into())
+        }
+        fn clipboard_write(&mut self, _: String) -> Result<()> {
+            self.0.writes.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+    }
+    fn policy_host(control: bool, paired: bool) -> (Host, Uses) {
+        let uses = Uses::default();
+        let fixture = uses.clone();
+        let host = Host::listen_with(
+            "127.0.0.1:0",
+            "127.0.0.1",
+            control,
+            Arc::new(move || Ok(Box::new(PolicyFixture(fixture.clone())))),
+            PRE_AUTH_DEADLINE,
+            paired.then(|| zeroize::Zeroizing::new("paired-fixture-key".into())),
+        )
+        .unwrap();
+        (host, uses)
+    }
+    /// A protocol-level viewer that sends exactly what a test asks for.
+    fn raw_guest(host: &Host) -> Network {
+        let client = ClientConnection::new(
+            tls::client(host.invitation.pin).unwrap(),
+            ServerName::try_from("lume-remote").unwrap(),
+        )
+        .unwrap();
+        let socket = TcpStream::connect(("127.0.0.1", host.invitation.port)).unwrap();
+        let never = AtomicBool::new(false);
+        let mut net =
+            Network::new(Connection::Client(client), Stream::Tcp(socket), &never).unwrap();
+        net.send(
+            Packet::new(1)
+                .int(4)
+                .text(&host.invitation.secret)
+                .text("Raw guest"),
+        )
+        .unwrap();
+        let started = Instant::now();
+        let request = loop {
+            assert!(net.tick().unwrap().is_empty());
+            if let Ok(request) = host.requests.try_recv() {
+                break request;
+            }
+            assert!(started.elapsed() < Duration::from_secs(8), "No approval");
+            thread::sleep(Duration::from_millis(2));
+        };
+        request.answer.send(true).unwrap();
+        net
+    }
+    /// Next packet of `kind`, skipping frames and stream notices.
+    fn expect(net: &mut Network, kind: u8) -> Packet {
+        let started = Instant::now();
+        loop {
+            for p in net.tick().unwrap() {
+                if p.0[0] == kind {
+                    return p;
+                }
+                assert!(
+                    matches!(p.0[0], 4 | 10 | 15),
+                    "Unexpected packet {}",
+                    p.0[0]
+                );
+            }
+            assert!(
+                started.elapsed() < Duration::from_secs(8),
+                "No packet {kind}"
+            );
+            thread::sleep(Duration::from_millis(2));
+        }
+    }
+    /// Capabilities from the acceptance packet.
+    fn accepted_capabilities(net: &mut Network) -> u64 {
+        let p = expect(net, 2);
+        let mut r = Reader::new(&p.0[1..]);
+        r.boolean().unwrap();
+        r.text(128).unwrap();
+        for _ in 0..4 {
+            r.int().unwrap();
+        }
+        r.boolean().unwrap();
+        let caps = r.ulong().unwrap();
+        r.end().unwrap();
+        caps
+    }
+    /// (id, ok) of the next tool reply.
+    fn tool_reply(net: &mut Network) -> (i64, bool) {
+        let p = expect(net, 19);
+        let mut r = Reader::new(&p.0[1..]);
+        (r.long().unwrap(), r.boolean().unwrap())
+    }
+    const CLIPBOARD_CAPS: u64 = 1 | 128;
+    #[test]
+    fn guests_get_no_clipboard_or_system_audio() {
+        for control in [true, false] {
+            let (host, uses) = policy_host(control, false);
+            let mut net = raw_guest(&host);
+            let caps = accepted_capabilities(&mut net);
+            assert_eq!(caps & CLIPBOARD_CAPS, 0, "control={control}");
+            assert_eq!(caps & crate::media::AUDIO, 0, "control={control}");
+            // Voice keeps its local microphone consent, and needs control.
+            assert_eq!(caps & crate::media::VOICE != 0, control);
+            net.send(Packet::new(18).long(1).byte(1)).unwrap();
+            assert_eq!(tool_reply(&mut net), (1, false));
+            net.send(Packet::new(18).long(2).byte(8).text("guest text"))
+                .unwrap();
+            assert_eq!(tool_reply(&mut net), (2, false));
+            net.send(Packet::new(8).text("guest text")).unwrap();
+            expect(&mut net, 12);
+            net.send(Packet::new(18).long(3).byte(6).byte(1).int(1))
+                .unwrap();
+            assert_eq!(tool_reply(&mut net), (3, false));
+            if !control {
+                net.send(Packet::new(18).long(4).byte(9).byte(1).int(1))
+                    .unwrap();
+                assert_eq!(tool_reply(&mut net), (4, false));
+                assert_eq!(uses.voice.load(Ordering::Relaxed), 0);
+            }
+            assert_eq!(uses.reads.load(Ordering::Relaxed), 0);
+            assert_eq!(uses.writes.load(Ordering::Relaxed), 0);
+            assert_eq!(uses.audio.load(Ordering::Relaxed), 0);
+            drop(net);
+            drop(host);
+        }
+    }
+    #[test]
+    fn paired_sessions_keep_clipboard_and_audio() {
+        let (host, uses) = policy_host(true, true);
+        let mut net = raw_guest(&host);
+        let caps = accepted_capabilities(&mut net);
+        assert_eq!(caps & CLIPBOARD_CAPS, CLIPBOARD_CAPS);
+        assert_ne!(caps & crate::media::AUDIO, 0);
+        assert_ne!(caps & crate::media::VOICE, 0);
+        net.send(Packet::new(18).long(1).byte(1)).unwrap();
+        assert_eq!(tool_reply(&mut net), (1, true));
+        net.send(Packet::new(18).long(2).byte(6).byte(1).int(1))
+            .unwrap();
+        assert_eq!(tool_reply(&mut net), (2, true));
+        assert_eq!(uses.reads.load(Ordering::Relaxed), 1);
+        assert_eq!(uses.audio.load(Ordering::Relaxed), 1);
+        drop(net);
+        drop(host);
+    }
+    #[test]
+    fn host_refuses_oversized_viewer_packets_and_floods() {
+        let (host, _) = policy_host(true, false);
+        let mut net = raw_guest(&host);
+        accepted_capabilities(&mut net);
+        // Only a header is sent: the host must refuse the length without the body.
+        let header = ((HOST_RECEIVE_PACKET + 1) as i32).to_le_bytes();
+        net.tls.writer().write_all(&header).unwrap();
+        wait(|| {
+            let _ = net.tick();
+            host.is_finished()
+        });
+        assert!(host.status.lock().unwrap().contains("Invalid packet size"));
+        drop((net, host));
+        let (host, _) = policy_host(true, false);
+        let mut net = raw_guest(&host);
+        accepted_capabilities(&mut net);
+        let started = Instant::now();
+        for n in 0..(HOST_MESSAGE_RATE as i64 + 100) {
+            if net.send(Packet::new(10).long(n)).is_err() || net.tick().is_err() {
+                break;
+            }
+        }
+        assert!(started.elapsed() < Duration::from_millis(900));
+        wait(|| {
+            let _ = net.tick();
+            host.is_finished()
+        });
+        assert!(host.status.lock().unwrap().contains("Input rate exceeded"));
+    }
+    #[test]
+    fn viewer_chat_is_bounded_and_rejects_controls() {
+        assert_eq!(chat_text("a\r\nb\rc\td").as_deref(), Some("a\nb\nc\td"));
+        for bad in ["\u{1b}[2J", "a\u{0}b", "\u{7f}", "\u{85}"] {
+            assert!(chat_text(bad).is_none(), "{bad:?}");
+        }
+        let mut chats = Vec::new();
+        for _ in 0..20 {
+            store_chat(&mut chats, "x".repeat(8192));
+        }
+        assert!(chats.iter().map(String::len).sum::<usize>() <= CHAT_HISTORY_BYTES);
+        assert_eq!(chats.len(), CHAT_HISTORY_BYTES / 8192);
+        for n in 0..250 {
+            store_chat(&mut chats, n.to_string());
+        }
+        assert_eq!(chats.len(), CHAT_HISTORY_MESSAGES);
+        assert_eq!(chats.last().map(String::as_str), Some("249"));
+    }
+    #[test]
+    fn viewer_chat_requires_acceptance_and_the_chat_capability() {
+        let state = Mutex::new(ViewState::default());
+        let body = Packet::new(0).text("hello\r\nthere");
+        let call = |accepted: bool, tool: u8, body: &Packet| {
+            viewer_tool(accepted, &state, tool, &mut Reader::new(&body.0[1..]))
+        };
+        assert!(call(false, 4, &body).is_err());
+        assert!(call(true, 4, &body).is_err());
+        state.lock().unwrap().capabilities = CHAT;
+        assert!(call(false, 4, &body).is_err());
+        assert_eq!(call(true, 4, &body).unwrap(), (true, ""));
+        assert!(
+            !call(true, 4, &Packet::new(0).text("\u{1b}]0;x\u{7}"))
+                .unwrap()
+                .0
+        );
+        assert!(!call(true, 1, &Packet::new(0)).unwrap().0);
+        assert_eq!(
+            state.lock().unwrap().chats,
+            vec!["hello\nthere".to_string()]
+        );
+    }
     /// Waits for the host to close `socket`; returns how long that took.
     fn closed_by_host(socket: &mut TcpStream, started: Instant) -> Duration {
         socket
@@ -2480,7 +2891,8 @@ mod tests {
     #[test]
     fn silent_connections_do_not_delay_a_real_guest() {
         let (mut host, count) = fixture();
-        let silent: Vec<_> = (0..MAX_PRE_AUTH_HANDSHAKES - 1)
+        // Loopback attempts share the guest's source, so fill that source's slots but one.
+        let silent: Vec<_> = (0..MAX_PRE_AUTH_PER_SOURCE - 1)
             .map(|_| TcpStream::connect(("127.0.0.1", host.invitation.port)).unwrap())
             .collect();
         thread::sleep(Duration::from_millis(100));
@@ -2509,11 +2921,13 @@ mod tests {
                 Ok(Box::new(Synthetic))
             }),
             budget,
+            None,
         )
         .unwrap();
         let port = host.invitation.port;
         let started = Instant::now();
-        let mut silent: Vec<_> = (0..MAX_PRE_AUTH_HANDSHAKES)
+        // Every loopback attempt shares one source: the per-source cap applies first.
+        let mut silent: Vec<_> = (0..MAX_PRE_AUTH_PER_SOURCE)
             .map(|_| TcpStream::connect(("127.0.0.1", port)).unwrap())
             .collect();
         thread::sleep(Duration::from_millis(200));
@@ -2560,6 +2974,31 @@ mod tests {
         assert_eq!(count.load(Ordering::Relaxed), 0);
         drop(viewer);
         host.close_and_wait();
+    }
+    #[test]
+    fn pre_auth_admission_limits_each_source_and_groups_ipv6_by_64() {
+        use std::net::IpAddr;
+        let ip = |text: &str| source_group(text.parse::<IpAddr>().unwrap());
+        assert_eq!(ip("2001:db8:1:2:aaaa::1"), ip("2001:db8:1:2:bbbb::9"));
+        assert_ne!(ip("2001:db8:1:2::1"), ip("2001:db8:1:3::1"));
+        assert_eq!(ip("::ffff:192.0.2.7"), ip("192.0.2.7"));
+        assert_ne!(ip("192.0.2.7"), ip("192.0.2.8"));
+        let one = ip("192.0.2.7");
+        let active = [one; MAX_PRE_AUTH_PER_SOURCE];
+        assert!(!admit_handshake(active.iter().copied(), one));
+        assert!(admit_handshake(active.iter().copied(), ip("192.0.2.8")));
+        assert!(admit_handshake(
+            active[1..].iter().copied(),
+            ip("::ffff:192.0.2.7")
+        ));
+        let others: Vec<IpAddr> = (0..MAX_PRE_AUTH_HANDSHAKES)
+            .map(|n| ip(&format!("198.51.100.{n}")))
+            .collect();
+        assert!(!admit_handshake(others.iter().copied(), ip("203.0.113.1")));
+        assert!(admit_handshake(
+            others[1..].iter().copied(),
+            ip("203.0.113.1")
+        ));
     }
     #[test]
     fn direct_invitation_is_single_use() {

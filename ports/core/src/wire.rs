@@ -188,6 +188,7 @@ pub struct Framer {
     bytes: Vec<u8>,
     consumed: usize,
     limit: usize,
+    packet_limit: usize,
 }
 impl Default for Framer {
     fn default() -> Self {
@@ -195,6 +196,7 @@ impl Default for Framer {
             bytes: Vec::new(),
             consumed: 0,
             limit: FRAMER_LIMIT,
+            packet_limit: MAX_PACKET,
         }
     }
 }
@@ -202,6 +204,11 @@ impl Framer {
     /// Bounds buffered, not-yet-parsed bytes; unauthenticated peers get a small limit.
     pub fn set_limit(&mut self, limit: usize) {
         self.limit = limit.min(FRAMER_LIMIT);
+    }
+    /// Bounds the declared length of each packet. A larger length is rejected as soon
+    /// as its four-byte header arrives, before the body is buffered.
+    pub fn set_packet_limit(&mut self, limit: usize) {
+        self.packet_limit = limit.min(MAX_PACKET);
     }
     pub fn push(&mut self, bytes: &[u8]) -> Result<()> {
         ensure!(
@@ -221,7 +228,10 @@ impl Framer {
             return Ok(None);
         }
         let n = i32::from_le_bytes(a[..4].try_into()?);
-        ensure!(n > 0 && n as usize <= MAX_PACKET, "Invalid packet size");
+        ensure!(
+            n > 0 && n as usize <= self.packet_limit,
+            "Invalid packet size"
+        );
         if a.len() < n as usize + 4 {
             return Ok(None);
         }
@@ -350,6 +360,27 @@ mod tests {
         assert!(f.push(&[0]).is_err());
         f.set_limit(usize::MAX);
         assert!(f.push(&[0; 32]).is_ok());
+    }
+    #[test]
+    fn packet_limit_rejects_declared_length_before_buffering() {
+        let mut f = Framer::default();
+        f.set_packet_limit(270000);
+        f.push(&270001i32.to_le_bytes()).unwrap();
+        assert!(f.next_packet().is_err());
+        // The rejection happens from the header alone: nothing beyond it was buffered.
+        assert_eq!(f.bytes.len(), 4);
+        let mut f = Framer::default();
+        f.set_packet_limit(270000);
+        f.push(&(MAX_PACKET as i32).to_le_bytes()).unwrap();
+        assert!(f.next_packet().is_err());
+        assert!(f.bytes.capacity() < 1024);
+        let mut f = Framer::default();
+        f.set_packet_limit(270000);
+        let body = vec![7u8; 270000];
+        f.push(&Packet(body.clone()).framed().unwrap()).unwrap();
+        assert_eq!(f.next_packet().unwrap().unwrap().0, body);
+        f.set_packet_limit(usize::MAX);
+        assert_eq!(f.packet_limit, MAX_PACKET);
     }
     #[test]
     fn invitations_and_secrets() {

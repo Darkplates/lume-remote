@@ -306,6 +306,8 @@ pub trait Backend: Send {
 pub struct HostMedia {
     ended: Option<i32>,
     backend: Option<Box<dyn Backend>>,
+    /// Features this session may use (AUDIO and/or VOICE); never advertised otherwise.
+    allowed: u64,
     audio: Option<i32>,
     voice: Option<i32>,
     pending: Option<(i64, i32, Instant)>,
@@ -320,9 +322,15 @@ fn reply(id: i64, ok: bool, error: &str) -> Packet {
 }
 impl HostMedia {
     pub fn new(backend: Option<Box<dyn Backend>>) -> Self {
+        Self::with_features(backend, AUDIO | VOICE)
+    }
+    /// Restricts the session to `allowed` (a subset of AUDIO | VOICE). Requests for
+    /// any other feature are refused without touching the platform backend.
+    pub fn with_features(backend: Option<Box<dyn Backend>>, allowed: u64) -> Self {
         Self {
             ended: None,
             backend,
+            allowed: allowed & (AUDIO | VOICE),
             audio: None,
             voice: None,
             pending: None,
@@ -330,7 +338,7 @@ impl HostMedia {
     }
     pub fn capabilities(&self) -> u64 {
         if self.backend.is_some() {
-            AUDIO | VOICE
+            self.allowed
         } else {
             0
         }
@@ -349,6 +357,14 @@ impl HostMedia {
         let Some(b) = self.backend.as_mut() else {
             return Ok(vec![reply(id, false, "Media is unavailable on this host")]);
         };
+        let feature = if tool == 6 { AUDIO } else { VOICE };
+        if self.allowed & feature == 0 {
+            return Ok(vec![reply(
+                id,
+                false,
+                "This media feature is not enabled for this session",
+            )]);
+        }
         if tool == 6 {
             self.audio = None;
             let result = b.audio(enabled);
