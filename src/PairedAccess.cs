@@ -234,7 +234,7 @@ namespace LumeRemote
                             HandleControlClient(server, ownerSid);
                             // Reuse the same handle: the namespace remains service-owned
                             // between authenticated requests instead of becoming vacant.
-                            if (!stopped.IsCancellationRequested) { try { server.Disconnect(); } catch (InvalidOperationException) { } }
+                            if (!stopped.IsCancellationRequested) { try { server.Disconnect(); } catch (Exception) { } }
                         }
                     }
                 }
@@ -285,8 +285,16 @@ namespace LumeRemote
         { try { using (Deadline(server)) { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } } catch { } }
         // A client that stalls while sending or reading is cut off, so it cannot hold the only
         // pipe instance and block Disable or Revoke for everyone else.
-        static IDisposable Deadline(NamedPipeServerStream server)
-        { return new System.Threading.Timer(delegate { try { server.Disconnect(); } catch (Exception) { } }, null, 3000, Timeout.Infinite); }
+        static IDisposable Deadline(NamedPipeServerStream server) { return new PipeDeadline(server); }
+        // The same server stream serves the next client, so a deadline that fires after its
+        // request finished must not disconnect that next client.
+        sealed class PipeDeadline : IDisposable
+        {
+            readonly object gate = new object(); readonly NamedPipeServerStream server; readonly System.Threading.Timer timer; bool finished;
+            public PipeDeadline(NamedPipeServerStream server) { this.server = server; timer = new System.Threading.Timer(Expire, null, 3000, Timeout.Infinite); }
+            void Expire(object state) { lock (gate) { if (finished) return; finished = true; try { server.Disconnect(); } catch (Exception) { } } }
+            public void Dispose() { lock (gate) finished = true; timer.Dispose(); }
+        }
         bool Fresh(string nonce)
         {
             lock (gate)

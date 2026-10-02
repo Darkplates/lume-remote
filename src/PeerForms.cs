@@ -113,7 +113,7 @@ namespace LumeRemote
         readonly Button copy = Theme.Button("Copy reply code", true);
         readonly System.Windows.Forms.Timer ticker = new System.Windows.Forms.Timer { Interval = 1000 };
         readonly CancellationTokenSource stopped = new CancellationTokenSource();
-        string note = "";
+        string note = "", checkCode;
         DateTime deadline;
         bool closed, transferred;
         public PeerViewerForm(PeerSignal offer)
@@ -146,7 +146,8 @@ namespace LumeRemote
             if (closed) return;
             PeerTransport current = peer; if (current == null) return;
             int left = Math.Max(0, (int)Math.Ceiling((deadline - DateTime.UtcNow).TotalSeconds));
-            status.Text = note + "\n" + current.Phase + " (" + (left / 60) + ":" + (left % 60).ToString("00") + " left)";
+            status.Text = note + "\n" + current.Phase + " (" + (left / 60) + ":" + (left % 60).ToString("00") + " left)" +
+                (checkCode == null ? "" : "\nCheck code: " + checkCode + ". The sharing PC shows the same code when it asks for approval.");
         }
         async Task Deliver(PeerSignal signal)
         {
@@ -168,7 +169,7 @@ namespace LumeRemote
                 string answer = await Task.Run(delegate { return created.CreateAnswer(offer.Sdp); });
                 if (closed) return;
                 PeerSignal signal = offer.Reply(answer);
-                reply.Text = signal.ToString(); copy.Enabled = true;
+                reply.Text = signal.ToString(); copy.Enabled = true; checkCode = PeerSignal.CheckCode(offer.Session, signal);
                 deadline = DateTime.UtcNow.AddMilliseconds(ViewerWait);
                 note = "Copy this reply and return it to the sharing PC, then wait here.";
                 ShowProgress(); ticker.Start();
@@ -176,7 +177,7 @@ namespace LumeRemote
                 await Task.Run(delegate { created.WaitReady(ViewerWait); });
                 ticker.Stop();
                 if (closed) return;
-                ViewerForm viewer = new ViewerForm(offer.Session, created) { ApprovalCheck = PeerSignal.CheckCode(offer.Session, signal) }; transferred = true; viewer.Show(); Close();
+                ViewerForm viewer = new ViewerForm(offer.Session, created) { ApprovalCheck = checkCode }; transferred = true; viewer.Show(); Close();
             }
             catch (Exception error)
             {

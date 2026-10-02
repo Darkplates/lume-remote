@@ -23,9 +23,9 @@ namespace LumeRemote
         }
     }
 
-    // Tells every Lume process in this Windows session that a guest currently controls the
-    // desktop, so owner-only actions (pairing, access, folders) cannot be driven by the
-    // guest's injected input from another Lume window. A dedicated thread holds a named
+    // Tells every Lume process in this Windows session that a guest is connected, so
+    // owner-only actions (pairing, access, folders) cannot be driven by a guest's injected
+    // input, or read off the screen, from another Lume window. A dedicated thread holds a named
     // mutex while this process has at least one such session.
     public static class GuestControl
     {
@@ -42,7 +42,11 @@ namespace LumeRemote
                     ManualResetEvent stop = release = new ManualResetEvent(false);
                     Thread holder = new Thread(delegate()
                     {
-                        using (Mutex mutex = new Mutex(false, Name))
+                        Mutex created;
+                        // A name this process cannot open (for example created elevated) must not crash Lume;
+                        // the in-process count still blocks owner-only actions here.
+                        try { created = new Mutex(false, Name); } catch (Exception) { stop.WaitOne(); stop.Dispose(); return; }
+                        using (Mutex mutex = created)
                         {
                             bool owned = false;
                             try

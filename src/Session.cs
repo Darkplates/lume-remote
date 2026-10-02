@@ -230,7 +230,7 @@ namespace LumeRemote
                             failures.Fail(failureKey);
                             wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "Invitation rejected. Ask for the current invitation."); }); return;
                         }
-                        if (name.Length == 0 || HasControlChars(name)) throw new InvalidDataException("Invalid peer name.");
+                        if (name.Length == 0 || HasControlChars(name) || HasDeceptiveChars(name)) throw new InvalidDataException("Invalid peer name.");
                     }
                     if (Interlocked.CompareExchange(ref preAuth, 1, 0) != 0) throw new TimeoutException("Authentication took too long.");
                     preAuthDeadline.Dispose();
@@ -541,8 +541,9 @@ namespace LumeRemote
             catch (Exception error)
             {
                 if (Volatile.Read(ref preAuth) == 2) error = new TimeoutException("Authentication took too long.");
-                // Unauthenticated failures (bad TLS, stalls) count like a wrong secret.
-                if (Volatile.Read(ref preAuth) != 1 && !relay) failures.Fail(failureKey);
+                // Unauthenticated stalls, TLS failures and malformed packets count like a wrong secret.
+                // A clean close before authentication (for example Test connection) does not.
+                if (Volatile.Read(ref preAuth) != 1 && !relay && (error is TimeoutException || error is System.Security.Authentication.AuthenticationException || error is InvalidDataException)) failures.Fail(failureKey);
                 sessionError = error; if (!disposed) status("Connection ended: " + error.Message);
             }
             finally
@@ -556,10 +557,19 @@ namespace LumeRemote
                 if (!disposed && !relay) status("Ready for a new session. Local approval is always required.");
             }
         }
-        // Also rejects invisible and direction-changing characters, which can make a name or file
-        // name display as something else (for example "invoice\u202Etxt.exe"). Joiners used by
-        // emoji and some scripts (U+200C, U+200D) remain allowed.
-        public static bool HasControlChars(string name) { foreach (char c in name) if (Char.IsControl(c) || IsDeceptive(c)) return true; return false; }
+        public static bool HasControlChars(string name) { foreach (char c in name) if (Char.IsControl(c)) return true; return false; }
+        // Invisible and direction-changing characters can make a name display as something else
+        // (for example "invoice\u202Etxt.exe"). Peer names reject them; file names are shown with
+        // them made visible (Visible). Joiners used by emoji and some scripts (U+200C, U+200D)
+        // are not included.
+        public static bool HasDeceptiveChars(string name) { foreach (char c in name) if (IsDeceptive(c)) return true; return false; }
+        public static string Visible(string name)
+        {
+            if (!HasDeceptiveChars(name)) return name;
+            System.Text.StringBuilder shown = new System.Text.StringBuilder(name.Length + 16);
+            foreach (char c in name) if (IsDeceptive(c)) shown.Append("[U+").Append(((int)c).ToString("X4")).Append(']'); else shown.Append(c);
+            return shown.ToString();
+        }
         public static bool IsDeceptive(char c)
         { return c == '\u061C' || c == '\u180E' || c == '\u200B' || c == '\u200E' || c == '\u200F' || (c >= '\u202A' && c <= '\u202E') || (c >= '\u2060' && c <= '\u2064') || (c >= '\u2066' && c <= '\u2069') || c == '\uFEFF'; }
         public void Dispose()

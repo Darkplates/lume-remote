@@ -24,9 +24,16 @@ namespace LumeRemote
             try { TrustedStore.Machine.Disable(); }
             catch (IOException)
             {
+                // Already privileged callers (including --disable-host) wrote directly and failed:
+                // starting another elevated copy would only repeat that.
+                using (WindowsIdentity identity = WindowsIdentity.GetCurrent())
+                    if (identity.IsSystem || new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator)) throw;
                 // The settings channel did not answer (busy or stopped): disabling must still be
                 // possible, so ask Windows for administrator permission and disable directly.
-                using (Process process = Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--disable-host") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden }))
+                Process process;
+                try { process = Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--disable-host") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden }); }
+                catch (Win32Exception) { throw new IOException("Access is still enabled: the settings service did not answer and administrator approval was not given. Use Remove Windows service in Settings."); }
+                using (process)
                 {
                     process.WaitForExit();
                     if (process.ExitCode != 0) throw new IOException("Access could not be disabled. Use Remove Windows service in Settings.");

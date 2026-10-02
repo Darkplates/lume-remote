@@ -19,11 +19,14 @@ function Test-TrustedOwner([string]$Path) {
     $sid = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier])
     return ($sid -eq $systemSid) -or ($sid -eq $adminSid)
 }
-# Writes the result for the dashboard without following a link planted in the package folder.
+# Writes the result for the dashboard. Best effort: it never follows a link planted as
+# setup.log, and a logging problem (e.g. a cloud-synced folder) never undoes the setup.
 function Write-SetupLog([string]$Text) {
-    $log = Join-Path $sourceRoot 'setup.log'
-    Assert-RealPath $log
-    $Text | Set-Content -LiteralPath $log
+    try {
+        $log = Join-Path $sourceRoot 'setup.log'
+        if ((Test-Path -LiteralPath $log) -and ((Get-Item -LiteralPath $log -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { return }
+        $Text | Set-Content -LiteralPath $log
+    } catch { }
 }
 function Protect-Directory([string]$Path, [bool]$OwnerWrite) {
     Assert-RealPath $Path

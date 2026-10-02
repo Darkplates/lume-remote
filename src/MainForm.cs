@@ -219,14 +219,21 @@ namespace LumeRemote
                 created.AllowMonitorSwitching = false;
                 host = created;
                 // Callbacks from an older sharing generation must not touch the current session's state.
+                // Each host owns its own guest marker, so a late start or end from an older sharing
+                // generation can never leave owner-only actions blocked. Any guest session counts,
+                // view-only included: a viewer can read a pairing code off the screen.
+                IDisposable hostMarker = null;
                 created.SessionStarted += delegate(string name, bool withControl)
                 {
-                    if (current != System.Threading.Volatile.Read(ref generation)) return;
-                    if (withControl) SetGuestControl(GuestControl.Begin());
+                    IDisposable marker = GuestControl.Begin(), previous = System.Threading.Interlocked.Exchange(ref hostMarker, marker);
+                    if (previous != null) previous.Dispose();
+                    if (current != System.Threading.Volatile.Read(ref generation)) { IDisposable stale = System.Threading.Interlocked.Exchange(ref hostMarker, null); if (stale != null) stale.Dispose(); return; }
+                    SetGuestControl(marker);
                     SetIndicator(SessionIndicator.Show(name, withControl, delegate { try { BeginInvoke((Action)delegate { if (current == generation) StopSharing(); }); } catch (InvalidOperationException) { } }));
                 };
                 created.SessionEnded += delegate
                 {
+                    IDisposable ended = System.Threading.Interlocked.Exchange(ref hostMarker, null); if (ended != null) ended.Dispose();
                     if (current != System.Threading.Volatile.Read(ref generation)) return;
                     SetIndicator(null); SetGuestControl(null);
                     // Prompts from the ended session must not be answered later.
@@ -275,7 +282,8 @@ namespace LumeRemote
             generation++;
             // Native peer teardown can wait for network threads, so it never runs on the UI thread.
             PeerTransport oldPeer = peer; HostService oldHost = host; peer = null; host = null;
-            if (oldPeer != null || oldHost != null) Task.Run(delegate { try { if (oldPeer != null) oldPeer.Dispose(); } catch (Exception) { } try { if (oldHost != null) oldHost.Dispose(); } catch (Exception) { } });
+            // The host goes first so capture and input stop before the slower network teardown.
+            if (oldPeer != null || oldHost != null) Task.Run(delegate { try { if (oldHost != null) oldHost.Dispose(); } catch (Exception) { } try { if (oldPeer != null) oldPeer.Dispose(); } catch (Exception) { } });
             invitation.Clear(); copy.Enabled = copyLink.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
             foreach (Form owned in OwnedForms) if (owned is ConsentForm || owned is TimedConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();

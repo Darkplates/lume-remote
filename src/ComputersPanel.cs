@@ -294,7 +294,23 @@ namespace LumeRemote
                 buttons.Controls.Add(revokeCode); buttons.Controls.Add(done); panel.Controls.Add(buttons);
                 ShortPairingOffer offer = null; bool closed = false;
                 Action<Action> onUi = delegate(Action action) { try { if (!closed) dialog.BeginInvoke(action); } catch (InvalidOperationException) { } };
-                matches.Click += delegate { if (GuestControl.Active) { dialog.Close(); return; } compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
+                // If a guest takes control while this window is open, withdraw the code at once. When the
+                // settings channel cannot cancel it, turn access off instead; never leave it usable silently.
+                bool withdrawn = false;
+                Action withdraw = delegate
+                {
+                    if (withdrawn) return; withdrawn = true;
+                    if (offer != null) { offer.Reject(); offer = null; }
+                    string outcome = "Pairing was cancelled because a guest connected to this PC.";
+                    try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); }
+                    catch (Exception)
+                    {
+                        try { TrustedStore.Machine.Disable(); outcome = "A guest connected while pairing, and the code could not be cancelled, so access was turned off. Turn it on again after the guest leaves."; }
+                        catch (Exception) { outcome = "A guest connected while pairing and the code could not be cancelled. After the guest leaves, choose Pair another PC and Cancel pairing code, or turn access off."; }
+                    }
+                    progress.Text = outcome; dialog.Close();
+                };
+                matches.Click += delegate { if (GuestControl.Active) { withdraw(); return; } compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
                 different.Click += delegate { compare.Visible = false; if (offer != null) { offer.Reject(); offer = null; } shortStatus.Text = "Stopped. Nothing was shared. Close this window and choose Pair another PC to try again."; shortStatus.ForeColor = Theme.Danger; };
                 dialog.Shown += async delegate
                 {
@@ -321,9 +337,8 @@ namespace LumeRemote
                         shortCode.Text = "Unavailable"; shortStatus.Text = "The short code needs an Internet connection to the pairing service. Use the full code below instead.";
                     }
                 };
-                // If a guest takes control while this window is open, withdraw the code at once.
                 System.Windows.Forms.Timer guard = new System.Windows.Forms.Timer { Interval = 500 };
-                guard.Tick += delegate { if (!GuestControl.Active) return; guard.Stop(); try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); } catch (Exception) { } progress.Text = "Pairing was cancelled because a guest took control of this PC."; dialog.Close(); };
+                guard.Tick += delegate { if (!GuestControl.Active) return; guard.Stop(); withdraw(); };
                 dialog.Shown += delegate { guard.Start(); };
                 dialog.FormClosed += delegate { closed = true; guard.Dispose(); if (offer != null) offer.Dispose(); };
                 dialog.Controls.Add(panel); dialog.AcceptButton = done; dialog.CancelButton = done; dialog.ActiveControl = done; Theme.EndLayout(dialog); dialog.ShowDialog(this);
@@ -333,7 +348,7 @@ namespace LumeRemote
         bool GuestBlocks(string action)
         {
             if (!GuestControl.Active) return false;
-            MessageBox.Show(FindForm(), action + " is unavailable while a guest controls this PC. End the guest session first.", "Lume", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(FindForm(), action + " is unavailable while a guest is connected to this PC. End the guest session first.", "Lume", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return true;
         }
         void OnUi(Action action) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(action); } catch (InvalidOperationException) { } }

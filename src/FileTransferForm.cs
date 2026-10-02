@@ -102,7 +102,7 @@ namespace LumeRemote
                 if (directory.Length == 0) { roots.Clear(); foreach (RemoteFileEntry item in list.Entries) roots.Add(item.Name.TrimEnd('\\')); }
                 foreach (RemoteFileEntry entry in list.Entries.OrderByDescending(item => item.Directory).ThenBy(item => item.Name, StringComparer.CurrentCultureIgnoreCase))
                 {
-                    ListViewItem item = new ListViewItem(entry.Name) { Tag = entry }; item.SubItems.Add(entry.Directory ? "" : SizeText(entry.Length)); item.SubItems.Add(entry.Directory ? "Folder" : "File"); entries.Items.Add(item);
+                    ListViewItem item = new ListViewItem(HostService.Visible(entry.Name)) { Tag = entry }; item.SubItems.Add(entry.Directory ? "" : SizeText(entry.Length)); item.SubItems.Add(entry.Directory ? "Folder" : "File"); entries.Items.Add(item);
                 }
                 entries.EndUpdate(); previous.Enabled = page > 0; next.Enabled = list.More;
                 status.Text = directory.Length == 0 ? "Open a drive or configured network folder." : files.Resume ? "Interrupted files resume when retried with the same source and destination. Cancel discards the active partial file." : "Send files or folders here, or select remote items to receive. Existing items are kept.";

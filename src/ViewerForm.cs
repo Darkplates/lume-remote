@@ -267,7 +267,7 @@ namespace LumeRemote
         async Task Run()
         {
             bool established = false;
-            while (!closed)
+            while (!closed && !disconnected)
             {
                 ViewerConnection current = new ViewerConnection { FileResumeKey = FileResumeKey }; connection = current;
                 current.SystemAudioReceived = delegate(byte[] pcm) { SessionRecording activeRecording = Volatile.Read(ref recording); if (activeRecording != null) activeRecording.PublishAudio(pcm); };
@@ -287,7 +287,8 @@ namespace LumeRemote
                         else current.ConnectPeer(peer, invite, Environment.MachineName, UpdateProgress);
                         current.SetQuality(desiredQuality);
                     });
-                    if (closed) return;
+                    // Disconnect during setup wins: the finally block releases this connection.
+                    if (closed || disconnected) return;
                     established = connected = true; canvas.SessionEnded = false;
                     frameCount = framesAtReport = 0; decodeTicks = bytesAtReport = 0; lastReport = clock.ElapsedMilliseconds;
                     Text = "Lume - " + (DisplayName ?? current.RemoteName) + (current.CanControl ? "" : " - View only");
