@@ -32,7 +32,7 @@ Every received delta/video packet is decoded in order and acknowledged after dec
 
 ## Wire compatibility
 
-Packets retain a 4-byte little-endian length, a one-byte kind, and typed payload. Strings carry bounded UTF-8 lengths. TLS pins authenticate the protocol capability marker in the certificate. The new viewer requests v3 only from that pinned marker; otherwise it uses v2. Hosts retain v1/v2 support.
+Packets retain a 4-byte little-endian length, a one-byte kind, and typed payload. Strings carry bounded UTF-8 lengths. TLS pins authenticate the protocol capability marker in the certificate. The viewer reads the pinned certificate's common name: `Lume Remote Session v4` selects v4, `Lume Remote Session v3` selects v3, and anything else selects v2. It sends that version in its authentication packet, and the host must echo the same version in its acceptance or the viewer closes the session. Hosts accept versions 1 to 4 and keep the older layouts.
 
 V3 adds video/bitrate fields to quality packets, an accepted-session file-capability boolean, `StreamMetrics=16`, `Files=17`, and frame codec 2. V2 retains its exact image-mode layout and does not receive v3-only packets.
 

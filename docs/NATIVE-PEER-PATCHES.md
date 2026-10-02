@@ -84,7 +84,8 @@ Windows builds retain `-SourceDirectory` and `-BuildDirectory`; optional
 retains the existing build command's repository-DLL output behaviour. Android
 retains its SDK/CMake/Ninja/PeerSource and ABI parameters. Linux and Apple retain
 their existing source/build-root environment variables and platform options.
-The source and Windows packages include both patches, the manifest and helper.
+The source and Windows packages include all three patches (ICE timeout, ICE
+checks and DTLS), the manifest and helper.
 
 The integrated Linux/macOS/iOS build paths are source-reviewed here; actual
 execution of those patched native builds and physical-device acceptance are
