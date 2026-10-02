@@ -18,3 +18,22 @@ android {
     sourceSets { main { assets.srcDir rootProject.file('../../third-party') } }
     buildTypes { release { minifyEnabled false } }
 }
+// The MPL source-availability statement and the list of modified files live in the
+// repository's THIRD-PARTY-NOTICES.txt; ship it beside the third-party notice assets.
+abstract class ThirdPartyNoticesAsset extends DefaultTask {
+    @InputFile @PathSensitive(PathSensitivity.NONE) abstract RegularFileProperty getNotices()
+    @OutputDirectory abstract DirectoryProperty getOutputDir()
+    @TaskAction void copyNotices() {
+        def target = outputDir.get().file('THIRD-PARTY-NOTICES.txt').asFile
+        target.parentFile.mkdirs()
+        target.bytes = notices.get().asFile.bytes
+    }
+}
+def thirdPartyNoticesAsset = tasks.register('thirdPartyNoticesAsset', ThirdPartyNoticesAsset) {
+    notices.set(rootProject.file('../../THIRD-PARTY-NOTICES.txt'))
+}
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(thirdPartyNoticesAsset) { it.outputDir }
+    }
+}
