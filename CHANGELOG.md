@@ -2,8 +2,9 @@
 
 ## Unreleased
 
-- Viewer: frame scaling can use classic GDI stretching as well as GDI+; the default stays
-  the previous behaviour until measurements pick the faster mode for large windows.
+- Viewer: scaling frames into a large or maximized window takes about half the time
+  (hosted Windows timing, 2560x1440 into a maximized window: 82 ms before, 37 ms now per
+  frame); strong reductions keep high-quality filtering. Not yet measured on a real PC.
 - Short-code pairing: "They don't match" on the joining PC now reliably reaches the
   sharing PC (the connection is closed gracefully after the refusal).
 - Permanent access: a paired session or connection attempt now always keeps the PC awake

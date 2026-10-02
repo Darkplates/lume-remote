@@ -692,11 +692,18 @@ namespace LumeRemote
             }
         }
         // How frames are scaled to the window. Painting runs on the UI thread for every
-        // presented frame and its cost grows with the window area. The default stays the
-        // measured previous behaviour until hosted and real-PC timings pick a faster mode.
+        // presented frame and its cost grows with the window area. Hosted Windows timings
+        // (2560x1440 into a maximized window): previous high-quality GDI+ 82 ms, bilinear
+        // 37 ms, nearest/colour-on-colour 13-14 ms but with jagged text, halftone 51 ms.
+        // Bilinear keeps text readable at about twice the speed; a reduction below half size
+        // keeps high quality, which is cheap there because the target is small.
         internal enum FrameScaling { Previous, GdiPlusBilinear, GdiPlusNearest, GdiHalftone, GdiColorOnColor }
-        internal static FrameScaling Scaling = FrameScaling.Previous;
-        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target) { DrawFrame(graphics, image, target, Scaling); }
+        internal static FrameScaling Scaling = FrameScaling.GdiPlusBilinear;
+        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target)
+        {
+            bool strongReduction = target.Width * 2 < image.Width || target.Height * 2 < image.Height;
+            DrawFrame(graphics, image, target, strongReduction && Scaling == FrameScaling.GdiPlusBilinear ? FrameScaling.Previous : Scaling);
+        }
         internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target, FrameScaling mode)
         {
             if (target.Size == image.Size) { graphics.DrawImageUnscaled(image, target.Location); return; }
