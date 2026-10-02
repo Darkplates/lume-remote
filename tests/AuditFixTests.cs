@@ -36,19 +36,29 @@ static partial class Tests
     }
     static void SettingsPipeDeadline()
     {
+        // Bounded as a whole: Windows pipe calls can block (a zero-size buffer makes a write
+        // wait for the reader, and Flush waits for the other end), and a hung check must fail
+        // instead of stalling the suite.
+        Task body = Task.Run(delegate { SettingsPipeDeadlineBody(); });
+        Check(body.Wait(30000), "The settings pipe deadline check did not finish.");
+        if (body.IsFaulted) throw body.Exception.InnerException;
+    }
+    static void SettingsPipeDeadlineBody()
+    {
         string name = "lume-test-deadline-" + Guid.NewGuid().ToString("N");
-        using (var server = new System.IO.Pipes.NamedPipeServerStream(name, System.IO.Pipes.PipeDirection.InOut, 1))
-        using (var client = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut))
+        using (var server = new System.IO.Pipes.NamedPipeServerStream(name, System.IO.Pipes.PipeDirection.InOut, 1, System.IO.Pipes.PipeTransmissionMode.Byte, System.IO.Pipes.PipeOptions.Asynchronous, 4096, 4096))
+        using (var client = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut, System.IO.Pipes.PipeOptions.Asynchronous))
         {
-            Task connecting = Task.Run(delegate { server.WaitForConnection(); }); client.Connect(5000); connecting.Wait(5000);
+            Task connecting = server.WaitForConnectionAsync(); client.Connect(5000);
+            Check(connecting.Wait(5000), "The test pipe did not connect.");
             // A finished request's deadline must not fire later against the next client.
             using (new PipeDeadline(server, 150)) { }
             Thread.Sleep(600);
             Check(server.IsConnected, "A finished request's deadline disconnected the pipe later.");
-            // No Flush: on Windows it waits until the other end has read, which would deadlock here.
-            client.WriteByte(7);
-            Task<int> read = Task.Run(delegate { return server.ReadByte(); });
-            Check(read.Wait(5000) && read.Result == 7, "The pipe stopped carrying data after a finished deadline.");
+            byte[] received = new byte[1];
+            Task<int> read = server.ReadAsync(received, 0, 1);
+            Task write = client.WriteAsync(new byte[] { 7 }, 0, 1);
+            Check(write.Wait(5000) && read.Wait(5000) && read.Result == 1 && received[0] == 7, "The pipe stopped carrying data after a finished deadline.");
             // A stalled request is cut off.
             IDisposable stalled = new PipeDeadline(server, 100);
             Stopwatch clock = Stopwatch.StartNew();
