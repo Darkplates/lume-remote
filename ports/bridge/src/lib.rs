@@ -2,7 +2,7 @@
 //! Handles are never reused. No invitation, image or clipboard data is logged.
 use anyhow::{Result, ensure};
 use lume_core::{
-    session::{Command, Viewer},
+    session::{Canceller, Command, Viewer},
     wire::Quality,
 };
 use serde::Deserialize;
@@ -17,14 +17,20 @@ use std::{
 };
 
 type Session = Arc<Mutex<Viewer>>;
-fn sessions() -> &'static Mutex<HashMap<u64, Session>> {
-    static SESSIONS: OnceLock<Mutex<HashMap<u64, Session>>> = OnceLock::new();
+/// A viewer plus a cancel handle that never takes the viewer lock, so lume_cancel
+/// cannot wait behind lume_close while it joins network work.
+struct Entry {
+    viewer: Session,
+    cancel: Canceller,
+}
+fn sessions() -> &'static Mutex<HashMap<u64, Entry>> {
+    static SESSIONS: OnceLock<Mutex<HashMap<u64, Entry>>> = OnceLock::new();
     SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 /// The map is only mutated by single insert/remove calls, so a panic caught while it was
 /// locked (e.g. thread creation failing in `Viewer::open`) cannot leave it inconsistent.
 /// Recovering the guard keeps existing sessions cancellable and closable.
-fn registry() -> std::sync::MutexGuard<'static, HashMap<u64, Session>> {
+fn registry() -> std::sync::MutexGuard<'static, HashMap<u64, Entry>> {
     sessions()
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -32,7 +38,7 @@ fn registry() -> std::sync::MutexGuard<'static, HashMap<u64, Session>> {
 fn session(handle: u64) -> Result<Session> {
     registry()
         .get(&handle)
-        .cloned()
+        .map(|entry| entry.viewer.clone())
         .ok_or_else(|| anyhow::anyhow!("Session is closed"))
 }
 thread_local! { static ERROR: RefCell<String> = const { RefCell::new(String::new()) }; }
@@ -110,18 +116,27 @@ pub unsafe extern "C" fn lume_open(
             );
         }
         let viewer = Viewer::open(invite.trim(), &path, Quality::default())?;
-        registry.insert(id, Arc::new(Mutex::new(viewer)));
+        let cancel = viewer.canceller();
+        registry.insert(
+            id,
+            Entry {
+                viewer: Arc::new(Mutex::new(viewer)),
+                cancel,
+            },
+        );
         Ok(id)
     })
 }
 /// Cancel immediately; call lume_close on a background thread to finish teardown.
+/// Never waits for the viewer, even while lume_close is joining it.
 #[unsafe(no_mangle)]
 pub extern "C" fn lume_cancel(handle: u64) -> bool {
     protect(|| {
-        session(handle)?
-            .lock()
-            .map_err(|_| anyhow::anyhow!("Session unavailable"))?
-            .disconnect();
+        let cancel = registry()
+            .get(&handle)
+            .map(|entry| entry.cancel.clone())
+            .ok_or_else(|| anyhow::anyhow!("Session is closed"))?;
+        cancel.cancel();
         Ok(true)
     })
 }
@@ -130,7 +145,13 @@ pub extern "C" fn lume_cancel(handle: u64) -> bool {
 pub extern "C" fn lume_close(handle: u64) -> bool {
     protect(|| {
         let value = registry().remove(&handle);
-        if let Some(value) = value {
+        if let Some(Entry {
+            viewer: value,
+            cancel,
+        }) = value
+        {
+            // Stop network work before waiting for any caller holding the viewer.
+            cancel.cancel();
             value
                 .lock()
                 .map_err(|_| anyhow::anyhow!("Session unavailable"))?
@@ -596,5 +617,35 @@ mod tests {
             assert!(lume_close(handle));
             assert_eq!(lume_state(handle, json.as_mut_ptr(), json.len()), 0);
         }
+    }
+    #[test]
+    fn cancel_does_not_wait_for_a_held_viewer() {
+        let host = Host::listen(
+            "127.0.0.1:0",
+            "127.0.0.1",
+            false,
+            Arc::new(|| Ok(Box::new(Fixture))),
+        )
+        .unwrap();
+        let code = host.invitation.encode();
+        let handle = unsafe { lume_open(code.as_ptr(), code.len(), std::ptr::null(), 0) };
+        assert_ne!(handle, 0);
+        // Another caller (as lume_close does while joining) holds the viewer.
+        let viewer = session(handle).unwrap();
+        let (held, release) = std::sync::mpsc::channel::<()>();
+        let (locked, is_locked) = std::sync::mpsc::channel();
+        let holder = std::thread::spawn(move || {
+            let _guard = viewer.lock().unwrap();
+            locked.send(()).unwrap();
+            let _ = release.recv_timeout(Duration::from_secs(10));
+        });
+        is_locked.recv().unwrap();
+        let started = Instant::now();
+        assert!(lume_cancel(handle));
+        assert!(started.elapsed() < Duration::from_secs(1));
+        drop(held);
+        holder.join().unwrap();
+        assert!(lume_close(handle));
+        assert!(!lume_cancel(handle));
     }
 }
