@@ -32,9 +32,27 @@ New-Item -ItemType Directory -Path $toolsDirectory -Force | Out-Null
 $cmakeZip = Join-Path $toolsDirectory 'cmake-4.4.3-windows-x86_64.zip'
 $cmakeHash = '4d52ebab7193a698651639ed80d8d04fd903358843572cf44c7fd234cb7c26ab'
 if (-not (Test-Path -LiteralPath $cmakeZip)) { Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/Kitware/CMake/releases/download/v4.4.3/cmake-4.4.3-windows-x86_64.zip' -OutFile $cmakeZip }
-if ((Get-FileHash -LiteralPath $cmakeZip).Hash -ne $cmakeHash) { throw 'CMake archive digest mismatch. Nothing from that archive was executed.' }
 $cmakeDirectory = Join-Path $toolsDirectory 'cmake-4.4.3-windows-x86_64'
-if (-not (Test-Path -LiteralPath $cmakeDirectory)) { Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($cmakeZip, $toolsDirectory) }
+# A previously extracted folder is never trusted: its files could have changed after the
+# archive was checked. Hash the archive through a handle that denies writers, extract
+# those same bytes into a fresh folder, then replace the fixed-path copy with it.
+Add-Type -AssemblyName System.IO.Compression
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$cmakeStaging = Join-Path $toolsDirectory ('cmake-extract-' + [guid]::NewGuid().ToString('N'))
+$archiveStream = [System.IO.File]::Open($cmakeZip, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
+try {
+    $sha = [System.Security.Cryptography.SHA256]::Create()
+    try { $actualHash = [BitConverter]::ToString($sha.ComputeHash($archiveStream)).Replace('-', '').ToLowerInvariant() } finally { $sha.Dispose() }
+    if ($actualHash -ne $cmakeHash) { throw 'CMake archive digest mismatch. Nothing from that archive was executed.' }
+    $archiveStream.Position = 0
+    $archive = New-Object System.IO.Compression.ZipArchive($archiveStream, [System.IO.Compression.ZipArchiveMode]::Read, $true)
+    try { [System.IO.Compression.ZipFileExtensions]::ExtractToDirectory($archive, $cmakeStaging) } finally { $archive.Dispose() }
+} finally { $archiveStream.Dispose() }
+$extractedCMake = Join-Path $cmakeStaging 'cmake-4.4.3-windows-x86_64'
+if (-not (Test-Path -LiteralPath (Join-Path $extractedCMake 'bin\cmake.exe') -PathType Leaf)) { throw "The verified CMake archive has an unexpected layout: $cmakeStaging" }
+if (Test-Path -LiteralPath $cmakeDirectory) { Remove-Item -LiteralPath $cmakeDirectory -Recurse -Force }
+Move-Item -LiteralPath $extractedCMake -Destination $cmakeDirectory
+Remove-Item -LiteralPath $cmakeStaging -Recurse -Force
 $cmakeExe = Join-Path $cmakeDirectory 'bin\cmake.exe'
 if (-not $BuildDirectory) { $BuildDirectory = Join-Path $projectRoot 'build\peer-bin' }
 $BuildDirectory = [System.IO.Path]::GetFullPath($BuildDirectory)
