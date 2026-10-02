@@ -209,3 +209,11 @@ native logging: it can expose SDP, credentials and addresses.
   git-only packaging. The private audit report is not in the repository. Real-PC
   checks still needed: installer quarantine, hotkey after hide, pipe deadline,
   elevated disable fallback, guest-control lock across two Lume windows.
+- Review follow-ups (2026-10-02): approval buttons armed 1 s after showing
+  (`Theme.ArmAfterShown`), peer-driven "preparing" bounded, Windows hosts send
+  `LUME_RELAY_TOKEN`, deceptive characters split from control characters (peer names
+  reject them, file names show them via `HostService.Visible`), only stalls/TLS/malformed
+  packets count as failed pre-auth attempts, per-host guest marker, pairing withdrawn
+  (or access disabled) when a guest connects mid-pairing, pipe deadline cannot hit the
+  next client, Stop sharing disposes host before peer. Real-PC checks above still apply,
+  plus short pairing, invitation links and the WAN attempt.

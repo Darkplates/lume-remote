@@ -13,12 +13,21 @@
 - Viewer Disconnect ends the session and any reconnection at once, even while a recording
   is being saved. Native connection teardown no longer freezes windows.
 - The incoming-clipboard prompt is ignored after 60 seconds and closes with its session.
-- Names and file names reject invisible and direction-changing characters.
+- Peer names reject invisible and direction-changing characters; file names that contain
+  them are shown with those characters made visible (for example `[U+202E]`).
+- Approval buttons (Allow, They match, Allow call, clipboard Copy) are enabled one second
+  after their prompt appears, so a click meant for something else cannot approve it.
+- A guest who connects while the pairing window is open withdraws the pairing code; if it
+  cannot be withdrawn, access is turned off. Stop sharing ends capture and input before
+  the network teardown, and the guest check code is visible while the viewer waits.
+- Disable falls back to an elevated disable when the settings service does not answer.
+  A clean close before authentication (Test connection) no longer counts as a failed
+  attempt. A late settings timeout can no longer disconnect the next request.
 - Portable ports: guests get no clipboard or system audio, viewer packets are bounded, and
   chat is accepted only after approval. Android hides remote frames from screenshots.
 - Relay: per-source limits on waiting hosts, IPv6 grouped by /64, a 10-minute default host
-  wait and an optional operator token (`LUME_RELAY_TOKEN`; the Windows app cannot send it
-  yet, so leave it unset for Windows hosts).
+  wait and an optional operator token (`LUME_RELAY_TOKEN`, which Windows hosts send when the
+  same variable is set for them).
 - Release workflow builds with read-only access and publishes with build provenance;
   packages contain only committed source.
 

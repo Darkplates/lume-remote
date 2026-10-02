@@ -35,7 +35,7 @@ File access follows the signed-in owner's Windows permissions. It supports ordin
 
 ## Connectivity and scope
 
-Saved access uses encrypted messages through the public PeerJS signaling service, and Cloudflare STUN for address discovery. The desktop travels through the peer connection. These external services have their own availability and policies. Some network combinations require a reachable relay; no automatic TURN service or free hosted relay bandwidth is supplied. Manual P2P signaling, LAN/VPN connections and a self-hosted TCP relay are available.
+Saved access uses encrypted messages through the public PeerJS signaling service, and Cloudflare STUN for address discovery. The desktop travels through the peer connection. These external services have their own availability and policies. Some network combinations require a reachable relay; no automatic TURN service or free hosted relay bandwidth is supplied. Manual P2P signaling, LAN/VPN connections and a self-hosted TCP relay are available. If you run `relay/relay.py` on a public address, start it with an operator token (`LUME_RELAY_TOKEN`, 16-64 letters, digits, `.`, `_`, `~` or `-`) and set the same variable on the sharing PC before opening Lume, so strangers cannot park hosts on your relay.
 
 ### Pairing your own PCs
 
