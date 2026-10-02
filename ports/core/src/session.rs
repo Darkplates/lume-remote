@@ -1170,8 +1170,13 @@ fn chat_text(text: &str) -> Option<String> {
     let text = text.replace("\r\n", "\n").replace('\r', "\n");
     (!text
         .chars()
-        .any(|c| c.is_control() && c != '\n' && c != '\t'))
+        .any(|c| (c.is_control() && c != '\n' && c != '\t') || deceptive(c)))
     .then_some(text)
+}
+/// Invisible and direction-changing characters that can disguise text. Joiners used
+/// by emoji and some scripts (U+200C, U+200D) remain allowed. Matches the Windows app.
+pub(crate) fn deceptive(c: char) -> bool {
+    matches!(c, '\u{061C}' | '\u{180E}' | '\u{200B}' | '\u{200E}' | '\u{200F}' | '\u{202A}'..='\u{202E}' | '\u{2060}'..='\u{2064}' | '\u{2066}'..='\u{2069}' | '\u{FEFF}')
 }
 /// Appends one message, dropping the oldest to keep the history within its bounds.
 fn store_chat(chats: &mut Vec<String>, text: String) {
@@ -1250,6 +1255,26 @@ impl Host {
     /// guest's approval request or session ends, the listener closes.
     pub fn listen(bind: &str, advertised: &str, control: bool, factory: Factory) -> Result<Self> {
         Self::listen_with(bind, advertised, control, factory, PRE_AUTH_DEADLINE, None)
+    }
+    /// Direct listener that behaves like an owner-paired host (clipboard, system
+    /// audio, resume). Evidence tools and fixtures only; real paired sessions use
+    /// [`Host::peer_resuming`].
+    #[doc(hidden)]
+    pub fn listen_paired_fixture(
+        bind: &str,
+        advertised: &str,
+        control: bool,
+        factory: Factory,
+        key: &str,
+    ) -> Result<Self> {
+        Self::listen_with(
+            bind,
+            advertised,
+            control,
+            factory,
+            PRE_AUTH_DEADLINE,
+            Some(zeroize::Zeroizing::new(key.into())),
+        )
     }
     /// `resume_key` marks an owner-paired session (test fixtures only; real
     /// paired sessions use [`Host::peer_resuming`]).

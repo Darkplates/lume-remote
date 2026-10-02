@@ -178,7 +178,7 @@ namespace LumeRemote
             byte[] line = Encoding.ASCII.GetBytes(RelayHeader(role, room, role == "H" ? Environment.GetEnvironmentVariable("LUME_RELAY_TOKEN") : null));
             client.GetStream().Write(line, 0, line.Length);
             int response = client.GetStream().ReadByte();
-            if (response != 1) throw new IOException(response == 2 ? "The relay has no waiting host. Ask for a fresh invitation or retry shortly." : "The relay rejected the connection. If it requires an operator token, set LUME_RELAY_TOKEN on the sharing PC.");
+            if (response != 1) throw new IOException(response == 2 ? "The relay has no waiting host. Ask for a fresh invitation or retry shortly." : "The relay rejected the connection. It may be busy for this network, the room may be in use, or the relay may require an operator token (set LUME_RELAY_TOKEN on the sharing PC).");
         }
         // A relay started with an operator token requires it from sharing PCs (relay/relay.py).
         // Viewers join by room only. The token is never logged.

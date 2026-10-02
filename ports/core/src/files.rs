@@ -160,6 +160,14 @@ fn reserved_name(name: &str) -> bool {
     name.as_bytes()
         .get(..6)
         .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b".lume-"))
+        || (cfg!(windows) && short_alias(name))
+}
+/// NTFS 8.3 aliases such as `LUME-0~1.PAR` can name a reserved `.lume-` file by
+/// another spelling, so Windows hosts refuse names with `~` followed by a digit.
+fn short_alias(name: &str) -> bool {
+    name.as_bytes()
+        .windows(2)
+        .any(|pair| pair[0] == b'~' && pair[1].is_ascii_digit())
 }
 fn remote_path(path: &str) -> Result<()> {
     ensure!(
@@ -1650,6 +1658,11 @@ mod tests {
             );
             thread::sleep(Duration::from_millis(1));
         }
+    }
+    #[test]
+    fn short_aliases_are_recognised() {
+        assert!(short_alias("LUME-0~1.PAR") && short_alias("report~2"));
+        assert!(!short_alias("notes~draft.txt") && !short_alias("plain.txt") && !short_alias("~"));
     }
     #[test]
     fn publication_rejects_a_repeated_offer_and_ignores_a_repeated_finish() {

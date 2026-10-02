@@ -124,7 +124,9 @@ fn main() -> Result<()> {
     let played = Arc::new(AtomicUsize::new(0));
     let c = consent.clone();
     let p = played.clone();
-    let mut host = Host::listen(
+    // System audio is offered only to owner-paired sessions, so this evidence tool
+    // runs the host as a paired fixture.
+    let mut host = Host::listen_paired_fixture(
         "127.0.0.1:0",
         "127.0.0.1",
         true,
@@ -135,6 +137,7 @@ fn main() -> Result<()> {
                 frame: 0,
             }))
         }),
+        "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
     )?;
     let mut viewer = Viewer::connect(host.invitation.clone(), Quality::default());
     host.requests

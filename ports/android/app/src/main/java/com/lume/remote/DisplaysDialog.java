@@ -17,7 +17,7 @@ final class DisplaysDialog {
     void close(){handler.removeCallbacksAndMessages(null);if(dialog!=null)dialog.dismiss();}
     private void action(String type,String id){try{JSONObject value=new JSONObject().put("type",type);if(id!=null)value.put("id",id);session.action(value);}catch(JSONException ignored){}}
     void show(){rows=new LinearLayout(activity);rows.setOrientation(LinearLayout.VERTICAL);rows.setPadding(24,12,24,12);ScrollView scroll=new ScrollView(activity);scroll.addView(rows);
-        dialog=new AlertDialog.Builder(activity).setTitle("Displays").setView(scroll).setNegativeButton("Close",null).setNeutralButton("Refresh",null).create();
+        dialog=new AlertDialog.Builder(activity).setTitle("Displays").setView(scroll).setNegativeButton("Close",null).setNeutralButton("Refresh",null).create();MainActivity.secure(dialog);
         dialog.setOnDismissListener(d->handler.removeCallbacksAndMessages(null));dialog.show();
         dialog.getButton(AlertDialog.BUTTON_NEUTRAL).setOnClickListener(v->action("list_monitors",null));
         action("list_monitors",null);update();

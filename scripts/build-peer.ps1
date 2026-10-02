@@ -39,6 +39,7 @@ $cmakeDirectory = Join-Path $toolsDirectory 'cmake-4.4.3-windows-x86_64'
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $cmakeStaging = Join-Path $toolsDirectory ('cmake-extract-' + [guid]::NewGuid().ToString('N'))
+try {
 $archiveStream = [System.IO.File]::Open($cmakeZip, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::Read)
 try {
     $sha = [System.Security.Cryptography.SHA256]::Create()
@@ -52,7 +53,10 @@ $extractedCMake = Join-Path $cmakeStaging 'cmake-4.4.3-windows-x86_64'
 if (-not (Test-Path -LiteralPath (Join-Path $extractedCMake 'bin\cmake.exe') -PathType Leaf)) { throw "The verified CMake archive has an unexpected layout: $cmakeStaging" }
 if (Test-Path -LiteralPath $cmakeDirectory) { Remove-Item -LiteralPath $cmakeDirectory -Recurse -Force }
 Move-Item -LiteralPath $extractedCMake -Destination $cmakeDirectory
-Remove-Item -LiteralPath $cmakeStaging -Recurse -Force
+} finally {
+    # A failed or interrupted extraction never leaves a staging folder behind.
+    if (Test-Path -LiteralPath $cmakeStaging) { Remove-Item -LiteralPath $cmakeStaging -Recurse -Force -ErrorAction SilentlyContinue }
+}
 $cmakeExe = Join-Path $cmakeDirectory 'bin\cmake.exe'
 if (-not $BuildDirectory) { $BuildDirectory = Join-Path $projectRoot 'build\peer-bin' }
 $BuildDirectory = [System.IO.Path]::GetFullPath($BuildDirectory)

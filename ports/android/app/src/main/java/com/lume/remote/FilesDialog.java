@@ -26,7 +26,7 @@ final class FilesDialog extends Dialog {
     void list(String folder,int page){try{action(new JSONObject().put("path",folder).put("page",page),"list_files");}catch(Exception ignored){}}
     void download(String remote,String name){try{action(new JSONObject().put("remote",remote).put("name",name).put("folder",activity.service.transferFolder(session).getCanonicalPath()),"download_file");}catch(Exception e){session.error="Unable to create a download folder.";}}
     void downloadFolder(String remote,String name){try{action(new JSONObject().put("remote",remote).put("name",name).put("folder",activity.service.transferFolder(session).getCanonicalPath()),"download_folder");}catch(Exception e){session.error="Unable to create a download folder.";}}
-    @Override public void show(){super.show();getWindow().setLayout(-1,-2);tick();}
+    @Override public void show(){MainActivity.secure(this);super.show();getWindow().setLayout(-1,-2);tick();}
     void tick(){if(!isShowing())return;JSONObject s=state();String current=s.optString("path");boolean busy=s.optBoolean("active")||session.preparing.get();path.setText(current.isEmpty()?"Choose a remote drive or share":current);
         upload.setEnabled(!busy&&!current.isEmpty()&&!session.closed);uploadFolder.setEnabled(upload.isEnabled()&&(session.state.optLong("capabilities")&16)!=0);save.setEnabled(!busy&&!s.isNull("completed")&&!s.optString("completed").isEmpty()&&!session.closed);
         print.setEnabled(save.isEnabled()&&!s.optBoolean("completed_directory")&&s.optString("completed").toLowerCase(java.util.Locale.ROOT).endsWith(".pdf"));
