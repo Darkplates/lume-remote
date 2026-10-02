@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Windows.Forms;
 
 namespace LumeRemote
@@ -19,6 +20,69 @@ namespace LumeRemote
         {
             int ended;
             public void Dispose() { if (System.Threading.Interlocked.Exchange(ref ended, 1) == 0) System.Threading.Interlocked.Decrement(ref open); }
+        }
+    }
+
+    // Tells every Lume process in this Windows session that a guest currently controls the
+    // desktop, so owner-only actions (pairing, access, folders) cannot be driven by the
+    // guest's injected input from another Lume window. A dedicated thread holds a named
+    // mutex while this process has at least one such session.
+    public static class GuestControl
+    {
+        const string Name = "Local\\LumeRemoteGuestControl";
+        static readonly object gate = new object();
+        static int count;
+        static ManualResetEvent release;
+        public static IDisposable Begin()
+        {
+            lock (gate)
+            {
+                if (count++ == 0)
+                {
+                    ManualResetEvent stop = release = new ManualResetEvent(false);
+                    Thread holder = new Thread(delegate()
+                    {
+                        using (Mutex mutex = new Mutex(false, Name))
+                        {
+                            bool owned = false;
+                            try
+                            {
+                                try { owned = WaitHandle.WaitAny(new WaitHandle[] { mutex, stop }) == 0; }
+                                catch (AbandonedMutexException) { owned = true; }
+                                if (owned) stop.WaitOne();
+                            }
+                            finally { if (owned) mutex.ReleaseMutex(); stop.Dispose(); }
+                        }
+                    }) { IsBackground = true, Name = "Lume guest control marker" };
+                    holder.Start();
+                }
+            }
+            return new Scope();
+        }
+        static void End() { lock (gate) { if (--count == 0) release.Set(); } }
+        public static bool Active
+        {
+            get
+            {
+                if (Volatile.Read(ref count) > 0) return true;
+                try
+                {
+                    using (Mutex mutex = Mutex.OpenExisting(Name))
+                    {
+                        bool free;
+                        try { free = mutex.WaitOne(0); } catch (AbandonedMutexException) { free = true; }
+                        if (free) { mutex.ReleaseMutex(); return false; }
+                        return true;
+                    }
+                }
+                catch (WaitHandleCannotBeOpenedException) { return false; }
+                catch (UnauthorizedAccessException) { return true; }
+            }
+        }
+        sealed class Scope : IDisposable
+        {
+            int ended;
+            public void Dispose() { if (Interlocked.Exchange(ref ended, 1) == 0) End(); }
         }
     }
 

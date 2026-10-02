@@ -61,6 +61,8 @@ namespace LumeRemote
         internal string FileResumeKey { get; set; }
         public string DisplayName { get; set; }
         public bool IsSessionConnected { get { return connected; } }
+        // Guest P2P only: the code the host's approval prompt also shows.
+        public string ApprovalCheck { get; set; }
         public ViewerForm(Invitation invite, PeerTransport peer = null, StreamQuality initialQuality = null,
             Func<Action<string>, CancellationToken, Task<PairedLink>> reconnect = null)
         {
@@ -455,7 +457,9 @@ namespace LumeRemote
         {
             if (closed || ended || IsDisposed) return;
             if (InvokeRequired) { try { BeginInvoke((Action)delegate { UpdateProgress(stage); }); } catch (InvalidOperationException) { } return; }
-            information.Text = canvas.StatusMessage = ConnectionDiagnostics.Caption(stage, invite); canvas.Invalidate();
+            string caption = ConnectionDiagnostics.Caption(stage, invite);
+            if (stage == ConnectionStage.RequestingApproval && ApprovalCheck != null) caption += " Your check code for the host: " + ApprovalCheck;
+            information.Text = canvas.StatusMessage = caption; canvas.Invalidate();
         }
         void EndSession(string reason)
         {

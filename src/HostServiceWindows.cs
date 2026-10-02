@@ -19,7 +19,20 @@ namespace LumeRemote
         public const string ServiceName = "LumeRemoteHost";
         public static bool Installed { get { using (ServiceController service = new ServiceController(ServiceName)) { try { var status = service.Status; return true; } catch (InvalidOperationException) { return false; } } } }
         public static void Disable()
-        { if (File.Exists(TrustedStore.Machine.HostFile)) TrustedStore.Machine.Disable(); }
+        {
+            if (!File.Exists(TrustedStore.Machine.HostFile)) return;
+            try { TrustedStore.Machine.Disable(); }
+            catch (IOException)
+            {
+                // The settings channel did not answer (busy or stopped): disabling must still be
+                // possible, so ask Windows for administrator permission and disable directly.
+                using (Process process = Process.Start(new ProcessStartInfo(Application.ExecutablePath, "--disable-host") { UseShellExecute = true, Verb = "runas", WindowStyle = ProcessWindowStyle.Hidden }))
+                {
+                    process.WaitForExit();
+                    if (process.ExitCode != 0) throw new IOException("Access could not be disabled. Use Remove Windows service in Settings.");
+                }
+            }
+        }
         public static Task Install(bool remove, bool update = false)
         {
             string script = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "scripts", "permanent-access.ps1");

@@ -72,7 +72,7 @@ namespace LumeRemote
             right.Controls.Add(Section("Wake")); right.Controls.Add(helper);
             right.Controls.Add(Section("Network folders"));
             Button networkFolders = Theme.Button("Network folders", false); right.Controls.Add(networkFolders);
-            networkFolders.Click += delegate { try { if (!PermanentAccess.Installed) throw new InvalidOperationException("Enable permanent access before configuring network folders."); using (var dialog = new NetworkFoldersForm(TrustedStore.Machine.ReadHost().NetworkFolders.ToArray())) if (dialog.ShowDialog(this) == DialogResult.OK) TrustedStore.Machine.Change(new HostRequest { Op = "folders", Folders = dialog.Roots.ToList() }); } catch (Exception error) { ShowError(error); } };
+            networkFolders.Click += delegate { if (GuestBlocks("Network folder settings")) return; try { if (!PermanentAccess.Installed) throw new InvalidOperationException("Enable permanent access before configuring network folders."); using (var dialog = new NetworkFoldersForm(TrustedStore.Machine.ReadHost().NetworkFolders.ToArray())) if (dialog.ShowDialog(this) == DialogResult.OK) TrustedStore.Machine.Change(new HostRequest { Op = "folders", Folders = dialog.Roots.ToList() }); } catch (Exception error) { ShowError(error); } };
             right.Controls.Add(Section("Maintenance")); right.Controls.Add(update);
             right.Controls.Add(Theme.Label("Update restarts the installed host and closes its old dashboard. Saved pairings and the access setting are kept. Windows asks for administrator permission.", 9, Theme.Muted));
             right.Controls.Add(Section("Danger zone")); right.Controls.Add(uninstall);
@@ -90,6 +90,7 @@ namespace LumeRemote
             cancel.Click += delegate { if (connecting != null) connecting.Cancel(); };
             add.Click += async delegate
             {
+                if (GuestBlocks("Adding a computer")) return;
                 string code = Prompt("Add a computer", "On the other PC: choose Enable access, then Pair another PC. Type the eight-digit code it shows, or paste its full code.", "", true, delegate(string text) { if (ShortPairing.Normalize(text) != null) return null; try { PairingCode.Parse(text); return null; } catch (Exception) { return "Enter the eight digits shown on the other PC, or paste all of its full code."; } }, "Add computer"); if (code == null) return;
                 add.Enabled = false;
                 try
@@ -106,27 +107,33 @@ namespace LumeRemote
             remove.Click += delegate { SavedComputer selected = computers.SelectedItem as SavedComputer; if (selected == null) return; if (MessageBox.Show(FindForm(), "Forget " + selected + " on this PC? You will need a new pairing code to connect again.", "Lume - Forget computer", MessageBoxButtons.YesNo, MessageBoxIcon.Warning, MessageBoxDefaultButton.Button2) != DialogResult.Yes) return; saved.Computers.Remove(selected); foreach (SavedComputer c in saved.Computers) if (c.WakeHelperId == selected.Id) c.WakeHelperId = null; Save(); ReloadSaved(); };
             enable.Click += async delegate
             {
+                // Turning access off is always allowed; turning it on is an owner-only action.
+                bool turningOn = !PermanentAccess.Installed || !TrustedStore.Machine.ReadHost().Enabled;
+                if (turningOn && GuestBlocks("Enabling access")) return;
                 enable.Enabled = false;
                 try
                 {
                     if (!PermanentAccess.Installed) { if (!ConfirmEnable()) return; progress.Text = "Approve the Windows administrator prompt to install automatic access."; await PermanentAccess.Install(false); }
-                    else TrustedStore.Machine.Change(new HostRequest { Op = "enable", Flag = !TrustedStore.Machine.ReadHost().Enabled });
+                    else if (TrustedStore.Machine.ReadHost().Enabled) PermanentAccess.Disable();
+                    else TrustedStore.Machine.Change(new HostRequest { Op = "enable", Flag = true });
                     RefreshHost();
                 }
                 catch (Exception error) { ShowError(error); } finally { enable.Enabled = true; }
             };
             update.Click += async delegate
             {
+                if (GuestBlocks("Updating the installed host")) return;
                 update.Enabled = false;
                 try { state.Text = "Approve Windows setup to update the host. An active session will reconnect after the restart."; await PermanentAccess.Install(false, true); RefreshHost(); state.Text = "Installed host updated. Saved computers can reconnect."; }
                 catch (Exception error) { ShowError(error); }
                 finally { update.Enabled = true; }
             };
-            pair.Click += delegate { try { ShowPairing(TrustedStore.Machine.CreatePairing(false, null)); } catch (Exception error) { ShowError(error); } };
+            pair.Click += delegate { if (GuestBlocks("Pairing")) return; try { ShowPairing(TrustedStore.Machine.CreatePairing(false, null)); } catch (Exception error) { ShowError(error); } };
             awake.CheckedChanged += delegate { if (loading) return; try { TrustedStore.Machine.Change(new HostRequest { Op = "keepawake", Flag = awake.Checked }); } catch (Exception error) { ShowError(error); } };
-            revoke.Click += delegate { TrustedController controller = trusted.SelectedItem as TrustedController; if (controller == null) return; try { TrustedStore.Machine.Change(new HostRequest { Op = "revoke", ControllerId = controller.Id }); RefreshHost(); } catch (Exception error) { ShowError(error); } };
+            revoke.Click += delegate { if (GuestBlocks("Changing paired computers")) return; TrustedController controller = trusted.SelectedItem as TrustedController; if (controller == null) return; try { TrustedStore.Machine.Change(new HostRequest { Op = "revoke", ControllerId = controller.Id }); RefreshHost(); } catch (Exception error) { ShowError(error); } };
             helper.Click += delegate
             {
+                if (GuestBlocks("Pairing")) return;
                 string mac = Prompt("Wake helper", "Use this on an always-on PC in the sleeping PC's network. Enter the sleeping PC's Ethernet MAC. This pairing can only send wake packets to that address.", "", false); if (mac == null) return;
                 try { ShowPairing(TrustedStore.Machine.CreatePairing(true, mac)); } catch (Exception error) { ShowError(error); }
             };
@@ -287,7 +294,7 @@ namespace LumeRemote
                 buttons.Controls.Add(revokeCode); buttons.Controls.Add(done); panel.Controls.Add(buttons);
                 ShortPairingOffer offer = null; bool closed = false;
                 Action<Action> onUi = delegate(Action action) { try { if (!closed) dialog.BeginInvoke(action); } catch (InvalidOperationException) { } };
-                matches.Click += delegate { compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
+                matches.Click += delegate { if (GuestControl.Active) { dialog.Close(); return; } compare.Visible = false; if (offer != null) offer.Confirm(); shortStatus.Text = "Sent securely. Finish on the other PC; it appears there as a saved computer."; shortStatus.ForeColor = Theme.Text; };
                 different.Click += delegate { compare.Visible = false; if (offer != null) { offer.Reject(); offer = null; } shortStatus.Text = "Stopped. Nothing was shared. Close this window and choose Pair another PC to try again."; shortStatus.ForeColor = Theme.Danger; };
                 dialog.Shown += async delegate
                 {
@@ -314,9 +321,20 @@ namespace LumeRemote
                         shortCode.Text = "Unavailable"; shortStatus.Text = "The short code needs an Internet connection to the pairing service. Use the full code below instead.";
                     }
                 };
-                dialog.FormClosed += delegate { closed = true; if (offer != null) offer.Dispose(); };
+                // If a guest takes control while this window is open, withdraw the code at once.
+                System.Windows.Forms.Timer guard = new System.Windows.Forms.Timer { Interval = 500 };
+                guard.Tick += delegate { if (!GuestControl.Active) return; guard.Stop(); try { TrustedStore.Machine.Change(new HostRequest { Op = "clearpair" }); } catch (Exception) { } progress.Text = "Pairing was cancelled because a guest took control of this PC."; dialog.Close(); };
+                dialog.Shown += delegate { guard.Start(); };
+                dialog.FormClosed += delegate { closed = true; guard.Dispose(); if (offer != null) offer.Dispose(); };
                 dialog.Controls.Add(panel); dialog.AcceptButton = done; dialog.CancelButton = done; dialog.ActiveControl = done; Theme.EndLayout(dialog); dialog.ShowDialog(this);
             }
+        }
+        // Owner-only actions must not be driven by a guest who currently controls this desktop.
+        bool GuestBlocks(string action)
+        {
+            if (!GuestControl.Active) return false;
+            MessageBox.Show(FindForm(), action + " is unavailable while a guest controls this PC. End the guest session first.", "Lume", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return true;
         }
         void OnUi(Action action) { try { if (IsHandleCreated && !IsDisposed) BeginInvoke(action); } catch (InvalidOperationException) { } }
         Task<bool> ConfirmOnUi(string number, string name)

@@ -105,7 +105,7 @@ namespace LumeRemote
             status.Text = "Ready"; status.MaximumSize = new Size(700, 0); resources.MaximumSize = new Size(170, 0); footer.Controls.Add(status); footer.Controls.Add(resources); root.Controls.Add(footer, 0, 2); Controls.Add(root);
             Theme.EndLayout(this);
             Resize += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); };
-            Shown += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); if (!RegisterHotKey(Handle, HotkeyId, 0x4007, 0x7B)) SetStatus("Emergency shortcut unavailable; use Stop sharing or Disable access."); };
+            Shown += delegate { FitColumn(left, leftScroll); FitColumn(right, rightScroll); if (!hotkeyRegistered) SetStatus("Emergency shortcut unavailable; use Stop sharing or Disable access."); };
             FormClosing += delegate(object sender, FormClosingEventArgs args)
             {
                 if (args.CloseReason == CloseReason.UserClosing && !exitRequested) { args.Cancel = true; HideDashboard(); return; }
@@ -115,7 +115,6 @@ namespace LumeRemote
                 closing = true; statistics.Stop(); StopSharing();
                 foreach (Form window in Application.OpenForms.Cast<Form>().ToArray())
                     if (window is ViewerForm || window is PeerViewerForm) window.Close();
-                UnregisterHotKey(Handle, HotkeyId);
                 tray.Dispose(); home.Dispose();
             };
             statistics.Tick += delegate { UpdateResources(); }; statistics.Start();
@@ -217,9 +216,16 @@ namespace LumeRemote
                     delegate(PeerRequest request) { return Approve(request, current); }, delegate(string text) { ReceiveClipboard(text, current); },
                     delegate(string value) { if (current == generation) SetStatus(value); }, delegate(string text) { return RequestClipboard(text, current); }, delegate { return new RemoteFileAccess(); }, delegate { return ReadClipboard(current); }, true, delegate { return AudioPermission(current); }, null, false, HostVoiceConsent.Request); });
                 if (closing || current != generation) { created.Dispose(); return; }
+                created.AllowMonitorSwitching = false;
                 host = created;
-                created.SessionStarted += delegate(string name, bool withControl) { SetIndicator(SessionIndicator.Show(name, withControl, delegate { try { BeginInvoke((Action)delegate { if (current == generation) StopSharing(); }); } catch (InvalidOperationException) { } })); };
-                created.SessionEnded += delegate { SetIndicator(null); };
+                // Callbacks from an older sharing generation must not touch the current session's state.
+                created.SessionStarted += delegate(string name, bool withControl)
+                {
+                    if (current != System.Threading.Volatile.Read(ref generation)) return;
+                    if (withControl) SetGuestControl(GuestControl.Begin());
+                    SetIndicator(SessionIndicator.Show(name, withControl, delegate { try { BeginInvoke((Action)delegate { if (current == generation) StopSharing(); }); } catch (InvalidOperationException) { } }));
+                };
+                created.SessionEnded += delegate { if (current != System.Threading.Volatile.Read(ref generation)) return; SetIndicator(null); SetGuestControl(null); };
                 if (usePeer)
                 {
                     created.PeerEnded += delegate
@@ -234,8 +240,10 @@ namespace LumeRemote
                     invitation.Text = offer.ToString(); copy.Enabled = copyLink.Enabled = true;
                     endpoint.Text = "P2P Internet / invitation and reply\nNo inbound TCP port or VPN is required.";
                     SetStatus("P2P invitation ready. Send it privately. The reply returns to the P2P window automatically, or can be pasted there.");
-                    new PeerHostForm(offer, createdPeer, delegate { if (current == generation && host == created) { SetStatus(createdPeer.RouteSummary() + " connected. Local approval is next."); created.AcceptPeer(createdPeer); } },
-                        delegate { if (current == generation) StopSharing(); }).Show(this);
+                    PeerHostForm replyWindow = null;
+                    replyWindow = new PeerHostForm(offer, createdPeer, delegate { if (current == generation && host == created) { peerCheckCode = replyWindow.CheckCode; SetStatus(createdPeer.RouteSummary() + " connected. Local approval is next."); created.AcceptPeer(createdPeer); } },
+                        delegate { if (current == generation) StopSharing(); });
+                    replyWindow.Show(this);
                     return;
                 }
                 if (useRelay) host.StartRelay(relayHost, relayPort); else host.Start(bind, listenPort, bind.ToString());
@@ -251,11 +259,13 @@ namespace LumeRemote
             start.Enabled = !sharing; stop.Enabled = sharing; mode.Enabled = screen.Enabled = profile.Enabled = control.Enabled = !sharing;
             address.Enabled = port.Enabled = !sharing && mode.SelectedIndex == 1; relay.Enabled = !sharing && mode.SelectedIndex == 2;
         }
-        IDisposable indicator;
+        IDisposable indicator, guestControl;
+        string peerCheckCode;
         void SetIndicator(IDisposable next) { IDisposable previous = System.Threading.Interlocked.Exchange(ref indicator, next); if (previous != null) previous.Dispose(); }
+        void SetGuestControl(IDisposable next) { IDisposable previous = System.Threading.Interlocked.Exchange(ref guestControl, next); if (previous != null) previous.Dispose(); }
         void StopSharing()
         {
-            SetIndicator(null);
+            SetIndicator(null); SetGuestControl(null); peerCheckCode = null;
             generation++; if (peer != null) { peer.Dispose(); peer = null; } if (host != null) { host.Dispose(); host = null; }
             invitation.Clear(); copy.Enabled = copyLink.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
@@ -264,7 +274,7 @@ namespace LumeRemote
         bool Approve(PeerRequest request, int current)
         {
             if (closing || IsDisposed || current != generation) return false;
-            try { return (bool)Invoke(new Func<bool>(delegate { if (closing || current != generation) return false; using (ConsentForm dialog = new ConsentForm(request)) return dialog.ShowDialog(this) == DialogResult.Yes; })); }
+            try { return (bool)Invoke(new Func<bool>(delegate { if (closing || current != generation) return false; if (request.CheckCode == null) request.CheckCode = peerCheckCode; using (ConsentForm dialog = new ConsentForm(request)) return dialog.ShowDialog(this) == DialogResult.Yes; })); }
             catch { return false; }
         }
         void ReceiveClipboard(string text, int current)
@@ -347,6 +357,11 @@ namespace LumeRemote
             resources.Text = sessions == 0 ? "v" + typeof(MainForm).Assembly.GetName().Version.ToString(2) + " preview" : sessions + (sessions == 1 ? " session" : " sessions");
             tray.Text = "Lume Remote - " + resources.Text;
         }
+        // Hiding to the tray changes ShowInTaskbar, which recreates the window handle. A hotkey
+        // belongs to one handle, so it is registered again for every new handle.
+        bool hotkeyRegistered;
+        protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); hotkeyRegistered = RegisterHotKey(Handle, HotkeyId, 0x4007, 0x7B); }
+        protected override void OnHandleDestroyed(EventArgs e) { if (hotkeyRegistered) UnregisterHotKey(Handle, HotkeyId); hotkeyRegistered = false; base.OnHandleDestroyed(e); }
         protected override void WndProc(ref Message message) { if (message.Msg == 0x312 && message.WParam.ToInt32() == HotkeyId) { StopSharing(); try { PermanentAccess.Disable(); home.RefreshHost(); } catch (Exception error) { SetStatus(error.Message); } ShowDashboard(); } base.WndProc(ref message); }
         [DllImport("user32.dll", SetLastError = true)] static extern bool RegisterHotKey(IntPtr window, int id, uint modifiers, uint key);
         [DllImport("user32.dll")] static extern bool UnregisterHotKey(IntPtr window, int id);
@@ -364,6 +379,11 @@ namespace LumeRemote
             FlowLayoutPanel panel = Theme.Column(); panel.BackColor = Theme.Background; panel.Dock = DockStyle.Fill; panel.Padding = new Padding(28, 24, 28, 20);
             panel.Controls.Add(Theme.Label("Allow this connection?", 16, Theme.Text));
             panel.Controls.Add(Theme.Label("Claimed name (not verified): " + request.Name + "\nRoute: " + request.Address, 10, Theme.Muted));
+            if (request.CheckCode != null)
+            {
+                Label check = Theme.Label("Check code: " + request.CheckCode + "\nAsk your guest to read the code on their screen. Decline if it is different.", 10, Theme.Text);
+                check.MaximumSize = new Size(470, 0); panel.Controls.Add(check);
+            }
             panel.Controls.Add(new CapabilityRow("See your screen", true));
             panel.Controls.Add(new CapabilityRow("Use your keyboard and mouse", request.Control));
             panel.Controls.Add(new CapabilityRow(request.Files ? "Browse, send and receive your files" : "No access to your files", request.Control && request.Files));

@@ -15,7 +15,7 @@ namespace LumeRemote
 {
     public sealed class PeerRequest
     {
-        public string Name, Address;
+        public string Name, Address, CheckCode;
         public bool Control, Files;
     }
 
@@ -95,6 +95,8 @@ namespace LumeRemote
             this.clipboardRequest = clipboardRequest; this.fileAccessFactory = fileAccessFactory; this.clipboardRead = clipboardRead; this.enableChat = enableChat; this.audioPermission = audioPermission; this.powerRequest = powerRequest; this.allowClipboardSync = allowClipboardSync;
             this.microphonePermission = microphonePermission;
         }
+        // Guests see only the display the owner chose; paired computers may switch displays.
+        public bool AllowMonitorSwitching = true;
         public void Start(IPAddress bind, int port, string advertisedHost)
         {
             listener = new TcpListener(bind, port); listener.Start(4);
@@ -226,7 +228,7 @@ namespace LumeRemote
                     using (FileTransfer files = allowFiles ? new FileTransfer(wire, true, fileAccessFactory(), delegate { closeTransport(); }, version >= 4, version >= 4, version >= 4) : null)
                     {
                         IAdaptiveScreenSource adaptive = source as IAdaptiveScreenSource;
-                        IMonitorSource monitors = source as IMonitorSource;
+                        IMonitorSource monitors = AllowMonitorSwitching ? source as IMonitorSource : null;
                         IDisplayRefreshSource display = source as IDisplayRefreshSource;
                         SessionState state = new SessionState { LastAck = Stopwatch.GetTimestamp() };
                         SessionTools tools = null; HostSessionChat chat = null; SessionAudio hostAudio = null; HostAnnotations annotations = enableChat && allowControl ? new HostAnnotations() : null;

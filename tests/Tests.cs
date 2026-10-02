@@ -124,6 +124,10 @@ static partial class Tests
         Run("Guest reply rendezvous derives private identities and rejects forgeries", GuestRendezvousIdentities);
         Run("Short-code pairing agrees on one number and isolates a substituted key", ShortPairingHandshake);
         Run("Invitation links carry the exact invitation and reject other content", InvitationLinkRoundTrip);
+        Run("Owner-only actions see a guest who controls this desktop", GuestControlMarker);
+        Run("Guest P2P replies yield a stable check code", GuestCheckCode);
+        Run("Guests cannot switch to a display the owner did not share", GuestDisplayLocked);
+        Run("Emergency shortcut survives hiding the dashboard", EmergencyShortcutAfterHide);
         Run("P2P pinned TLS delivers acknowledged desktop frames", PeerFrames);
         Run("P2P local rejection prevents capture", PeerDecline);
         Run("P2P wrong certificate pin cannot reach approval", delegate { PeerBadCredentials(true); });

@@ -24,6 +24,20 @@ namespace LumeRemote
             if (IsReply || reply == null || !reply.IsReply || !Security.Equal(Id, reply.Id) || !Security.Equal(reply.Signature, Sign(Session.Secret, Id, reply.Sdp)))
                 throw new InvalidDataException("This reply does not match the current private invitation. Copy a fresh reply from the controlling PC.");
         }
+        // Both PCs derive the same short code from the accepted reply. The sharing PC shows it in
+        // its approval prompt and the controlling PC shows it while waiting, so the owner can
+        // confirm that the reply came from the person they invited rather than from whoever
+        // obtained the invitation first.
+        public static string CheckCode(Invitation session, PeerSignal reply)
+        {
+            if (session == null || reply == null || !reply.IsReply) throw new ArgumentException("A reply is required.");
+            using (HMACSHA256 hmac = new HMACSHA256(Security.Unbase64(session.Secret)))
+            {
+                byte[] hash = hmac.ComputeHash(Encoding.UTF8.GetBytes("Lume guest check v1\n" + reply.Id + "\n" + reply.Sdp));
+                uint number = ((uint)hash[0] << 24 | (uint)hash[1] << 16 | (uint)hash[2] << 8 | hash[3]) % 1000000;
+                string digits = number.ToString("000000"); return digits.Substring(0, 3) + " " + digits.Substring(3);
+            }
+        }
         static string Sign(string secret, string id, string sdp)
         { using (HMACSHA256 hmac = new HMACSHA256(Security.Unbase64(secret))) return Security.Base64(hmac.ComputeHash(Encoding.UTF8.GetBytes(id + "\n" + sdp))); }
         public static void ValidateSdp(string value)

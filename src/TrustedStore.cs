@@ -108,6 +108,7 @@ namespace LumeRemote
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path));
             TrustedStore.CheckNoReparse(path);
+            ProtectFromOwner(path);
             DateTime deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
             for (;;)
             {
@@ -116,6 +117,21 @@ namespace LumeRemote
             }
         }
         public void Dispose() { if (stream != null) { stream.Dispose(); stream = null; } }
+        // The SYSTEM worker gives its lock files no access for anyone else, so a process running
+        // as the owner cannot open and hold them. Per-user stores are left unchanged.
+        static void ProtectFromOwner(string path)
+        {
+            try
+            {
+                using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) if (!identity.IsSystem) return;
+                FileSecurity security = new FileSecurity(); security.SetAccessRuleProtection(true, false);
+                foreach (WellKnownSidType type in new[] { WellKnownSidType.LocalSystemSid, WellKnownSidType.BuiltinAdministratorsSid })
+                    security.AddAccessRule(new FileSystemAccessRule(new SecurityIdentifier(type, null), FileSystemRights.FullControl, AccessControlType.Allow));
+                if (!File.Exists(path)) using (new FileStream(path, FileMode.CreateNew, FileSystemRights.ReadData | FileSystemRights.WriteData | FileSystemRights.Synchronize, FileShare.None, 4096, FileOptions.None, security)) { }
+                else File.SetAccessControl(path, security);
+            }
+            catch (Exception) { } // Best effort: the lock still works with its existing permissions.
+        }
     }
     public sealed class PairingCode
     {
@@ -293,6 +309,14 @@ namespace LumeRemote
         {
             request.Validate();
             if (request.Op == "enable" && !request.Flag) { DisableDirect(); return; }
+            if (request.Op == "revoke")
+            {
+                // If the settings lock is held elsewhere, revoking must still take effect now:
+                // disable access entirely (which does not depend on that lock) and say so.
+                try { ApplyDirect(Mutation(request), 10000, false); }
+                catch (IOException) { DisableDirect(); throw new IOException("Settings were busy, so access to this PC was disabled instead. Revoke the computer again, then enable access."); }
+                return;
+            }
             ApplyDirect(Mutation(request), 10000, request.Op == "enable" && request.Flag);
         }
         // Owner-facing change. Privileged callers apply directly; the non-elevated

@@ -234,7 +234,7 @@ namespace LumeRemote
                             HandleControlClient(server, ownerSid);
                             // Reuse the same handle: the namespace remains service-owned
                             // between authenticated requests instead of becoming vacant.
-                            if (!stopped.IsCancellationRequested) server.Disconnect();
+                            if (!stopped.IsCancellationRequested) { try { server.Disconnect(); } catch (InvalidOperationException) { } }
                         }
                     }
                 }
@@ -252,7 +252,7 @@ namespace LumeRemote
             // from it, so read the bounded frame first (the pipe ACL already limits who
             // can connect), then authenticate the caller before parsing or applying it.
             byte[] payload;
-            try { payload = TrustedStore.ReadFrame(server, 65536); }
+            try { using (Deadline(server)) payload = TrustedStore.ReadFrame(server, 65536); }
             catch (Exception) { Reply(server, "error", "The settings request was invalid."); return; }
             string clientSid = null; bool clientAdmin = false;
             try { server.RunAsClient(delegate { using (WindowsIdentity identity = WindowsIdentity.GetCurrent()) { clientSid = identity.User != null ? identity.User.Value : null; clientAdmin = new WindowsPrincipal(identity).IsInRole(WindowsBuiltInRole.Administrator); } }); }
@@ -264,20 +264,29 @@ namespace LumeRemote
             try
             {
                 store.ApplyRequest(request);
-                // Disable and revocation must take effect before we answer.
-                lock (gate)
-                {
-                    if (active != null && ((request.Op == "enable" && !request.Flag) || (request.Op == "revoke" && active.Controller.Id == request.ControllerId))) { active.Dispose(); active = null; }
-                }
+                EndRevokedSession(request);
                 Pulse();
                 Reply(server, "ok", null);
             }
-            catch (Exception error) { SessionLog.Write(store.DirectoryPath, "host", "control_request_failed", error); Reply(server, "error", error.Message); }
+            // Even when the settings change fails, a session the owner asked to end is ended.
+            catch (Exception error) { EndRevokedSession(request); Pulse(); SessionLog.Write(store.DirectoryPath, "host", "control_request_failed", error); Reply(server, "error", error.Message); }
+        }
+        // Disable and revocation must take effect before we answer.
+        void EndRevokedSession(HostRequest request)
+        {
+            lock (gate)
+            {
+                if (active != null && ((request.Op == "enable" && !request.Flag) || (request.Op == "revoke" && active.Controller.Id == request.ControllerId))) { active.Dispose(); active = null; }
+            }
         }
         // Wait until the client has read the reply: closing the server end first can
         // discard it, and the dashboard then sees an unexpected end of stream.
         static void Reply(NamedPipeServerStream server, string status, string message)
-        { try { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } catch { } }
+        { try { using (Deadline(server)) { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } } catch { } }
+        // A client that stalls while sending or reading is cut off, so it cannot hold the only
+        // pipe instance and block Disable or Revoke for everyone else.
+        static IDisposable Deadline(NamedPipeServerStream server)
+        { return new System.Threading.Timer(delegate { try { server.Disconnect(); } catch (Exception) { } }, null, 3000, Timeout.Infinite); }
         bool Fresh(string nonce)
         {
             lock (gate)

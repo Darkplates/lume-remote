@@ -15,6 +15,16 @@ function Assert-RealPath([string]$Path) {
         $item = Split-Path -Parent $item
     }
 }
+function Test-TrustedOwner([string]$Path) {
+    $sid = (Get-Acl -LiteralPath $Path).GetOwner([Security.Principal.SecurityIdentifier])
+    return ($sid -eq $systemSid) -or ($sid -eq $adminSid)
+}
+# Writes the result for the dashboard without following a link planted in the package folder.
+function Write-SetupLog([string]$Text) {
+    $log = Join-Path $sourceRoot 'setup.log'
+    Assert-RealPath $log
+    $Text | Set-Content -LiteralPath $log
+}
 function Protect-Directory([string]$Path, [bool]$OwnerWrite) {
     Assert-RealPath $Path
     [IO.Directory]::CreateDirectory($Path) | Out-Null
@@ -26,13 +36,13 @@ function Protect-Directory([string]$Path, [bool]$OwnerWrite) {
     $acl.SetOwner($adminSid)
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
-function Protect-File([string]$Path, [bool]$OwnerWrite) {
+function Protect-File([string]$Path, [bool]$OwnerWrite, [bool]$NoOwnerAccess = $false) {
     Assert-RealPath $Path
     $acl = New-Object Security.AccessControl.FileSecurity
     $acl.SetAccessRuleProtection($true, $false)
     foreach ($identity in @($systemSid, $adminSid)) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($identity, 'FullControl', 'Allow'))) }
     $rights = if ($OwnerWrite) { 'Modify' } else { 'ReadAndExecute' }
-    $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($owner, $rights, 'Allow')))
+    if (-not $NoOwnerAccess) { $acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($owner, $rights, 'Allow'))) }
     $acl.SetOwner($adminSid)
     Set-Acl -LiteralPath $Path -AclObject $acl
 }
@@ -58,7 +68,7 @@ try {
         }
         if ($service) { Stop-Service -Name $serviceName -Force; & "$env:WINDIR\System32\sc.exe" delete $serviceName | Out-Null; if ($LASTEXITCODE -ne 0) { throw 'Could not remove the host service.' } }
         if (Test-Path -LiteralPath $runKey) { Remove-ItemProperty -LiteralPath $runKey -Name LumeRemote -ErrorAction SilentlyContinue }
-        'Permanent-access service removed. Protected files and saved pairings were preserved.' | Set-Content -LiteralPath (Join-Path $sourceRoot 'setup.log')
+        Write-SetupLog 'Permanent-access service removed. Protected files and saved pairings were preserved.'
         exit 0
     }
     $files = @('LumeRemote.exe','LumeRemote.exe.config','LumeCapture.dll','LumeVideo.dll','datachannel.dll','START-HERE.txt','README.md','LICENSE.txt','THIRD-PARTY-NOTICES.txt','scripts\permanent-access.ps1','SHA256SUMS.txt')
@@ -83,6 +93,13 @@ try {
             }
         }
     }
+    # Standard users can create folders under ProgramData. On a first install, host state that
+    # SYSTEM or Administrators did not create is never trusted: it is moved aside unread.
+    if (-not $service -and (Test-Path -LiteralPath $dataRoot)) {
+        $untrusted = -not (Test-TrustedOwner $dataRoot)
+        foreach ($item in @($hostRoot, (Join-Path $hostRoot 'host.dat'))) { if ((Test-Path -LiteralPath $item) -and -not (Test-TrustedOwner $item)) { $untrusted = $true } }
+        if ($untrusted) { Move-Item -LiteralPath $dataRoot -Destination ($dataRoot + '.untrusted-' + [Guid]::NewGuid().ToString('N')) }
+    }
     Protect-Directory $installRoot $false
     Protect-Directory (Join-Path $installRoot 'scripts') $false
     Protect-Directory $dataRoot $false
@@ -91,7 +108,10 @@ try {
     # plant a mount point/symlink to redirect SYSTEM writes. Owner setting changes
     # go through the SYSTEM worker's authenticated control pipe, not this folder.
     Protect-Directory $hostRoot $false
-    foreach ($entry in Get-ChildItem -LiteralPath $hostRoot -File -Force) { Protect-File $entry.FullName $false }
+    foreach ($entry in Get-ChildItem -LiteralPath $hostRoot -File -Force) {
+        # Lock files get no owner access, so a process running as the owner cannot hold them.
+        if ($entry.Extension -eq '.lock') { Protect-File $entry.FullName $false $true } else { Protect-File $entry.FullName $false }
+    }
     if ($service) { $wasRunning = $service.State -eq 'Running'; Stop-Service -Name $serviceName -Force }
     if ($sourceRoot -ne $installRoot) {
         $backup = Join-Path $installRoot ('backup-' + [Guid]::NewGuid().ToString('N'))
@@ -115,7 +135,7 @@ try {
     Start-Service -Name $serviceName
     if (-not (Test-Path -LiteralPath $runKey)) { New-Item -Path $runKey -Force | Out-Null }
     New-ItemProperty -LiteralPath $runKey -Name LumeRemote -Value ('"' + (Join-Path $installRoot 'LumeRemote.exe') + '" --tray') -PropertyType String -Force | Out-Null
-    'Installed. Automatic Windows service enabled; dashboard starts in the notification area. No firewall, router or Windows password setting was changed.' | Set-Content -LiteralPath (Join-Path $sourceRoot 'setup.log')
+    Write-SetupLog 'Installed. Automatic Windows service enabled; dashboard starts in the notification area. No firewall, router or Windows password setting was changed.'
     exit 0
 } catch {
     $reason = $_.Exception.Message
@@ -124,6 +144,6 @@ try {
         if ($backup) { foreach ($relative in $changedFiles) { $old = Join-Path $backup $relative; if (Test-Path -LiteralPath $old) { Copy-Item -LiteralPath $old -Destination (Join-Path $installRoot $relative) -Force } } }
         if ($wasRunning) { Start-Service -Name $serviceName }
     } catch { $reason += " Rollback also needs attention: $($_.Exception.Message)" }
-    try { $reason | Set-Content -LiteralPath (Join-Path $sourceRoot 'setup.log') } catch { }
+    try { Write-SetupLog $reason } catch { }
     exit 1
 }

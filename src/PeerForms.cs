@@ -20,6 +20,7 @@ namespace LumeRemote
         SignalBroker rendezvous;
         DateTime deadline;
         bool closed, accepted;
+        public string CheckCode { get; private set; }
         public PeerHostForm(PeerSignal offer, PeerTransport peer, Action connected, Action canceled)
         {
             this.offer = offer; this.peer = peer; this.connected = connected; this.canceled = canceled;
@@ -78,6 +79,7 @@ namespace LumeRemote
             try
             {
                 PeerSignal response = PeerSignal.Parse(reply.Text); offer.VerifyReply(response); apply.Enabled = false; reply.ReadOnly = true;
+                CheckCode = PeerSignal.CheckCode(offer.Session, response);
                 deadline = DateTime.UtcNow.AddMilliseconds(HostWait); ShowProgress(); ticker.Start();
                 await Task.Run(delegate { peer.AcceptAnswer(response.Sdp); peer.WaitReady(HostWait); });
                 ticker.Stop();
@@ -169,7 +171,7 @@ namespace LumeRemote
                 await Task.Run(delegate { created.WaitReady(ViewerWait); });
                 ticker.Stop();
                 if (closed) return;
-                ViewerForm viewer = new ViewerForm(offer.Session, created); transferred = true; viewer.Show(); Close();
+                ViewerForm viewer = new ViewerForm(offer.Session, created) { ApprovalCheck = PeerSignal.CheckCode(offer.Session, signal) }; transferred = true; viewer.Show(); Close();
             }
             catch (Exception error)
             {
