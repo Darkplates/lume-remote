@@ -40,7 +40,11 @@ public final class MainActivity extends Activity {
     };
     Button button(String label,LinearLayout parent,Runnable clicked){Button b=new Button(this);b.setText(label);parent.addView(b);b.setOnClickListener(v->clicked.run());return b;}
     LinearLayout row(LinearLayout parent){LinearLayout r=new LinearLayout(this);r.setOrientation(LinearLayout.HORIZONTAL);HorizontalScrollView scroll=new HorizontalScrollView(this);scroll.addView(r);parent.addView(scroll,new LinearLayout.LayoutParams(-1,-2));return r;}
+    /** Clipboard text that keyboards and clipboard previews must not display or retain. */
+    static ClipData sensitiveClip(String label,String text){ClipData clip=ClipData.newPlainText(label,text);PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);return clip;}
     @Override public void onCreate(Bundle state){super.onCreate(state);
+        // Remote frames are private desktop content: keep them out of screenshots, recordings and recents.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         restoreDocumentState(state);
         LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setBackgroundColor(Color.rgb(17,24,28));root.setPadding(14,8,14,8);setContentView(root);
         root.setOnApplyWindowInsetsListener((v,insets)->{if(Build.VERSION.SDK_INT>=30){android.graphics.Insets bars=insets.getInsets(WindowInsets.Type.systemBars());v.setPadding(14+bars.left,8+bars.top,14+bars.right,8+bars.bottom);}else{v.setPadding(14+insets.getSystemWindowInsetLeft(),8+insets.getSystemWindowInsetTop(),14+insets.getSystemWindowInsetRight(),8+insets.getSystemWindowInsetBottom());}return insets;});
@@ -56,7 +60,7 @@ public final class MainActivity extends Activity {
         actions=button("More",toolbar,this::actions);
         button("Disconnect",toolbar,()->{if(service!=null){surface.release();service.close(selected);select(0);}});
         status=new TextView(this);status.setTextSize(13);root.addView(status);
-        reply=button("Copy reply to the sharing computer",root,()->{SessionService.Session s=current();if(s!=null){String text=s.state.optString("reply","");if(!text.isEmpty()&&!text.equals("null")){ClipData clip=ClipData.newPlainText("Private Lume reply",text);PersistableBundle extras=new PersistableBundle();extras.putBoolean("android.content.extra.IS_SENSITIVE",true);clip.getDescription().setExtras(extras);getSystemService(ClipboardManager.class).setPrimaryClip(clip);}}});
+        reply=button("Copy reply to the sharing computer",root,()->{SessionService.Session s=current();if(s!=null){String text=s.state.optString("reply","");if(!text.isEmpty()&&!text.equals("null"))getSystemService(ClipboardManager.class).setPrimaryClip(sensitiveClip("Private Lume reply",text));}});
         reply.setVisibility(View.GONE);
         surface=new RemoteSurface(this);root.addView(surface,new LinearLayout.LayoutParams(-1,0,1));
         bindService(new Intent(this,SessionService.class),connection,BIND_AUTO_CREATE);
@@ -108,7 +112,7 @@ public final class MainActivity extends Activity {
         if(tabCount!=service.sessions.size()){tabs.removeAllViews();for(SessionService.Session s:service.sessions.values()){long id=s.handle;button("Computer "+id,tabs,()->select(id));}tabCount=service.sessions.size();}
         SessionService.Session s=current();surface.session=s;
         if(s!=null){status.setText(!documentNotice().isEmpty()?documentStatus:s.error.isEmpty()?s.state.optString("status"):s.error);actions.setEnabled(s.state.optBoolean("connected")||s.state.optBoolean("pair_ready"));reply.setVisibility(s.state.isNull("reply")?View.GONE:View.VISIBLE);
-            if(clipboardRequested&&!s.state.isNull("clipboard")){String text=s.state.optString("clipboard");getSystemService(ClipboardManager.class).setPrimaryClip(ClipData.newPlainText("Remote text",text));action("clear_clipboard","text",text);clipboardRequested=false;}
+            if(clipboardRequested&&!s.state.isNull("clipboard")){String text=s.state.optString("clipboard");getSystemService(ClipboardManager.class).setPrimaryClip(sensitiveClip("Remote text",text));action("clear_clipboard","text",text);clipboardRequested=false;}
         }else{status.setText(!documentNotice().isEmpty()?documentStatus:!service.homeStatus.isEmpty()?service.homeStatus:service.sessions.isEmpty()?"Connect to a computer you own or have permission to use.":"Select a computer.");actions.setEnabled(false);reply.setVisibility(View.GONE);}
     }updates.removeCallbacks(refreshTick);if(resumed)updates.postDelayed(refreshTick,200);}
     @Override public void onResume(){super.onResume();resumed=true;if(service!=null)service.visible=selected;updates.removeCallbacksAndMessages(null);refresh();Choreographer.getInstance().removeFrameCallback(frameTick);Choreographer.getInstance().postFrameCallback(frameTick);}
