@@ -34,6 +34,7 @@ static partial class Tests
         if(args.Length==2 && args[0]=="--portable-audio-write"){PortableAudioWrite(args[1]);return 0;}
         if(args.Length==2 && args[0]=="--portable-audio-read"){PortableAudioRead(args[1]);return 0;}
         if(args.Length==2 && args[0]=="--portable-paired-viewer"){PortablePairedViewer(args[1]);return 0;}
+        if (args.Length == 1 && args[0] == "--paint-timing") { ViewerPaintTiming(); return 0; }
         if (args.Length > 0 && args[0] == "--ui") { UiChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--files") { FileClipboardChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
         if (args.Length > 0 && args[0] == "--resume") { ResumeChecks(); Console.WriteLine("RESULT: " + passed + " passed, " + failed + " failed."); return failed == 0 ? 0 : 1; }
@@ -127,6 +128,7 @@ static partial class Tests
         Run("Relay operator token is sent only when configured and well formed", RelayOperatorToken);
         Run("Owner-only actions see a guest who controls this desktop", GuestControlMarker);
         Run("A settings deadline cuts off a stalled client but not the next one", SettingsPipeDeadline);
+        Run("Viewer frames copy exactly at 1:1 and keep their edges when scaled", ViewerFramePaint);
         Run("Guest P2P replies yield a stable check code", GuestCheckCode);
         Run("Guests cannot switch to a display the owner did not share", GuestDisplayLocked);
         Run("Emergency shortcut survives hiding the dashboard", EmergencyShortcutAfterHide);

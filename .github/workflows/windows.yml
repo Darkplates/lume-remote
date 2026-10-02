@@ -38,6 +38,12 @@ jobs:
           .\scripts\test-benchmark-collector.ps1
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Time viewer frame scaling (report only)
+        # A hosted runner has no GPU and varying load, so these numbers are indicative only.
+        continue-on-error: true
+        timeout-minutes: 3
+        run: |
+          & .\tests\LumeTests.exe --paint-timing
       - name: Verify manual P2P signaling delays with owned loopback proxies
         timeout-minutes: 16
         shell: pwsh

@@ -676,7 +676,7 @@ namespace LumeRemote
             }
             else
             {
-                Rectangle r = ImageRectangle(); if (OriginalPixels) e.Graphics.DrawImageUnscaled(image, Point.Empty); else { e.Graphics.InterpolationMode = InterpolationMode.HighQualityBilinear; e.Graphics.DrawImage(image, r); }
+                Rectangle r = ImageRectangle(); if (OriginalPixels) e.Graphics.DrawImageUnscaled(image, Point.Empty); else DrawFrame(e.Graphics, image, r);
                 if (PointerShape != 0)
                 {
                     Cursor pointer = PointerShape == 2 ? Cursors.IBeam : PointerShape == 3 ? Cursors.Hand : PointerShape == 4 ? Cursors.WaitCursor : Cursors.Arrow;
@@ -690,6 +690,30 @@ namespace LumeRemote
                     DrawStatus(e.Graphics);
                 }
             }
+        }
+        static readonly System.Drawing.Imaging.ImageAttributes EdgeClamp = CreateEdgeClamp();
+        static System.Drawing.Imaging.ImageAttributes CreateEdgeClamp()
+        { var attributes = new System.Drawing.Imaging.ImageAttributes(); attributes.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY); return attributes; }
+        // Runs on the UI thread for every presented frame, and its cost grows with the window
+        // area, so a large (maximized) window must not use the slow prefiltering path.
+        // The frame is opaque, so it is copied instead of blended. Plain bilinear is sharp
+        // and fast down to half size; only a stronger reduction (a small target, so cheap)
+        // uses high-quality filtering to avoid shimmering text.
+        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target)
+        {
+            System.Drawing.Drawing2D.CompositingMode previous = graphics.CompositingMode;
+            graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
+            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
+            try
+            {
+                if (target.Size == image.Size) { graphics.DrawImageUnscaled(image, target.Location); return; }
+                bool strongReduction = target.Width * 2 < image.Width || target.Height * 2 < image.Height;
+                graphics.InterpolationMode = strongReduction ? InterpolationMode.HighQualityBilinear : InterpolationMode.Bilinear;
+                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
+                // Edge clamping keeps bilinear sampling from fading the outer pixels.
+                graphics.DrawImage(image, target, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, EdgeClamp);
+            }
+            finally { graphics.CompositingMode = previous; graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Default; }
         }
         void DrawStatus(Graphics graphics)
         {
