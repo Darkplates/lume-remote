@@ -126,6 +126,7 @@ static partial class Tests
         Run("Invitation links carry the exact invitation and reject other content", InvitationLinkRoundTrip);
         Run("Relay operator token is sent only when configured and well formed", RelayOperatorToken);
         Run("Owner-only actions see a guest who controls this desktop", GuestControlMarker);
+        Run("A settings deadline cuts off a stalled client but not the next one", SettingsPipeDeadline);
         Run("Guest P2P replies yield a stable check code", GuestCheckCode);
         Run("Guests cannot switch to a display the owner did not share", GuestDisplayLocked);
         Run("Emergency shortcut survives hiding the dashboard", EmergencyShortcutAfterHide);

@@ -34,6 +34,27 @@ static partial class Tests
         while (GuestControl.Active && clock.ElapsedMilliseconds < 3000) Thread.Sleep(20);
         Check(!GuestControl.Active, "The guest-control marker outlived its sessions.");
     }
+    static void SettingsPipeDeadline()
+    {
+        string name = "lume-test-deadline-" + Guid.NewGuid().ToString("N");
+        using (var server = new System.IO.Pipes.NamedPipeServerStream(name, System.IO.Pipes.PipeDirection.InOut, 1))
+        using (var client = new System.IO.Pipes.NamedPipeClientStream(".", name, System.IO.Pipes.PipeDirection.InOut))
+        {
+            Task connecting = Task.Run(delegate { server.WaitForConnection(); }); client.Connect(5000); connecting.Wait(5000);
+            // A finished request's deadline must not fire later against the next client.
+            using (new PipeDeadline(server, 150)) { }
+            Thread.Sleep(600);
+            Check(server.IsConnected, "A finished request's deadline disconnected the pipe later.");
+            client.WriteByte(7); client.Flush();
+            Check(server.ReadByte() == 7, "The pipe stopped carrying data after a finished deadline.");
+            // A stalled request is cut off.
+            IDisposable stalled = new PipeDeadline(server, 100);
+            Stopwatch clock = Stopwatch.StartNew();
+            while (server.IsConnected && clock.ElapsedMilliseconds < 3000) Thread.Sleep(20);
+            Check(!server.IsConnected, "A stalled settings client was not disconnected.");
+            stalled.Dispose();
+        }
+    }
     static void GuestCheckCode()
     {
         Invitation session = Sample();

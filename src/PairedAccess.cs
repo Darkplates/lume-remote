@@ -285,16 +285,7 @@ namespace LumeRemote
         { try { using (Deadline(server)) { TrustedStore.WriteFrame(server, new System.Text.UTF8Encoding(false).GetBytes(status + "\n" + (message ?? ""))); server.WaitForPipeDrain(); } } catch { } }
         // A client that stalls while sending or reading is cut off, so it cannot hold the only
         // pipe instance and block Disable or Revoke for everyone else.
-        static IDisposable Deadline(NamedPipeServerStream server) { return new PipeDeadline(server); }
-        // The same server stream serves the next client, so a deadline that fires after its
-        // request finished must not disconnect that next client.
-        sealed class PipeDeadline : IDisposable
-        {
-            readonly object gate = new object(); readonly NamedPipeServerStream server; readonly System.Threading.Timer timer; bool finished;
-            public PipeDeadline(NamedPipeServerStream server) { this.server = server; timer = new System.Threading.Timer(Expire, null, 3000, Timeout.Infinite); }
-            void Expire(object state) { lock (gate) { if (finished) return; finished = true; try { server.Disconnect(); } catch (Exception) { } } }
-            public void Dispose() { lock (gate) finished = true; timer.Dispose(); }
-        }
+        static IDisposable Deadline(NamedPipeServerStream server) { return new PipeDeadline(server, 3000); }
         bool Fresh(string nonce)
         {
             lock (gate)
@@ -425,5 +416,14 @@ namespace LumeRemote
             public void AttachIndicator(IDisposable value) { lock (ownership) { if (Disposed) { value.Dispose(); return; } if (indicator != null) indicator.Dispose(); indicator = value; } }
             public void Dispose() { lock (ownership) { if (Interlocked.Exchange(ref disposed, 1) != 0) return; Answer.TrySetCanceled(); if (indicator != null) indicator.Dispose(); if (Host != null) Host.Dispose(); if (Peer != null) Peer.Dispose(); Stopped.TrySetResult(true); } }
         }
+    }
+    // Disconnects a stalled settings client. The same server stream serves the next client,
+    // so a deadline that fires after its request finished must not disconnect that client.
+    sealed class PipeDeadline : IDisposable
+    {
+        readonly object gate = new object(); readonly NamedPipeServerStream server; readonly System.Threading.Timer timer; bool finished;
+        public PipeDeadline(NamedPipeServerStream server, int milliseconds) { this.server = server; timer = new System.Threading.Timer(Expire, null, milliseconds, Timeout.Infinite); }
+        void Expire(object state) { lock (gate) { if (finished) return; finished = true; try { server.Disconnect(); } catch (Exception) { } } }
+        public void Dispose() { lock (gate) finished = true; timer.Dispose(); }
     }
 }
