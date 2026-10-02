@@ -113,6 +113,8 @@ namespace LumeRemote
                 if (!await confirm(handshake.Sas, ClaimedName(offer.name)).ConfigureAwait(false))
                 {
                     try { await broker.Send(target, SignalCrypto.Seal(envelope, broker.Id, target, route, request, "reject", new SignalBody())).ConfigureAwait(false); } catch (Exception) { }
+                    // Close gracefully so the refusal is relayed before the connection ends.
+                    await broker.Close(3000).ConfigureAwait(false);
                     throw new OperationCanceledException("Pairing stopped because the numbers did not match. Nothing was shared.");
                 }
                 status("Waiting for the other PC to confirm...");

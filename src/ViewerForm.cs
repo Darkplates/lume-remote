@@ -691,30 +691,49 @@ namespace LumeRemote
                 }
             }
         }
-        static readonly System.Drawing.Imaging.ImageAttributes EdgeClamp = CreateEdgeClamp();
-        static System.Drawing.Imaging.ImageAttributes CreateEdgeClamp()
-        { var attributes = new System.Drawing.Imaging.ImageAttributes(); attributes.SetWrapMode(System.Drawing.Drawing2D.WrapMode.TileFlipXY); return attributes; }
-        // Runs on the UI thread for every presented frame, and its cost grows with the window
-        // area, so a large (maximized) window must not use the slow prefiltering path.
-        // The frame is opaque, so it is copied instead of blended. Plain bilinear is sharp
-        // and fast down to half size; only a stronger reduction (a small target, so cheap)
-        // uses high-quality filtering to avoid shimmering text.
-        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target)
+        // How frames are scaled to the window. Painting runs on the UI thread for every
+        // presented frame and its cost grows with the window area. The default stays the
+        // measured previous behaviour until hosted and real-PC timings pick a faster mode.
+        internal enum FrameScaling { Previous, GdiPlusBilinear, GdiPlusNearest, GdiHalftone, GdiColorOnColor }
+        internal static FrameScaling Scaling = FrameScaling.Previous;
+        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target) { DrawFrame(graphics, image, target, Scaling); }
+        internal static void DrawFrame(Graphics graphics, Bitmap image, Rectangle target, FrameScaling mode)
         {
-            System.Drawing.Drawing2D.CompositingMode previous = graphics.CompositingMode;
-            graphics.CompositingMode = System.Drawing.Drawing2D.CompositingMode.SourceCopy;
-            graphics.CompositingQuality = System.Drawing.Drawing2D.CompositingQuality.HighSpeed;
+            if (target.Size == image.Size) { graphics.DrawImageUnscaled(image, target.Location); return; }
+            if (mode == FrameScaling.GdiHalftone || mode == FrameScaling.GdiColorOnColor) { if (StretchFrame(graphics, image, target, mode == FrameScaling.GdiHalftone)) return; mode = FrameScaling.Previous; }
+            InterpolationMode previousInterpolation = graphics.InterpolationMode; PixelOffsetMode previousOffset = graphics.PixelOffsetMode;
+            graphics.InterpolationMode = mode == FrameScaling.GdiPlusNearest ? InterpolationMode.NearestNeighbor : mode == FrameScaling.GdiPlusBilinear ? InterpolationMode.Bilinear : InterpolationMode.HighQualityBilinear;
+            if (mode != FrameScaling.Previous) graphics.PixelOffsetMode = PixelOffsetMode.Half;
+            try { graphics.DrawImage(image, target); }
+            finally { graphics.InterpolationMode = previousInterpolation; graphics.PixelOffsetMode = previousOffset; }
+        }
+        // Classic GDI stretch straight from the bitmap's pixels into the target device context.
+        static bool StretchFrame(Graphics graphics, Bitmap image, Rectangle target, bool halftone)
+        {
+            if (image.PixelFormat != System.Drawing.Imaging.PixelFormat.Format32bppRgb && image.PixelFormat != System.Drawing.Imaging.PixelFormat.Format32bppArgb && image.PixelFormat != System.Drawing.Imaging.PixelFormat.Format32bppPArgb) return false;
+            System.Drawing.Imaging.BitmapData data = image.LockBits(new Rectangle(Point.Empty, image.Size), System.Drawing.Imaging.ImageLockMode.ReadOnly, image.PixelFormat);
             try
             {
-                if (target.Size == image.Size) { graphics.DrawImageUnscaled(image, target.Location); return; }
-                bool strongReduction = target.Width * 2 < image.Width || target.Height * 2 < image.Height;
-                graphics.InterpolationMode = strongReduction ? InterpolationMode.HighQualityBilinear : InterpolationMode.Bilinear;
-                graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Half;
-                // Edge clamping keeps bilinear sampling from fading the outer pixels.
-                graphics.DrawImage(image, target, 0, 0, image.Width, image.Height, GraphicsUnit.Pixel, EdgeClamp);
+                if (data.Stride != image.Width * 4) return false;
+                BitmapInfoHeader header = new BitmapInfoHeader { Size = 40, Width = image.Width, Height = -image.Height, Planes = 1, BitCount = 32 };
+                IntPtr dc = graphics.GetHdc();
+                try
+                {
+                    int previousMode = SetStretchBltMode(dc, halftone ? 4 : 3);
+                    if (halftone) SetBrushOrgEx(dc, 0, 0, IntPtr.Zero);
+                    int lines = StretchDIBits(dc, target.X, target.Y, target.Width, target.Height, 0, 0, image.Width, image.Height, data.Scan0, ref header, 0, 0x00CC0020);
+                    if (previousMode != 0) SetStretchBltMode(dc, previousMode);
+                    return lines != 0;
+                }
+                finally { graphics.ReleaseHdc(dc); }
             }
-            finally { graphics.CompositingMode = previous; graphics.PixelOffsetMode = System.Drawing.Drawing2D.PixelOffsetMode.Default; }
+            finally { image.UnlockBits(data); }
         }
+        [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+        struct BitmapInfoHeader { public int Size, Width, Height; public short Planes, BitCount; public int Compression, SizeImage, XPelsPerMeter, YPelsPerMeter, ClrUsed, ClrImportant; }
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern int StretchDIBits(IntPtr dc, int x, int y, int width, int height, int sourceX, int sourceY, int sourceWidth, int sourceHeight, IntPtr bits, ref BitmapInfoHeader info, uint usage, uint rop);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern int SetStretchBltMode(IntPtr dc, int mode);
+        [System.Runtime.InteropServices.DllImport("gdi32.dll")] static extern bool SetBrushOrgEx(IntPtr dc, int x, int y, IntPtr previous);
         void DrawStatus(Graphics graphics)
         {
             Rectangle area = new Rectangle(Theme.Px(36), Theme.Px(24), Math.Max(1, ClientSize.Width - Theme.Px(72)), Math.Max(1, ClientSize.Height - Theme.Px(48)));

@@ -2,9 +2,10 @@
 
 ## Unreleased
 
-- Viewer: a large or maximized window no longer slows the picture down. Frames are
-  copied 1:1 when the sizes match, scaled with fast bilinear filtering otherwise (high-
-  quality filtering only for strong reductions), and copied without alpha blending.
+- Viewer: frame scaling can use classic GDI stretching as well as GDI+; the default stays
+  the previous behaviour until measurements pick the faster mode for large windows.
+- Short-code pairing: "They don't match" on the joining PC now reliably reaches the
+  sharing PC (the connection is closed gracefully after the refusal).
 - Permanent access: a paired session or connection attempt now always keeps the PC awake
   until it ends, so turning off "Keep this PC awake while plugged in" is safe for saving
   energy (pair a wake helper to wake a sleeping PC).

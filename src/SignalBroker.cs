@@ -90,7 +90,8 @@ namespace LumeRemote
         public readonly string Id;
         public event Action<BrokerPacket> Message;
         public event Action<string> Closed;
-        int disposed, failed;
+        int disposed, failed, closing;
+        readonly TaskCompletionSource<bool> readEnded = new TaskCompletionSource<bool>();
         public SignalBroker(string id) { if (!id.StartsWith("lume-", StringComparison.Ordinal) || !Invitation.IsHex(id.Substring(5), 32)) throw new ArgumentException("Invalid signaling identity."); Id = id; }
         public static string NewId() { return "lume-" + Guid.NewGuid().ToString("N"); }
         public async Task Start(string token, string endpoint = DefaultEndpoint)
@@ -136,6 +137,7 @@ namespace LumeRemote
                 }
             }
             catch (Exception error) { Failed(error); }
+            finally { readEnded.TrySetResult(true); }
         }
         async Task Heartbeat()
         {
@@ -144,7 +146,7 @@ namespace LumeRemote
         }
         void Failed(Exception error)
         {
-            if (stopped.IsCancellationRequested || Interlocked.Exchange(ref failed, 1) != 0) return;
+            if (stopped.IsCancellationRequested || Volatile.Read(ref closing) != 0 || Interlocked.Exchange(ref failed, 1) != 0) return;
             socket.Abort();
             Action<string> closed = Closed; if (closed != null) closed("Signaling disconnected: " + error.Message);
         }
@@ -168,6 +170,24 @@ namespace LumeRemote
                 try { await socket.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, timeout.Token).ConfigureAwait(false); }
                 finally { sending.Release(); }
             }
+        }
+        // Ends the connection after the messages already sent, so a last message (for example a
+        // refusal) reaches the service. Dispose alone resets the socket, which can drop it.
+        public async Task Close(int milliseconds)
+        {
+            if (Volatile.Read(ref disposed) != 0 || Interlocked.Exchange(ref closing, 1) != 0) { Dispose(); return; }
+            try
+            {
+                using (CancellationTokenSource limit = new CancellationTokenSource(milliseconds))
+                {
+                    await sending.WaitAsync(limit.Token).ConfigureAwait(false);
+                    try { await socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "", limit.Token).ConfigureAwait(false); }
+                    finally { sending.Release(); }
+                    await Task.WhenAny(readEnded.Task, Task.Delay(milliseconds, limit.Token)).ConfigureAwait(false);
+                }
+            }
+            catch (Exception) { }
+            finally { Dispose(); }
         }
         public void Dispose() { if (Interlocked.Exchange(ref disposed, 1) != 0) return; stopped.Cancel(); socket.Abort(); socket.Dispose(); }
     }
