@@ -61,6 +61,7 @@ namespace LumeRemote
         internal string FileResumeKey { get; set; }
         public string DisplayName { get; set; }
         public bool IsSessionConnected { get { return connected; } }
+        string pendingNotice; int[] pendingPointer; int noticePosted, pointerPosted;
         // Guest P2P only: the code the host's approval prompt also shows.
         public string ApprovalCheck { get; set; }
         public ViewerForm(Invitation invite, PeerTransport peer = null, StreamQuality initialQuality = null,
@@ -247,10 +248,13 @@ namespace LumeRemote
             Shown += async delegate { await Run(); };
             FormClosing += async delegate(object sender, FormClosingEventArgs args)
             {
+                // Disconnect takes effect at once: the session and any recovery stop here. Only the
+                // window itself waits while a recording file is being saved.
+                Disconnect();
                 if (savingRecording) { args.Cancel = true; closeAfterRecording = true; return; }
-                if (recording != null || recordingFinalization != null)
+                if (RecordingPending)
                 { args.Cancel = true; closeAfterRecording = true; await FinishRecording(); return; }
-                closed = true; connected = false; clipboardTimer.Stop(); if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } closing.Cancel(); timer.Stop(); if (connection != null) connection.Dispose(); if (peer != null) peer.Dispose(); outgoing.CompleteAdding(); SessionLog.Write(SessionLog.UserDirectory, "viewer", "closed_locally"); };
+                closed = true; timer.Stop(); outgoing.CompleteAdding(); SessionLog.Write(SessionLog.UserDirectory, "viewer", "closed_locally"); };
             FormClosed += delegate { presentation.Dispose(); if (displayImage != null) { displayImage.Dispose(); displayImage = null; } timer.Dispose(); clipboardTimer.Dispose(); menu.Dispose(); pixels.Dispose(); clip.Dispose(); release.Dispose(); };
             timer.Tick += delegate { ViewerConnection current = connection; files.Enabled = connected && current != null && current.Files != null; microphoneBadge.Visible = connected && current != null && current.VoiceEnabled; Tick(); }; timer.Start();
             BackgroundWork.Run(delegate
@@ -308,15 +312,28 @@ namespace LumeRemote
                                         OnUi(delegate { PresentLatest(); });
                                 }
                                 if (!closed) current.Ack(decoder.Sequence);
-                            }, delegate(string message) { OnUi(delegate { if (connection == current) ShowNotice(message); }); },
-                            delegate(int x, int y, int shape) { OnUi(delegate { if (connection == current) { canvas.Pointer = new Point(x, y); canvas.PointerShape = shape; canvas.Invalidate(); } }); });
+                            },
+                            // Notices and pointer updates keep only the latest value, like frames, so a
+                            // host cannot queue unbounded work on this window's UI thread.
+                            delegate(string message)
+                            {
+                                Volatile.Write(ref pendingNotice, message);
+                                if (Interlocked.Exchange(ref noticePosted, 1) == 0)
+                                    OnUi(delegate { Interlocked.Exchange(ref noticePosted, 0); string latest = Interlocked.Exchange(ref pendingNotice, null); if (latest != null && connection == current) ShowNotice(latest); });
+                            },
+                            delegate(int x, int y, int shape)
+                            {
+                                Volatile.Write(ref pendingPointer, new int[] { x, y, shape });
+                                if (Interlocked.Exchange(ref pointerPosted, 1) == 0)
+                                    OnUi(delegate { Interlocked.Exchange(ref pointerPosted, 0); int[] latest = Volatile.Read(ref pendingPointer); if (latest != null && connection == current) { canvas.Pointer = new Point(latest[0], latest[1]); canvas.PointerShape = latest[2]; canvas.Invalidate(); } });
+                            });
                         }
                     });
                     failure = current.Failure;
                 }
                 catch (Exception error) { failure = current.Failure ?? error; }
-                finally { drawing = false; canvas.Cursor = Cursors.Default; stroke.Clear(); canvas.Stroke = null; if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) { TrackRecordingFinalization(capture.Stop()); Task cleanup = recordingFinalization.ContinueWith(delegate(Task done) { OnUi(delegate { recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)"; }); if (done.IsFaulted) { var error = done.Exception; OnUi(delegate { ShowNotice("Recording could not be saved."); }); } }); } connected = false; pendingMouse = null; current.Dispose(); connection = null; if (filesWindow != null && !filesWindow.IsDisposed) filesWindow.Close(); if (chatWindow != null && !chatWindow.IsDisposed) chatWindow.Close(); if (peer != null) { peer.Dispose(); peer = null; } }
-                if (closed) return;
+                finally { drawing = false; canvas.Cursor = Cursors.Default; stroke.Clear(); canvas.Stroke = null; if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } SessionRecording capture = Interlocked.Exchange(ref recording, null); if (capture != null) { TrackRecordingFinalization(capture.Stop()); Task cleanup = recordingFinalization.ContinueWith(delegate(Task done) { OnUi(delegate { recordingBadge.Visible = false; if (recordMenu != null) recordMenu.Text = "Start recording (MP4)"; }); if (done.IsFaulted) { var error = done.Exception; OnUi(delegate { ShowNotice("Recording could not be saved."); }); } }); } connected = false; pendingMouse = null; PeerTransport route = peer; peer = null; ReleaseLater(current, route); connection = null; if (filesWindow != null && !filesWindow.IsDisposed) filesWindow.Close(); if (chatWindow != null && !chatWindow.IsDisposed) chatWindow.Close(); }
+                if (closed || disconnected) return;
                 SessionLog.Write(SessionLog.UserDirectory, "viewer", SessionLog.Reason(failure), failure);
                 Bitmap stale = presentation.Take(); if (stale != null) stale.Dispose();
                 if (reconnect == null || !established || !PairedReconnect.Transient(failure))
@@ -325,7 +342,7 @@ namespace LumeRemote
                 try
                 {
                     PairedLink link = await PairedReconnect.Connect(reconnect, ReconnectProgress, closing.Token);
-                    if (closed) { link.Dispose(); return; }
+                    if (closed || disconnected) { ReleaseLater(link, null); return; }
                     invite = link.Invitation; peer = link.Peer;
                     SessionLog.Write(SessionLog.UserDirectory, "viewer", "new_route_ready");
                 }
@@ -461,11 +478,25 @@ namespace LumeRemote
             if (stage == ConnectionStage.RequestingApproval && ApprovalCheck != null) caption += " Your check code for the host: " + ApprovalCheck;
             information.Text = canvas.StatusMessage = caption; canvas.Invalidate();
         }
+        bool disconnected;
+        void Disconnect()
+        {
+            if (disconnected) return; disconnected = true;
+            connected = false; pendingMouse = null; clipboardTimer.Stop(); if (clipboardSync != null) { clipboardSync.Dispose(); clipboardSync = null; } closing.Cancel();
+            ViewerConnection current = connection; PeerTransport route = peer; peer = null;
+            ReleaseLater(current, route);
+        }
+        // Native peer teardown can wait for network threads, so it never runs on the UI thread.
+        static void ReleaseLater(IDisposable first, IDisposable second)
+        {
+            if (first == null && second == null) return;
+            Task.Run(delegate { try { if (first != null) first.Dispose(); } catch (Exception) { } try { if (second != null) second.Dispose(); } catch (Exception) { } });
+        }
         void EndSession(string reason)
         {
             if (closed || ended || IsDisposed) return;
             if (InvokeRequired) { try { BeginInvoke((Action)delegate { EndSession(reason); }); } catch { } return; }
-            ended = true; connected = false; pendingMouse = null; if (connection != null) connection.Dispose(); timer.Stop();
+            ended = true; connected = false; pendingMouse = null; ReleaseLater(connection, null); timer.Stop();
             canvas.SessionEnded = true; canvas.StatusMessage = "Connection ended\n\n" + reason;
             information.Text = "Disconnected: " + reason; Text = "Lume - Disconnected"; canvas.Invalidate();
         }

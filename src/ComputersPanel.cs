@@ -237,7 +237,7 @@ namespace LumeRemote
                     }
                     if (link == null) throw new TimeoutException("Wake packet sent, but the PC did not reconnect. Check Ethernet, firmware wake support and power on the target PC.");
                 }
-                if (IsDisposed || connecting.IsCancellationRequested) { link.Dispose(); return; }
+                if (IsDisposed || connecting.IsCancellationRequested) { PairedLink late = link; Task release = Task.Run(delegate { late.Dispose(); }); return; }
                 ViewerForm viewer = new ViewerForm(link.Invitation, link.Peer, computer.Quality,
                     delegate(Action<string> update, CancellationToken cancellation)
                     {

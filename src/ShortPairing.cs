@@ -51,7 +51,7 @@ namespace LumeRemote
         internal static string ClaimedName(string name)
         {
             if (String.IsNullOrWhiteSpace(name)) return "Unnamed PC";
-            StringBuilder clean = new StringBuilder(); foreach (char c in name) if (!Char.IsControl(c)) clean.Append(c);
+            StringBuilder clean = new StringBuilder(); foreach (char c in name) if (!Char.IsControl(c) && !HostService.IsDeceptive(c)) clean.Append(c);
             string value = clean.ToString().Trim(); return value.Length == 0 ? "Unnamed PC" : value.Length > 64 ? value.Substring(0, 64) : value;
         }
         static async Task<T> Within<T>(Task<T> task, int milliseconds, CancellationToken cancellation, string message)

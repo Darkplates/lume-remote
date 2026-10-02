@@ -138,7 +138,8 @@ namespace LumeRemote
         {
             lock (nativeGate)
             {
-                CheckOpen(); StringBuilder local = new StringBuilder(2048), remote = new StringBuilder(2048);
+                if (ended || disposed != 0) return "P2P WebRTC";
+                StringBuilder local = new StringBuilder(2048), remote = new StringBuilder(2048);
                 int result = Rtc.rtcGetSelectedCandidatePair(peer, local, local.Capacity, remote, remote.Capacity);
                 if (result < 0) return "P2P WebRTC";
                 string a = local.ToString(), b = remote.ToString();
@@ -155,7 +156,9 @@ namespace LumeRemote
                 lock (receiveGate)
                 {
                     if (ended) return;
-                    if (queued + length > 4 * 1024 * 1024) { End("The P2P receive buffer limit was exceeded."); return; }
+                    // Above the host's unacknowledged frame window (16 MiB, FrameWindow), with slack for
+                    // control traffic, so a slow decode never ends a legitimate session.
+                    if (queued + length > 24 * 1024 * 1024) { End("The P2P receive buffer limit was exceeded."); return; }
                     byte[] bytes = new byte[length]; Marshal.Copy(data, bytes, 0, length); incoming.Enqueue(bytes); queued += length; Monitor.PulseAll(receiveGate);
                 }
             }

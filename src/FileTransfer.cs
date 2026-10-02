@@ -156,7 +156,11 @@ namespace LumeRemote
             int page = 0;
             do
             {
-                RemoteFileList list = await List(remote, page++).ConfigureAwait(false);
+                // A host must answer the page that was asked for; Cancel is honoured between pages.
+                int requested = page++;
+                RemoteFileList list = await List(remote, requested).ConfigureAwait(false);
+                cancel.ThrowIfCancellationRequested();
+                if (list.Page != requested) throw new InvalidDataException("The remote PC returned the wrong folder page.");
                 foreach (RemoteFileEntry entry in list.Entries)
                 {
                     cancel.ThrowIfCancellationRequested(); string source = Path.Combine(remote, entry.Name);
@@ -334,6 +338,7 @@ namespace LumeRemote
                 case FileOp.Listing:
                     if (server) throw new InvalidDataException("Unexpected folder response.");
                     RemoteFileList response = new RemoteFileList { Path = packet.Text(4096), Page = packet.Reader.ReadInt32(), More = packet.Reader.ReadBoolean() };
+                    if (response.Path.Length != 0) RemoteFileAccess.CheckRemotePath(response.Path, NetworkFolders);
                     int count = packet.Reader.ReadInt32(); if (count < 0 || count > 200 || response.Page < 0 || response.Page > 10000) throw new InvalidDataException("Invalid folder response.");
                     for (int i = 0; i < count; i++)
                     {

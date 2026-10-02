@@ -84,13 +84,18 @@ namespace LumeRemote
                 await Task.Run(delegate { peer.AcceptAnswer(response.Sdp); peer.WaitReady(HostWait); });
                 ticker.Stop();
                 if (closed) return;
-                accepted = true; connected(); Close();
+                // Only a successful hand-over counts as accepted; otherwise closing stops sharing.
+                connected(); accepted = true; Close();
             }
             catch (Exception error)
             {
                 ticker.Stop();
                 if (closed) return;
-                if (reply.ReadOnly) status.Text = error.Message + " Close this window to stop sharing, then start sharing again for fresh codes.";
+                if (reply.ReadOnly)
+                {
+                    status.Text = error.Message + " Close this window to stop sharing, then start sharing again for fresh codes.";
+                    if (rendezvous != null) { rendezvous.Dispose(); rendezvous = null; }
+                }
                 else { status.Text = error.Message; apply.Enabled = true; }
             }
         }

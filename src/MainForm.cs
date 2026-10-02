@@ -225,7 +225,13 @@ namespace LumeRemote
                     if (withControl) SetGuestControl(GuestControl.Begin());
                     SetIndicator(SessionIndicator.Show(name, withControl, delegate { try { BeginInvoke((Action)delegate { if (current == generation) StopSharing(); }); } catch (InvalidOperationException) { } }));
                 };
-                created.SessionEnded += delegate { if (current != System.Threading.Volatile.Read(ref generation)) return; SetIndicator(null); SetGuestControl(null); };
+                created.SessionEnded += delegate
+                {
+                    if (current != System.Threading.Volatile.Read(ref generation)) return;
+                    SetIndicator(null); SetGuestControl(null);
+                    // Prompts from the ended session must not be answered later.
+                    try { BeginInvoke((Action)delegate { foreach (Form owned in OwnedForms) if ((owned.Tag as string) == "LumeClipboard") owned.Close(); }); } catch (InvalidOperationException) { }
+                };
                 if (usePeer)
                 {
                     created.PeerEnded += delegate
@@ -266,7 +272,10 @@ namespace LumeRemote
         void StopSharing()
         {
             SetIndicator(null); SetGuestControl(null); peerCheckCode = null;
-            generation++; if (peer != null) { peer.Dispose(); peer = null; } if (host != null) { host.Dispose(); host = null; }
+            generation++;
+            // Native peer teardown can wait for network threads, so it never runs on the UI thread.
+            PeerTransport oldPeer = peer; HostService oldHost = host; peer = null; host = null;
+            if (oldPeer != null || oldHost != null) Task.Run(delegate { try { if (oldPeer != null) oldPeer.Dispose(); } catch (Exception) { } try { if (oldHost != null) oldHost.Dispose(); } catch (Exception) { } });
             invitation.Clear(); copy.Enabled = copyLink.Enabled = false; SetSharingControls(false); SetStatus("Sharing stopped. The previous invitation is revoked.");
             endpoint.Text = "Not sharing. Start sharing to create a private invitation.";
             foreach (Form owned in OwnedForms) if (owned is ConsentForm || owned is TimedConsentForm || (owned.Tag as string) == "LumeClipboard" || (owned.Tag as string) == "LumePeer") owned.Close();
@@ -288,13 +297,16 @@ namespace LumeRemote
                 try
                 {
                     if (closing || current != generation) return;
-                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Icon = Brand.Icon, Tag = "LumeClipboard", StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false })
+                    using (Form dialog = new Form { Text = "Lume - Incoming clipboard text", Icon = Brand.Icon, Tag = "LumeClipboard", StartPosition = FormStartPosition.CenterParent, BackColor = Theme.Background, ForeColor = Theme.Text, MinimizeBox = false, MaximizeBox = false, TopMost = true })
                     {
                         Theme.BeginLayout(dialog); dialog.Size = new Size(550, 390);
                         TextBox preview = Theme.Box(true); preview.Dock = DockStyle.Fill; preview.ReadOnly = true; preview.Text = text; preview.ScrollBars = ScrollBars.Both;
                         Button accept = Theme.Button("Copy to my clipboard", true); accept.Width = 200; accept.Click += delegate { try { if (text.Length == 0) Clipboard.Clear(); else Clipboard.SetText(text); result.TrySetResult(true); dialog.Close(); } catch (Exception e) { MessageBox.Show(dialog, e.Message, "Clipboard busy"); } };
                         Button ignore = Theme.Button("Don't copy", false); ignore.Width = 130; ignore.DialogResult = DialogResult.Cancel; dialog.CancelButton = ignore; dialog.ActiveControl = ignore;
-                        Label heading = Theme.Label("The connected computer sent clipboard text.", 11, Theme.Text); heading.Dock = DockStyle.Top; heading.Margin = new Padding(0, 0, 0, 10);
+                        // The guest's input is paused while this is open, so it never waits indefinitely.
+                        Timer expiry = new Timer { Interval = 60000 }; expiry.Tick += delegate { expiry.Stop(); dialog.Close(); };
+                        dialog.Shown += delegate { expiry.Start(); }; dialog.FormClosed += delegate { expiry.Dispose(); };
+                        Label heading = Theme.Label("The connected computer sent clipboard text. Not copied unless you choose; ignored after 60 seconds.", 11, Theme.Text); heading.Dock = DockStyle.Top; heading.Margin = new Padding(0, 0, 0, 10);
                         FlowLayoutPanel actions = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 52, FlowDirection = FlowDirection.RightToLeft, WrapContents = false, Padding = new Padding(0, 10, 0, 0) }; actions.Controls.Add(accept); actions.Controls.Add(ignore);
                         dialog.Padding = new Padding(24, 20, 24, 16); dialog.Controls.Add(preview); dialog.Controls.Add(heading); dialog.Controls.Add(actions); Theme.EndLayout(dialog); using (LocalConsent.Begin()) dialog.ShowDialog(this);
                     }

@@ -20,6 +20,22 @@ namespace LumeRemote
     }
 
     // Counts rejected invitation secrets per remote address so one misbehaving source cannot lock out everyone else.
+    // Short cooldown after a declined request, per source.
+    internal sealed class DeclineTracker
+    {
+        readonly Dictionary<string, long> until = new Dictionary<string, long>(StringComparer.Ordinal);
+        public static readonly TimeSpan Cooldown = TimeSpan.FromSeconds(15);
+        public bool Blocked(string key) { lock (until) { long end; return until.TryGetValue(key ?? "", out end) && DateTime.UtcNow.Ticks < end; } }
+        public void Decline(string key)
+        {
+            lock (until)
+            {
+                long now = DateTime.UtcNow.Ticks;
+                if (until.Count >= 256) foreach (string old in new List<string>(until.Keys)) if (until[old] <= now) until.Remove(old);
+                if (until.Count < 256) until[key ?? ""] = now + Cooldown.Ticks;
+            }
+        }
+    }
     internal sealed class AuthFailureTracker
     {
         sealed class Entry { public int Failures; public long CooldownUntil, Touched; }
@@ -78,6 +94,8 @@ namespace LumeRemote
         volatile bool disposed;
         int active, handshakes;
         readonly AuthFailureTracker failures = new AuthFailureTracker();
+        readonly DeclineTracker declines = new DeclineTracker();
+        readonly HashSet<string> handshaking = new HashSet<string>(StringComparer.Ordinal);
         internal int PreAuthDeadlineMilliseconds = 15000;
         const string RelayFailureKey = "relay", PeerFailureKey = "peer";
         public Invitation Invite { get; private set; }
@@ -137,11 +155,14 @@ namespace LumeRemote
             {
                 try
                 {
-                    TcpClient client = listener.AcceptTcpClient();
-                    if (HasSession || failures.Blocked(RemoteKey(client))) { client.Close(); continue; }
-                    if (Interlocked.Increment(ref handshakes) > 2) { Interlocked.Decrement(ref handshakes); client.Close(); continue; }
-                    if (!Track(client)) { Interlocked.Decrement(ref handshakes); break; }
-                    BackgroundWork.Run(delegate { try { Serve(client, false); } finally { Interlocked.Decrement(ref handshakes); Untrack(client); } });
+                    TcpClient client = listener.AcceptTcpClient(); string key = RemoteKey(client);
+                    if (HasSession || failures.Blocked(key) || declines.Blocked(key)) { client.Close(); continue; }
+                    // One handshake per address, so a single source cannot occupy every slot.
+                    bool local = key == IPAddress.Loopback.ToString() || key == IPAddress.IPv6Loopback.ToString();
+                    lock (clientsGate) { if (!local && !handshaking.Add(key)) { client.Close(); continue; } }
+                    if (Interlocked.Increment(ref handshakes) > 4) { Interlocked.Decrement(ref handshakes); lock (clientsGate) handshaking.Remove(key); client.Close(); continue; }
+                    if (!Track(client)) { Interlocked.Decrement(ref handshakes); lock (clientsGate) handshaking.Remove(key); break; }
+                    BackgroundWork.Run(delegate { try { Serve(client, false); } finally { Interlocked.Decrement(ref handshakes); lock (clientsGate) handshaking.Remove(key); Untrack(client); } });
                 }
                 catch (Exception error) { if (!disposed) status("Listener: " + error.Message); }
             }
@@ -216,8 +237,13 @@ namespace LumeRemote
                     if (Interlocked.CompareExchange(ref active, 1, 0) != 0) { wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "This desktop is already in a session."); }); return; }
                     ownsSession = true;
                     bool allowFiles = allowControl && version >= 3 && fileAccessFactory != null;
+                    if (declines.Blocked(failureKey)) { wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "The host declined recently. Try again later."); }); return; }
                     if (disposed || !approve(new PeerRequest { Name = name, Address = address, Control = allowControl, Files = allowFiles }) || disposed)
-                    { wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "The host declined the request."); }); return; }
+                    {
+                        // A declined requester cannot immediately raise the prompt again.
+                        declines.Decline(failureKey);
+                        wire.Send(Kind.Denied, delegate(BinaryWriter w) { Wire.Text(w, "The host declined the request."); }); return;
+                    }
                     tls.ReadTimeout = 30000; tls.WriteTimeout = 15000;
                     using (IScreenSource source = sourceFactory())
                     using (InputController input = InputFactory == null ? new InputController(source.Bounds) : InputFactory(source.Bounds))
@@ -512,7 +538,13 @@ namespace LumeRemote
                     }
                 }
             }
-            catch (Exception error) { if (Volatile.Read(ref preAuth) == 2) error = new TimeoutException("Authentication took too long."); sessionError = error; if (!disposed) status("Connection ended: " + error.Message); }
+            catch (Exception error)
+            {
+                if (Volatile.Read(ref preAuth) == 2) error = new TimeoutException("Authentication took too long.");
+                // Unauthenticated failures (bad TLS, stalls) count like a wrong secret.
+                if (Volatile.Read(ref preAuth) != 1 && !relay) failures.Fail(failureKey);
+                sessionError = error; if (!disposed) status("Connection ended: " + error.Message);
+            }
             finally
             {
                 preAuthDeadline.Dispose();
@@ -524,7 +556,12 @@ namespace LumeRemote
                 if (!disposed && !relay) status("Ready for a new session. Local approval is always required.");
             }
         }
-        public static bool HasControlChars(string name) { foreach (char c in name) if (Char.IsControl(c)) return true; return false; }
+        // Also rejects invisible and direction-changing characters, which can make a name or file
+        // name display as something else (for example "invoice\u202Etxt.exe"). Joiners used by
+        // emoji and some scripts (U+200C, U+200D) remain allowed.
+        public static bool HasControlChars(string name) { foreach (char c in name) if (Char.IsControl(c) || IsDeceptive(c)) return true; return false; }
+        public static bool IsDeceptive(char c)
+        { return c == '\u061C' || c == '\u180E' || c == '\u200B' || c == '\u200E' || c == '\u200F' || (c >= '\u202A' && c <= '\u202E') || (c >= '\u2060' && c <= '\u2064') || (c >= '\u2066' && c <= '\u2069') || c == '\uFEFF'; }
         public void Dispose()
         {
             if (disposed) return; disposed = true; stopped.Set(); if (listener != null) listener.Stop();
