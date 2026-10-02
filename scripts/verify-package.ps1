@@ -11,6 +11,9 @@ try {
         if ($entries.ContainsKey($name)) { throw "Duplicate entry: $name" }
         $entries[$name] = $entry
     }
+    if (-not $entries.ContainsKey('LumeRemote/SHA256SUMS.txt')) { throw 'The archive has no SHA256SUMS.txt manifest.' }
+    # The user package (it carries the application) must not ship internal maintainer handoff notes.
+    if ($entries.ContainsKey('LumeRemote/LumeRemote.exe') -and $entries.ContainsKey('LumeRemote/AGENTS.md')) { throw 'The user package must not contain AGENTS.md; it belongs in the source archive only.' }
     $reader = New-Object IO.StreamReader($entries['LumeRemote/SHA256SUMS.txt'].Open())
     try { $lines = $reader.ReadToEnd() -split '\r?\n' } finally { $reader.Dispose() }
     $verified = @{}

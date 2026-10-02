@@ -6,6 +6,14 @@ matched values. Source fixtures can contain deliberately synthetic protocol valu
 from pathlib import Path
 import re
 import subprocess
+import sys
+
+
+def fail(message):
+    """Stop with a failure. Explicit, so `python -O` cannot remove it as it removes assert."""
+    print(f'FAIL {message}')
+    sys.exit(1)
+
 
 root = Path(__file__).resolve().parent.parent
 entries = []
@@ -13,9 +21,9 @@ for row in subprocess.check_output(['git', '-C', str(root), 'ls-files', '--stage
     if not row: continue
     metadata, name = row.split('\t', 1)
     mode, blob, stage = metadata.split()
-    assert stage == '0' and mode in ('100644', '100755'), 'Unresolved stage or linked source entry'
+    if stage != '0' or mode not in ('100644', '100755'): fail(f'{name}: unresolved stage or linked source entry')
     entries.append((name, blob))
-assert entries, 'Stage the intended source files first'
+if not entries: fail('Stage the intended source files first')
 blobs = subprocess.check_output(['git', '-C', str(root), 'cat-file', '--batch'], input=('\n'.join(blob for _, blob in entries) + '\n').encode('ascii'))
 offset = 0
 forbidden = re.compile(r'(^|/)(host\.dat|computers\.dat|.*\.(pfx|pem|key|keystore)|local\.properties|\.env(?:\..*)?|verification|target|\.gradle|jniLibs|\.git)(/|$)', re.I)
@@ -30,7 +38,7 @@ for name, blob in entries:
     if forbidden.search(name): failures.append((name, 'private/generated path'))
     end = blobs.index(b'\n', offset)
     actual, kind, length = blobs[offset:end].split()
-    assert actual.decode('ascii') == blob and kind == b'blob'
+    if actual.decode('ascii') != blob or kind != b'blob': fail(f'{name}: unexpected object returned for its index entry')
     offset = end + 1
     staged = blobs[offset:offset + int(length)]
     offset += int(length) + 1
@@ -40,6 +48,6 @@ for name, blob in entries:
         if re.search(rb'C:[/\\]Users[/\\](?!Public\b|Default\b|<|example\b|owner\b)[^/\\\r\n ]+', staged, re.I):
             failures.append((name, 'personal Windows profile path'))
 for name, reason in failures: print(f'FAIL {name}: {reason}')
-assert not failures, 'Public source checks found entries requiring review'
+if failures: fail('Public source checks found entries requiring review')
 print(f'PASS {len(entries)} staged files checked; no matching private paths or secret patterns.')
 print('BOUNDARY Pattern inspection, not proof that all possible secrets or vulnerabilities are absent.')

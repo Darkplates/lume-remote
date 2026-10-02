@@ -1,4 +1,4 @@
-# Feature status - 0.12.0 portable development
+# Feature status - 0.12.1 development preview
 
 Public development source is authorized. Stable binary release and full parity remain **not ready**.
 Implemented and validated are separate states. The owner accepts Apple preparation
@@ -8,6 +8,9 @@ exception does not establish that the untested macOS/iOS source builds or runs.
 | Capability | Implementation | Evidence / remaining boundary |
 | --- | --- | --- |
 | Windows view/control, pairing, revoke | Implemented | Local native TLS/P2P; current two-PC WAN acceptance pending |
+| Short-code pairing (Windows) | Implemented | 8-digit code as a public-broker rendezvous, committed P-256 key exchange and a 6-digit number confirmed on both PCs before the one-time pairing code is sent encrypted; the full code still works. Offline handshake/substitution checks run in every suite; the public-broker round trip runs only with `--signal`. Two-PC and WAN acceptance pending |
+| Guest invitation links (Windows) | Implemented | Link to the static `docs/open.html` page on GitHub Pages, which hands the fragment-held invitation to the per-user `lume-open:` handler; Lume always asks before connecting. Link round-trip and rejection checks run in every suite; the page and its hosting are a trust root (see SECURITY.md). Browser and real-PC acceptance pending |
+| Automatic guest reply (Windows P2P) | Implemented, with manual fallback | Reply sealed under the invitation secret and returned through the public broker; only the first matching reply is accepted. Offline identity checks in every suite; public-broker delivery only with `--signal`. Reported connected on two PCs on one LAN; two-network acceptance pending |
 | Background host, reconnect, tray, multiple remote PCs | Implemented | Local recovery/multiple-session tests; one incoming viewer per host |
 | Source/custom resolution/FPS; lossless/JPEG/H.264 | Implemented | Codec/quality tests; targets are not measured throughput |
 | Explicit clipboard send and receive | Implemented | STA, consent wait, error recovery and authenticated receipts |
@@ -42,7 +45,7 @@ exception does not establish that the untested macOS/iOS source builds or runs.
 | Portable mobile hosts and remaining parity | Missing | No Android/iOS host; portable host annotation overlays, secure desktop and MP4 codec parity remain open. Viewer annotations require a Windows host; PDF adapters have explicit format and platform limits. Physical high-refresh acceptance is separate from the implemented recording target. |
 | Portable high-refresh presentation | Implemented scheduling | Desktop frame wakeups on a coalescing worker; Android Choreographer; iOS CADisplayLink source. A deliberately stalled presentation test preserves frames/ACKs. Actual device FPS, power use and high-refresh hardware acceptance remain unverified. |
 | TURN fleet, signed/automatic updates | Pending | External service/signing infrastructure is not bundled |
-| Independent security review | Scoped static review completed | AGY CLI Gemini 3.8 Flash High inspected 0.11 changes; two P3 findings were corrected and re-reviewed. Broader security/device acceptance remains open; no Opus audit has run. See AGY-11-REVIEW.md. |
+| AI-model code review (not an independent audit) | Scoped static review of 0.11 changes | AGY CLI Gemini 3.8 Flash High inspected 0.11 changes; two P3 findings were corrected and re-reviewed. This was an automated model review, not an independent security audit; none has been performed. See AGY-11-REVIEW.md. |
 
 No commercial duration quota, subscription, telemetry or commercial-use detector is
 implemented. Timeouts, queue bounds and physical network/power failures still exist.

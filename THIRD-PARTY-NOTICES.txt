@@ -49,8 +49,10 @@ Notices: third-party/everest-NOTICE.txt and third-party/p256-m-NOTICE.txt.
 SOURCE AVAILABILITY AND REBUILD
 The complete source for each component is available at the repository and
 exact revision above, including the pinned recursive submodules. The Lume source
-package includes the two patches, their before/after hash manifest, and the
-stdlib-only scripts/prepare-peer-source.py overlay preparer. Run BUILD-P2P.bat
+and Windows packages include the three patches (manual-signaling-ice-v1,
+manual-signaling-ice-checks-v1 and manual-signaling-dtls-v1), their
+before/after hash manifest, and the stdlib-only
+scripts/prepare-peer-source.py overlay preparer. Run BUILD-P2P.bat
 to retrieve and validate those revisions, prepare the verified patched source
 overlay without modifying the upstream checkout, and rebuild the DLL. Windows,
 Android, Linux and Apple peer builders use that same source overlay procedure.
@@ -65,13 +67,23 @@ credentials or automatic relayed fallback are included. See:
 https://developers.cloudflare.com/realtime/turn/
 
 PUBLIC SIGNALING SERVICE (0.3)
-Saved access uses wss://0.peerjs.com/peerjs for authenticated encrypted
-coordination. Desktop data remains direct P2P. The provider sees random IDs,
-network addresses, timing and encrypted envelope sizes. Availability and
-provider policy are external dependencies, without a Lume service guarantee.
+Saved access, the automatic return of a guest's reply and short-code pairing
+use wss://0.peerjs.com/peerjs for authenticated encrypted coordination.
+Desktop data remains direct P2P. The provider sees random IDs, network
+addresses, timing and encrypted envelope sizes. Availability and provider
+policy are external dependencies, without a Lume service guarantee.
 No PeerJS browser library is bundled. The native protocol adapter is original
 Lume C# code. Documentation: https://peerjs.com/client/faq and
 https://peerjs.com/server/cloud
+
+GUEST INVITATION LINK PAGE
+Guest invitation links open https://darkplates.github.io/lume-remote/open.html,
+the static docs/open.html page served by GitHub Pages from this repository.
+Its script reads the invitation from the link fragment (after #) in the
+guest's browser and hands it to the local lume-open: handler, which asks
+before connecting. Browsers do not send the fragment to GitHub Pages, but
+whoever controls that page or its hosting controls the script that reads it.
+Pasting the invitation into Lume works without the page.
 
 WINDOWS MEDIA FOUNDATION
 LumeVideo.dll is an original bridge to Windows-provided Media Foundation APIs.

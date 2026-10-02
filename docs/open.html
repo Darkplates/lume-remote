@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-33ouZSLaRWPBXMNbKVA59BNi0BRiN6L6mw4wA9qVpEY='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="referrer" content="no-referrer">
 <title>Open Lume invitation</title>
@@ -44,6 +45,8 @@
   <p id="missing" class="error" hidden>This link does not contain a Lume invitation. Ask the person sharing for a new link.</p>
   <p class="note">This page runs only in your browser. The invitation stays in the link after the # sign, which browsers never send to any server.</p>
 </main>
+<!-- The Content-Security-Policy script-src hash covers the exact text inside this
+     script element (base64 SHA-256). Recompute it whenever the script changes. -->
 <script>
   (function () {
     var encoded = location.hash.slice(1), invitation = "";

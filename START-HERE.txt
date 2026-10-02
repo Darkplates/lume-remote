@@ -5,7 +5,10 @@ This package runs the native Windows implementation; portable source has separat
 GET CONNECTED
 1. Extract the whole ZIP on both PCs. Open START.bat.
 2. On the target PC: Enable access, approve Windows setup, Pair another PC.
-3. On the controlling PC: Add a computer, paste that one-time code.
+3. On the controlling PC: Add a computer, type the 8-digit code shown on the
+   target PC. Choose They match on both PCs only if both show the same 6-digit
+   number. The full one-time code also works: copy it on the target PC and paste
+   it instead (needed when the online pairing service is unreachable).
 4. Double-click your saved computer.
 
 THE WINDOWS
@@ -53,7 +56,7 @@ implementations; read ports/README.md for platform roles and build instructions.
 Physical microphone, SMB and printer acceptance is still pending.
 macOS and iOS have not been compiled or tested because no Apple device is available.
 The projects and build scripts are prepared with that explicit limitation.
-No Opus review has run yet.
+No independent security audit has been performed.
 
 UPDATE
 Extract a new copy into a separate folder. Close the old viewer and use the

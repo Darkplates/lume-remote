@@ -18,7 +18,11 @@ There are good, established remote desktop tools. Lume is for a narrower case:
 - **Nothing to sign up for or pay.** There is no account, licence check,
   commercial-use detection or session timer.
 - **No Lume servers to trust or host.** Screen, input and files go directly
-  between your PCs. You don't need to run your own server to get this.
+  between your PCs. You don't need to run your own server to get this. The one
+  piece the maintainer hosts is a static page for guest links
+  ([`docs/open.html`](docs/open.html) on GitHub Pages); its script reads the
+  invitation from the link in the guest's browser, so you trust that page and its
+  hosting when you send a link. Pasting the invitation avoids it.
 - **Native and inspectable.** It's a native Windows app with no bundled runtime,
   browser engine or background updater. Anyone can read and build the source.
 - **You stay in control.** Unattended access is opt-in and can be revoked at once.
@@ -32,8 +36,8 @@ network, an established product will serve you better today.
 
 | Step | What happens | Who runs it |
 | --- | --- | --- |
-| Introduction of saved PCs | Pairing: you type an 8-digit code shown on the other PC and confirm that both PCs show the same 6-digit number. Afterwards the two PCs exchange a small encrypted, authenticated message to find each other. | Public [PeerJS](https://peerjs.com) broker (`0.peerjs.com`), a third party. It sees which IDs talk and when, **not** the content. |
-| Introduction of guests | You send a link (or the invitation) privately. The link opens a static page that hands the invitation to Lume in the browser; the invitation sits after `#`, which browsers never send to the page server (GitHub Pages). The guest's reply comes back automatically as an encrypted, authenticated message through the same broker; if that fails, the guest copies it back by hand. | The same public PeerJS broker, which sees only random IDs and timing. Set `LUME_MANUAL_GUEST_REPLY=1` to keep the exchange fully manual. |
+| Introduction of saved PCs | Pairing: you type an 8-digit code shown on the other PC and confirm that both PCs show the same 6-digit number. Afterwards the two PCs exchange a small encrypted, authenticated message to find each other. | Public [PeerJS](https://peerjs.com) broker (`0.peerjs.com`), a third party. It sees which IDs talk and when, network addresses and message sizes, **not** the content. |
+| Introduction of guests | You send a link (or the invitation) privately. The link opens a static page that hands the invitation to Lume in the browser; the invitation sits after `#`, which browsers never send to the page server (GitHub Pages). The guest's reply comes back automatically as an encrypted, authenticated message through the same broker; if that fails, the guest copies it back by hand. | The same public PeerJS broker, which sees random IDs, timing, network addresses and the sizes of the encrypted messages, not their content. The link page is static and hosted by the maintainer on GitHub Pages; its script reads the invitation in the guest's browser. Set `LUME_MANUAL_GUEST_REPLY=1` to keep the exchange fully manual. |
 | Address discovery | Each PC learns its public address. | Cloudflare STUN (`stun.cloudflare.com`). It carries no desktop data. |
 | The session itself | Screen, input, clipboard and files over a direct WebRTC data channel, with Lume's own pinned TLS inside. | Your two PCs. |
 | When a direct route is impossible | Some NAT/firewall combinations block direct connections. There is no automatic TURN relay. | You: use LAN/VPN or run the included [TCP relay](relay/relay.py), which only forwards encrypted bytes. |

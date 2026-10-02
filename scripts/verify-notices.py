@@ -2,7 +2,16 @@
 from pathlib import Path
 import hashlib
 import json
+import sys
 import tomllib
+
+
+def require(condition, message):
+    """Stop with a failure. Explicit, so `python -O` cannot remove it as it removes assert."""
+    if not condition:
+        print(f'FAIL {message}')
+        sys.exit(1)
+
 
 root = Path(__file__).resolve().parent.parent
 base = root / 'third-party' / 'portable'
@@ -14,21 +23,23 @@ counts = {}
 files = 0
 for package in inventory['packages']:
     key = (package['crate'], package['version'])
-    assert key not in seen and expected.get(key) == package['checksum'], f'Unexpected locked package: {key}'
+    require(key not in seen and expected.get(key) == package['checksum'], f'Unexpected locked package: {key}')
     seen.add(key)
     status = package['status']
     counts[status] = counts.get(status, 0) + 1
-    assert status in ('collected', 'collected_later_upstream', 'upstream_review_required')
-    assert bool(package['notices']) == (status != 'upstream_review_required'), f'Unexplained notice state: {key}'
+    require(status in ('collected', 'collected_later_upstream', 'upstream_review_required'), f'Unknown notice status: {key}')
+    require(bool(package['notices']) == (status != 'upstream_review_required'), f'Unexplained notice state: {key}')
     notices = package['notices'] + ([package['declaration']] if 'declaration' in package else [])
     for notice in notices:
         path = (base / notice['file']).resolve()
-        assert path.is_relative_to(base.resolve()) and path.is_file() and not (base / notice['file']).is_symlink()
-        assert hashlib.sha256(path.read_bytes()).hexdigest() == notice['sha256'], f'Notice bytes changed: {notice["file"]}'
+        require(path.is_relative_to(base.resolve()) and path.is_file() and not (base / notice['file']).is_symlink(),
+                f'Notice is missing, linked or outside the inventory folder: {notice["file"]}')
+        require(hashlib.sha256(path.read_bytes()).hexdigest() == notice['sha256'], f'Notice bytes changed: {notice["file"]}')
         if notice.get('provenance_scope') == 'later-upstream-license':
-            assert status == 'collected_later_upstream' and package.get('review_note')
+            require(status == 'collected_later_upstream' and package.get('review_note'),
+                    f'Later-upstream licence lacks its status or review note: {key}')
         files += 1
-assert seen == set(expected), 'Notice inventory does not cover Cargo.lock'
+require(seen == set(expected), 'Notice inventory does not cover Cargo.lock')
 print(f'PASS {len(seen)} locked packages and {files} notice/declaration hashes verified.')
 print(json.dumps(counts, sort_keys=True))
 for package in inventory['packages']:

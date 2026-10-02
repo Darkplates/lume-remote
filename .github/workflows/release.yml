@@ -1,6 +1,9 @@
 name: Publish Windows development preview
-# Manual only. Builds and verifies the Windows package from the selected commit,
-# then publishes it as a GitHub pre-release with SHA-256 files. Unsigned preview.
+# Manual only, from main. The build job has read-only repository access: it builds,
+# verifies and packages the selected commit and uploads the archives with their SHA-256
+# files. The publish job re-checks those digests against the values the build job
+# reported, records build provenance attestations and creates the GitHub pre-release.
+# Unsigned preview.
 on:
   workflow_dispatch:
     inputs:
@@ -11,26 +14,41 @@ on:
 permissions:
   contents: read
 jobs:
-  release:
+  build:
     runs-on: windows-2022
     timeout-minutes: 90
     permissions:
-      contents: write
+      contents: read
     defaults:
       run:
         shell: powershell
     env:
       LUME_VERSION: ${{ inputs.version }}
+    outputs:
+      notes: ${{ steps.validate.outputs.notes }}
+      win_sha256: ${{ steps.package.outputs.win_sha256 }}
+      source_sha256: ${{ steps.package.outputs.source_sha256 }}
     steps:
+      - name: Refuse to publish from anything other than main
+        run: |
+          if ($env:GITHUB_REF -ne 'refs/heads/main') { throw "Releases are published from refs/heads/main only, not $env:GITHUB_REF." }
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
       - name: Validate the version and release notes
+        id: validate
         run: |
           if ($env:LUME_VERSION -notmatch '^\d+\.\d+\.\d+(-preview\.\d+)?$') { throw 'Use a version such as 0.12.1-preview.1.' }
           $notes = "docs/release-notes/$($env:LUME_VERSION -replace '-preview\.\d+$','').md"
           if (-not (Test-Path -LiteralPath $notes)) { throw "Release notes missing: $notes" }
-          "NOTES=$notes" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "notes=$notes`n")
+      - name: Check the release gate report
+        # A development preview only needs a consistent report; any other version
+        # requires every required gate to be marked passed.
+        run: |
+          $global:LASTEXITCODE = 0
+          if ($env:LUME_VERSION -match '-preview\.\d+$') { .\scripts\check-release-gates.ps1 } else { .\scripts\check-release-gates.ps1 -RequireReady }
+          if ($LASTEXITCODE -ne 0) { throw 'Required release gates remain open; only a -preview.N version can be published.' }
       - name: Enable the Windows Media Foundation feature if absent
         run: |
           $feature = Get-WindowsFeature Server-Media-Foundation
@@ -48,7 +66,16 @@ jobs:
         run: .\scripts\build-all.ps1 -Tests
       - name: Verify without global keyboard or mouse injection
         run: .\scripts\verify.ps1 -Safe
+      - name: Verify manual P2P signaling delays with owned loopback proxies
+        timeout-minutes: 16
+        shell: pwsh
+        run: |
+          $env:LUME_TEST_DATACHANNEL = Join-Path (Get-Location) 'datachannel.dll'
+          $report = Join-Path $env:RUNNER_TEMP 'release-p2p-signaling-delay.txt'
+          & .\tests\LumeTests.exe --p2p-signaling-delay *> $report
+          if ($LASTEXITCODE -ne 0) { Get-Content $report; throw 'Native manual-signaling delay regression failed.' }
       - name: Package and verify
+        id: package
         run: |
           $out = Join-Path $env:RUNNER_TEMP 'release'
           New-Item -ItemType Directory -Path $out | Out-Null
@@ -57,16 +84,73 @@ jobs:
           .\scripts\package.ps1 -OutputPath $win
           .\scripts\package.ps1 -OutputPath $src -SourceOnly
           .\scripts\verify-package.ps1 -Archive $win -ExtractDirectory (Join-Path $env:RUNNER_TEMP 'lume-extracted')
-          foreach ($zip in @($win, $src)) {
-            $hash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-            [IO.File]::WriteAllText("$zip.sha256", "$hash  $(Split-Path -Leaf $zip)`n")
+          foreach ($pair in @(@('win_sha256', $win), @('source_sha256', $src))) {
+            $hash = (Get-FileHash -LiteralPath $pair[1] -Algorithm SHA256).Hash.ToLowerInvariant()
+            [IO.File]::WriteAllText("$($pair[1]).sha256", "$hash  $(Split-Path -Leaf $pair[1])`n")
+            [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "$($pair[0])=$hash`n")
           }
+          Get-ChildItem -LiteralPath $out -File | Select-Object Name, Length
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release/*
+          if-no-files-found: error
+          retention-days: 7
+  publish:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    env:
+      LUME_VERSION: ${{ inputs.version }}
+      NOTES: ${{ needs.build.outputs.notes }}
+      WIN_SHA256: ${{ needs.build.outputs.win_sha256 }}
+      SOURCE_SHA256: ${{ needs.build.outputs.source_sha256 }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          name: release-files
+          path: ${{ runner.temp }}/release
+      - name: Re-verify the archives against the digests reported by the build job
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/release"
+          win="LumeRemote-$LUME_VERSION-win64.zip"
+          src="LumeRemote-$LUME_VERSION-source.zip"
+          expected=$(printf '%s\n' "$win" "$win.sha256" "$src" "$src.sha256" | LC_ALL=C sort)
+          actual=$(find . -mindepth 1 -printf '%P\n' | LC_ALL=C sort)
+          test "$actual" = "$expected" || { echo "Unexpected release files:"; echo "$actual"; exit 1; }
+          for name in "$win" "$src"; do
+            if [ "$name" = "$win" ]; then want="$WIN_SHA256"; else want="$SOURCE_SHA256"; fi
+            [[ "$want" =~ ^[0-9a-f]{64}$ ]] || { echo "Missing build digest for $name"; exit 1; }
+            got=$(sha256sum -- "$name" | cut -d' ' -f1)
+            test "$got" = "$want" || { echo "SHA-256 mismatch: $name"; exit 1; }
+            test "$(cat -- "$name.sha256")" = "$want  $name" || { echo "Digest file mismatch: $name.sha256"; exit 1; }
+            echo "Verified $name $got"
+          done
+          test -f "$NOTES" || { echo "Release notes missing: $NOTES"; exit 1; }
+      - name: Record build provenance attestations
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/LumeRemote-${{ inputs.version }}-win64.zip
+            ${{ runner.temp }}/release/LumeRemote-${{ inputs.version }}-source.zip
       - name: Publish the pre-release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $out = Join-Path $env:RUNNER_TEMP 'release'
-          $tag = "v$env:LUME_VERSION"
-          $files = @(Get-ChildItem -LiteralPath $out -File | ForEach-Object { $_.FullName })
-          gh release create $tag @files --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --prerelease --title "Lume Remote $env:LUME_VERSION" --notes-file $env:NOTES
-          if ($LASTEXITCODE -ne 0) { throw 'Release publication failed.' }
+          set -euo pipefail
+          out="$RUNNER_TEMP/release"
+          gh release create "v$LUME_VERSION" \
+            "$out/LumeRemote-$LUME_VERSION-win64.zip" "$out/LumeRemote-$LUME_VERSION-win64.zip.sha256" \
+            "$out/LumeRemote-$LUME_VERSION-source.zip" "$out/LumeRemote-$LUME_VERSION-source.zip.sha256" \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --prerelease \
+            --title "Lume Remote $LUME_VERSION" --notes-file "$NOTES"
