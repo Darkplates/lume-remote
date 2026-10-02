@@ -45,8 +45,10 @@ static partial class Tests
             using (new PipeDeadline(server, 150)) { }
             Thread.Sleep(600);
             Check(server.IsConnected, "A finished request's deadline disconnected the pipe later.");
-            client.WriteByte(7); client.Flush();
-            Check(server.ReadByte() == 7, "The pipe stopped carrying data after a finished deadline.");
+            // No Flush: on Windows it waits until the other end has read, which would deadlock here.
+            client.WriteByte(7);
+            Task<int> read = Task.Run(delegate { return server.ReadByte(); });
+            Check(read.Wait(5000) && read.Result == 7, "The pipe stopped carrying data after a finished deadline.");
             // A stalled request is cut off.
             IDisposable stalled = new PipeDeadline(server, 100);
             Stopwatch clock = Stopwatch.StartNew();
