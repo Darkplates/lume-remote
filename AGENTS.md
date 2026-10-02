@@ -200,3 +200,12 @@ native logging: it can expose SDP, credentials and addresses.
   fragment-held invitation to the per-user `lume-open:` handler, which always asks
   before connecting). GitHub Pages must be enabled for the repository (main, /docs) for
   links to open; pasting still works without it.
+- Deep audit (2026-10-02) and owner-approved fixes in all four batches: installer
+  first-install trust, guest-control lock for owner-only actions (`GuestControl` in
+  `src/Input.cs`), emergency hotkey per handle, guest display lock, guest P2P check
+  code, pipe deadlines and disable/revoke fallbacks, immediate viewer disconnect,
+  off-UI native teardown, viewer coalescing and listing checks, listener limits;
+  ports/relay/Android hardening; read-only release build with attested publish and
+  git-only packaging. The private audit report is not in the repository. Real-PC
+  checks still needed: installer quarantine, hotkey after hide, pipe deadline,
+  elevated disable fallback, guest-control lock across two Lume windows.

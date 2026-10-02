@@ -59,3 +59,9 @@ Connection logs (`connections.log`) retain fixed failure categories, exception t
 No independent security audit, publisher signing, automatic update trust chain or competitor superiority has been established. A package hash detects corruption, not an untrusted distributor. File transfer and H.264 require 0.4 on both endpoints; image-mode compatibility with 0.3 is tested locally.
 
 Two physical PCs on different networks, all keyboard layouts/DPI/GPU combinations, long sessions under real workloads, service updates under injected failures, locked desktops and physical wake remain distinct from local synthetic tests. See [validation](VALIDATION.md) and [feature status](FEATURES.md).
+
+## Guest limits and owner-only actions
+
+While a guest session with control is active, any Lume window on that PC refuses owner-only actions: pairing another PC, enabling access, network folders, updating the installed host and changing paired computers. A cross-process marker records active guest control, and an open pairing window withdraws its code if a guest takes control. Guests see only the display the owner chose. Guest P2P approval shows a six-digit check code derived from the accepted reply; the controlling PC shows the same code while it waits, so the owner can confirm that the reply came from the invited person. A declined requester must wait before asking again, and each address can hold one unauthenticated handshake at a time.
+
+Disable never depends on the settings pipe or locks: a stalled pipe client is cut off after a few seconds, the dashboard falls back to administrator approval if the pipe does not answer, and lock files give the owner no access. If a revoke cannot take the settings lock, access is disabled instead. On a first install, host state under ProgramData that SYSTEM or Administrators did not create is moved aside unread.

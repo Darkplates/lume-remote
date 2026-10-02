@@ -65,7 +65,7 @@ or the invitation into **Private invitation** also works.
 1. On the PC you share, choose **Guest access → Start sharing** and send the invitation privately.
 2. On the other PC, paste the invitation and choose **Connect to computer**. Lume sends its reply back to the sharing PC automatically through the encrypted broker, so nobody has to copy it back in a hurry.
 3. If the P2P window says automatic delivery did not reach the sharing PC (for example an older Lume version there), copy the reply and paste it on the sharing PC.
-4. Approve the request on the sharing PC.
+4. Approve the request on the sharing PC. For P2P, the approval shows a check code; ask your guest to read the code shown on their screen and decline if it differs.
 
 The windows show which step the connection is in: checking network routes, route found, securing the connection. If it fails, the message says which step failed. "No direct network route was found" means the routers did not let the two PCs reach each other; a shared VPN or your own relay avoids this. Codes work once: after a failure, stop sharing and start again for fresh codes.
 

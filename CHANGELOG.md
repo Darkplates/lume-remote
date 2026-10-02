@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+- Security hardening from a full repository audit (details stay private until a release
+  carries the fixes): first-time permanent-access setup no longer trusts host state it
+  did not create; owner-only actions (pairing, enabling access, folders, host update,
+  paired-computer changes) are unavailable while a guest controls the PC; guests see only
+  the display the owner shares; guest P2P approval shows a check code that both people
+  compare; Disable and Revoke cannot be blocked by a stalled client or a held lock.
+- The emergency shortcut (Ctrl + Alt + Shift + F12) now keeps working after the dashboard
+  is hidden to the notification area, including on installed hosts.
+- Viewer Disconnect ends the session and any reconnection at once, even while a recording
+  is being saved. Native connection teardown no longer freezes windows.
+- The incoming-clipboard prompt is ignored after 60 seconds and closes with its session.
+- Names and file names reject invisible and direction-changing characters.
+- Portable ports: guests get no clipboard or system audio, viewer packets are bounded, and
+  chat is accepted only after approval. Android hides remote frames from screenshots.
+- Relay: per-source limits on waiting hosts, IPv6 grouped by /64, a 10-minute default host
+  wait and an optional operator token (`LUME_RELAY_TOKEN`; the Windows app cannot send it
+  yet, so leave it unset for Windows hosts).
+- Release workflow builds with read-only access and publishes with build provenance;
+  packages contain only committed source.
+
 - Pair your own PCs by typing an 8-digit code instead of copying a long code: both
   PCs then show the same 6-digit number, which both people confirm before the existing
   one-time pairing code is sent encrypted. The full code still works.
