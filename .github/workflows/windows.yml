@@ -206,8 +206,10 @@ jobs:
   screenshots:
     # Maintainer tool: a push to a non-default branch whose head commit message contains
     # [render-ui] commits the Windows-rendered interface previews to that same branch.
+    # Tag pushes never qualify. The previews are committed on top of the exact commit that
+    # was rendered; if the branch has moved since, the push is rejected rather than merged.
     needs: windows
-    if: github.event_name == 'push' && github.ref != 'refs/heads/main' && contains(github.event.head_commit.message, '[render-ui]')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/') && github.ref != 'refs/heads/main' && contains(github.event.head_commit.message, '[render-ui]')
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -216,7 +218,7 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
-          ref: ${{ github.ref }}
+          ref: ${{ github.sha }}
       - name: Commit Windows interface previews
         env:
           GH_TOKEN: ${{ github.token }}
@@ -232,4 +234,4 @@ jobs:
           git add docs/images/ui
           if git diff --cached --quiet; then echo "No interface changes."; exit 0; fi
           git commit -m "Update interface previews rendered by Windows CI"
-          git push origin "HEAD:$GITHUB_REF_NAME"
+          git push origin "HEAD:$GITHUB_REF"
