@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Permanent access: a paired session or connection attempt now always keeps the PC awake
+  until it ends, so turning off "Keep this PC awake while plugged in" is safe for saving
+  energy (pair a wake helper to wake a sleeping PC).
 - Security hardening from a full repository audit (details stay private until a release
   carries the fixes): first-time permanent-access setup no longer trusts host state it
   did not create; owner-only actions (pairing, enabling access, folders, host update,

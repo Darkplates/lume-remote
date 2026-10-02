@@ -75,7 +75,9 @@ namespace LumeRemote
                     while (!stop.WaitOne(2000) && !running.IsCompleted)
                     {
                         HostPreferences preferences = TrustedStore.Machine.ReadHost(); SYSTEM_POWER_STATUS power;
-                        bool keepAwake = preferences.Enabled && preferences.KeepAwake && GetSystemPowerStatus(out power) && power.ACLineStatus == 1;
+                        // Idle PCs may sleep unless the owner chose to keep them awake on mains power;
+                        // a session in progress always holds the PC awake so it is not cut off.
+                        bool keepAwake = preferences.Enabled && (host.Busy || preferences.KeepAwake && GetSystemPowerStatus(out power) && power.ACLineStatus == 1);
                         SetThreadExecutionState(keepAwake ? 0x80000001u : 0x80000000u);
                     }
                 }

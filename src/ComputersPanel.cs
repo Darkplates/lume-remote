@@ -19,7 +19,7 @@ namespace LumeRemote
         readonly TextAction trustedSummary = new TextAction();
         readonly FlowLayoutPanel empty = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, BackColor = Theme.Card, Padding = new Padding(4, 12, 4, 4) };
         Button add;
-        readonly CheckBox awake = new CheckBox { Text = "Keep this PC awake while plugged in", AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 8, 0, 12) };
+        readonly CheckBox awake = new CheckBox { Text = "Keep this PC awake while plugged in (uses more power)", AutoSize = true, ForeColor = Theme.Text, Margin = new Padding(0, 8, 0, 12) };
         readonly System.Windows.Forms.Timer refresh = new System.Windows.Forms.Timer { Interval = 3000 };
         SavedPreferences saved;
         CancellationTokenSource connecting;

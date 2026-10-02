@@ -400,6 +400,8 @@ namespace LumeRemote
                 if (!stopped.IsCancellationRequested && Ready) Status("Permanent access ready. Paired computers can reconnect.");
             }
         }
+        // A paired session or connection attempt is in progress; the PC must not sleep under it.
+        public bool Busy { get { lock (gate) return active != null && !active.Disposed; } }
         public void Dispose() { stopped.Cancel(); Pulse(); DisconnectBroker(); lock (gate) { if (active != null) active.Dispose(); } if (controlServer != null) { try { controlServer.Wait(3000); } catch { } } }
         sealed class ActiveSession : IDisposable
         {
